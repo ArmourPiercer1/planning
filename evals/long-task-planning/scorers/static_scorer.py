@@ -351,10 +351,37 @@ def score_candidate_plan(case: dict, plan_dir: Path) -> dict:
     out["forbidden_parallel_pairs"] = fpp_details
 
     # ---- 3.7 integration explicitness ----------------------------------
+    # Count kinds: primary kind + merged_kinds both satisfy a kind.
+    # omitted_kinds also counts as satisfied (structured omission).
     by_kind = {"contract_consistency": 0, "seam_integration": 0, "e2e_closure": 0, "final_acceptance": 0}
+    omitted_kinds = {ok_["kind"] for ok_ in (plan.integration or {}).get("omitted_kinds", [])}
     for it in int_tasks:
-        if it.get("kind") in by_kind:
-            by_kind[it["kind"]] += 1
+        pk = it.get("kind")
+        if pk in by_kind:
+            by_kind[pk] += 1
+        for mk in it.get("merged_kinds", []):
+            if mk in by_kind:
+                by_kind[mk] += 1
+    # Kinds satisfied = present (primary or merged) or omitted-with-justification
+    def kind_satisfied(kind):
+        if by_kind.get(kind, 0) > 0:
+            return True
+        if kind in omitted_kinds:
+            return True
+        return False
+
+    def kind_satisfied_by(kind):
+        """Return how the kind is satisfied: present/merged/omitted/missing."""
+        # Check merged first (more specific than present)
+        for it in int_tasks:
+            if kind in it.get("merged_kinds", []):
+                return "merged"
+        if by_kind.get(kind, 0) > 0:
+            return "present"
+        if kind in omitted_kinds:
+            return "omitted"
+        return "missing"
+
     failure_gates = 0
     gate_text_all = " ".join(str(g.get("scenario", "")) for g in e2e_gates).lower()
     for g in e2e_gates:
@@ -373,7 +400,7 @@ def score_candidate_plan(case: dict, plan_dir: Path) -> dict:
     gate_ok = 0
     gate_details = []
     for gr in gate_reqs:
-        kind_ok = by_kind.get(gr["kind"], 0) > 0
+        kind_ok = kind_satisfied(gr["kind"])
         anchor_ok = (all(aid in it_anchors(it) for aid in gr["anchor_ids"])
                      for it in int_tasks)
         anchor_ok = any(anchor_ok) if gr.get("anchor_ids") else True
@@ -388,6 +415,7 @@ def score_candidate_plan(case: dict, plan_dir: Path) -> dict:
         gate_ok += int(ok)
         gate_details.append({"kind": gr["kind"], "anchors": gr.get("anchor_ids", []),
                              "ok": ok, "missing_failure_markers": missing_markers,
+                             "satisfied_by": kind_satisfied_by(gr["kind"]),
                              "kind_present": kind_ok, "anchors_covered": anchor_ok})
     out["integration_explicitness"] = {
         "score": round(gate_ok / len(gate_reqs), 4) if gate_reqs else (1.0 if int_tasks else 0.0),

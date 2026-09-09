@@ -1,10 +1,16 @@
 {
-  "schema": "planning/audit@1",
+  "schema": "planning/audit@2",
   "verdict": "PASS",
   "auditor": {
     "path": "fresh_subagent",
     "planner_conversation_isolated": true,
     "notes": "PLANTED DEFECT: verdict claims PASS while the deterministic layer has BLOCKER findings — audit/plan mismatch"
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "b2c3d4e5f60718293a4b5c6d7e8f901234567890",
+    "files_verified": ["app/shared.py", "app/api/routes/health.py"],
+    "notes": "fixture audit — grounding recorded for schema completeness"
   },
   "findings": [],
   "deterministic": {
@@ -15,7 +21,8 @@
   "checks_performed": [
     "scope_creep",
     "ownership_collision",
-    "nondeterministic_acceptance"
+    "nondeterministic_acceptance",
+    "repo_grounding_snapshot_check"
   ],
   "revision_round": 1
 }

@@ -1,0 +1,26 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "9f8e7d6c5b4a3210fedcba9876543210abcdef12",
+  "scope_root": ".",
+  "scanned_at": "2026-01-15T09:00:00+00:00",
+  "files": [
+    { "path": "app/main.py", "layer": "lifecycle", "role": "FastAPI app: router registration; single startup/shutdown hook (the S3 lifecycle seam surface)", "imports": ["app/api/routes/health.py", "app/api/routes/legacy.py"], "exports": ["app", "main"] },
+    { "path": "app/db/base.py", "layer": "persistence", "role": "declarative Base for all models", "imports": [], "exports": ["Base"] },
+    { "path": "app/db/models.py", "layer": "persistence", "role": "Invoice + InvoiceLine models (report_jobs model to be added here)", "imports": ["app/db/base.py"], "exports": ["Invoice", "InvoiceLine"] },
+    { "path": "app/api/deps.py", "layer": "api", "role": "shared FastAPI DI: get_db session dependency", "imports": [], "exports": ["get_db"] },
+    { "path": "app/api/routes/health.py", "layer": "api", "role": "health route — router registration pattern reference", "imports": ["app/api/deps.py"], "exports": ["router"] },
+    { "path": "app/api/routes/legacy.py", "layer": "api", "role": "legacy CSV export route (named Stage non-goal)", "imports": ["app/api/deps.py"], "exports": ["router"] },
+    { "path": "app/services/report_gen.py", "layer": "service", "role": "stub report generator: generate_report(input) -> result_ref; real generator is a later Stage", "imports": [], "exports": ["generate_report"] },
+    { "path": "alembic/versions/0001_initial_invoice_schema.py", "layer": "persistence", "role": "initial invoice schema migration (pattern reference for the new report_jobs migration)", "imports": ["app/db/base.py"], "exports": ["upgrade", "downgrade"] },
+    { "path": "tests/conftest.py", "layer": "e2e", "role": "shared pytest fixtures: testcontainers-Postgres session + TestClient", "imports": [], "exports": ["client", "db_session"] }
+  ],
+  "known_test_entrypoints": ["tests/conftest.py"],
+  "known_shared_files": ["app/api/deps.py", "app/db/base.py"],
+  "known_todos": [
+    "app/api/routes/legacy.py:3: # TODO: replace legacy CSV export with the report-jobs pipeline (separate Stage — see input.md)"
+  ],
+  "known_tech_debt": [],
+  "known_seams": [],
+  "scan_boundary": ["."],
+  "unknown_areas": []
+}

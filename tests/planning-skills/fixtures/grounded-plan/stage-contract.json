@@ -1,0 +1,39 @@
+{
+  "schema": "planning/stage-contract@2",
+  "stage_id": "grounded-batch-lookup",
+  "objective": "Add a batch profile lookup endpoint POST /profiles/batch to the profiles service: up to 100 ids in, one result entry per id (null for missing), served from the existing store",
+  "in_scope": [
+    "POST /profiles/batch endpoint with per-id results",
+    "In-memory cache layer module for repeated lookups",
+    "Store-backed batch read path"
+  ],
+  "out_of_scope": [
+    { "item": "Migrate RequestState to contextvars (TODO in app/runtime_state.py)", "reason": "Named non-goal: the in-repo TODO is explicitly non-blocking and belongs to a later Stage" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "single-process deployment; the cache layer is in-memory only", "rationale": "current deployment model; no shared-state infrastructure exists in the repo" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "the batch endpoint reads through the existing store module (app/store.py); the cache layer sits between endpoint and store", "rationale": "store is frozen for this Stage; cache is a new leaf module", "seams_affected": ["S1"] }
+  ],
+  "shared_contracts": [
+    { "id": "C1", "kind": "api", "spec": "POST /profiles/batch body {ids: [str]} -> 200 {results: [{id, name} | null per id]}; more than 100 ids -> 422 error.code 'too_many_ids'", "logical_owner": "api", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "batch endpoint reads per-id results through the shared store; per-id missing returns a null entry, not an error", "participants": ["api", "service"], "contract_ids": ["C1"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "POST /profiles/batch with 2 known and 1 unknown id returns 200 with exactly 3 results, unknown id mapped to null, and the store is queried for all ids", "positive_case": "ids [p-1, p-2, p-x] are submitted and the endpoint returns 200 with 3 results", "negative_case": "a body with 101 ids returns 422", "failure_behavior": "422 with error.code 'too_many_ids'", "evidence": "pytest tests/test_batch_flow.py::test_batch_lookup asserts 3 results, p-x is null, and store call count" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "no new runtime dependencies" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 4,
+    "stage_estimate": "0.5 dev-day"
+  },
+  "allowed_replan": ["split", "defer", "request_contract_revision"],
+  "open_questions": []
+}

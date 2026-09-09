@@ -504,7 +504,8 @@ class TestPromptsAndOrchestration(unittest.TestCase):
     KNOWN = {"task_prompt", "work_dir", "plan_out", "telemetry_file",
              "skills_dir", "glossary", "plan_check", "uv_cache", "ablation_block",
              "ablation_note",
-             "round"}  # 'round' is rendered host-side by the audit orchestration
+             "round",  # rendered host-side by the audit orchestration
+             "snapshot_script", "repo_fixture", "scopes"}  # stage-0 placeholders
 
     def test_all_core_prompts_exist(self):
         for name in ("candidate.md", "baseline-a.md", "baseline-b.md", "audit.md",

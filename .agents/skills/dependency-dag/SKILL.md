@@ -18,7 +18,10 @@ Vocabulary: `../../references/glossary.md`.
 ## Inputs
 
 - `<plan-dir>/candidate-tasks.json`
-- `<plan-dir>/stage-contract.json` (frozen contracts, unlock assumptions)
+- `<plan-dir>/stage-contract.json` (frozen contracts + LOGICAL owners, seam
+  participants by role, unlock assumptions)
+- `<plan-dir>/repo-context-snapshot.json` (context for the ownership/binding
+  decisions: which component actually implements each contract)
 
 ## Procedure
 
@@ -41,13 +44,27 @@ Vocabulary: `../../references/glossary.md`.
    before their owner finishes, add `unlock_contracts` entry
    (contract_id, unlocks). If a parallel group consumes a non-frozen contract
    of an unfinished owner, add the ordering edge instead.
-5. **Critical path.** Compute the longest chain (unit weights) and set
+5. **Bind the logical owners (new in @2).** The stage contract names only
+   LOGICAL owners and role participants — task ids do not exist yet. Now that
+   the leaves exist, write:
+   - `contract_bindings`: one entry per shared contract — `contract_id`,
+     `owner_task` (the leaf whose owned paths implement/finalize the contract;
+     use the snapshot's layer map to see which component that is),
+     `consumer_tasks` (the tasks that consume it), `rationale`.
+   - `seam_bindings`: one entry per integration seam — `seam_id`,
+     `participant_tasks` (≥ 2 distinct leaves, one per participant role),
+     `rationale`.
+   Every contract and every seam must be bound — an unbound contract has no
+   concrete owner and the plan is incomplete (`UNBOUND_CONTRACT` /
+   `UNBOUND_SEAM`, BLOCKER). Rebinding later = editing `dag.json` only; the
+   stage contract is never rewritten for a binding change.
+6. **Critical path.** Compute the longest chain (unit weights) and set
    `critical_path` to it. If your declared path is shorter than the computed
    longest, your DAG or your path is wrong — fix the DAG, not the label.
-6. Integration task slots: `integration_gates` stays empty for now;
+7. Integration task slots: `integration_gates` stays empty for now;
    `integration-planner` (stage 4) assigns integration task ids, adds the
    edges into them, and fills the gates. Do not invent integration tasks here.
-7. Write `dag.json`; gate with `plan-check.py validate`.
+8. Write `dag.json`; gate with `plan-check.py validate`.
 
 ## Heuristics
 
@@ -64,9 +81,11 @@ Vocabulary: `../../references/glossary.md`.
 
 ## Output
 
-`<plan-dir>/dag.json` (schema `planning/dag@1`), leaves only plus empty
-integration-gate slot. Amended later by `integration-planner` (single-writer
-per section: leaves by this skill, gates by integration-planner).
+`<plan-dir>/dag.json` (schema `planning/dag@2`), leaves only plus empty
+integration-gate slot, plus the `contract_bindings` / `seam_bindings` that
+make every logical owner and seam participant concrete. Amended later by
+`integration-planner` (single-writer per section: leaves + bindings by this
+skill, gates by integration-planner).
 
 ## Failure & Escalation
 
@@ -84,7 +103,9 @@ the only real edges are T01→T04 (recovery queries the real table) and
 T01/T02/T03/T04→T05 (integration verification). T02 and T03 run against frozen
 contracts C3/C5 with test fakes; the doc-order pair (API before recovery) is
 recorded in `fake_serialization_removed` with `why_not_real: "API never calls
-recovery; both only consume frozen contracts"`.
+recovery; both only consume frozen contracts"`. `contract_bindings` maps
+C1/C5 (logical owner `persistence`) to T01 and C4 (logical owner `runtime`)
+to T02 — the stage contract itself still says `persistence`, not `T01`.
 
 **Anti-pattern.** Edges for every doc-order pair ("T02 depends on T01 because
 the design doc mentions the store first"), no reasons, critical path = all

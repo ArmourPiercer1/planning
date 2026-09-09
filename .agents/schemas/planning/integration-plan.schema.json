@@ -1,10 +1,10 @@
 {
-  "$id": "planning/integration-plan@1",
-  "title": "Integration plan (seams + integration tasks + E2E gates)",
+  "$id": "planning/integration-plan@2",
+  "title": "Integration plan (v2: structured merge and omission semantics for integration kinds)",
   "type": "object",
   "required": ["schema", "seams", "integration_tasks", "e2e_gates"],
   "properties": {
-    "schema": { "const": "planning/integration-plan@1" },
+    "schema": { "const": "planning/integration-plan@2" },
     "seams": {
       "type": "array",
       "minItems": 1,
@@ -28,9 +28,27 @@
         "properties": {
           "task_id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
           "kind": { "enum": ["contract_consistency", "seam_integration", "e2e_closure", "final_acceptance"] },
+          "merged_kinds": {
+            "type": "array",
+            "description": "Integration kinds this task ALSO carries (structurally merged). e.g. an e2e_closure task that executes final acceptance end to end lists final_acceptance here. A kind carried by merged_kinds is satisfied exactly like a primary kind; the merge must never be notes-only.",
+            "items": { "enum": ["contract_consistency", "seam_integration", "e2e_closure", "final_acceptance"] }
+          },
           "seams": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]+$" } },
           "owns_fixes_for": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
           "acceptance_ref": { "type": "string", "pattern": "^A[0-9]+$" }
+        }
+      }
+    },
+    "omitted_kinds": {
+      "type": "array",
+      "description": "Integration kinds that are deliberately NOT run in this Stage, each with a structured, verifiable justification. A kind is satisfied when it is present (primary or merged) or legitimately omitted here. Omitting seam_integration while a leaf still creates new files in an existing seam directory is a planning defect (HIDDEN_INTEGRATION_WORK).",
+      "items": {
+        "type": "object",
+        "required": ["kind", "reason", "evidence"],
+        "properties": {
+          "kind": { "enum": ["contract_consistency", "seam_integration", "e2e_closure", "final_acceptance"] },
+          "reason": { "type": "string", "minLength": 15 },
+          "evidence": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
         }
       }
     },

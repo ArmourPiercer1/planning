@@ -1,0 +1,19 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    { "id": "S1", "description": "batch endpoint reads per-id results through the shared store; per-id missing returns a null entry, not an error", "contract_ids": ["C1"], "covered_by": ["T04"] }
+  ],
+  "integration_tasks": [
+    { "task_id": "T04", "kind": "e2e_closure", "seams": ["S1"], "owns_fixes_for": ["T01"], "acceptance_ref": "A1" }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "seam_integration",
+      "reason": "The S1 wiring already exists in the repo and this Stage adds no production wiring between existing components — the new cache module is consumed only by the new endpoint",
+      "evidence": ["S1"]
+    }
+  ],
+  "e2e_gates": [
+    { "id": "E1", "scenario": "batch lookup — POST /profiles/batch with 2 known and 1 unknown id returns 200 with 3 results (unknown = null) and the store is queried for all ids", "covers": ["S1"], "evidence": "pytest tests/test_batch_flow.py::test_batch_lookup" }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "schema": "planning/dag@1",
+  "schema": "planning/dag@2",
   "edges": [
     { "from": "T01", "to": "T04", "type": "verification", "reason": "consistency sweep checks the endpoint against C1" },
     { "from": "T04", "to": "T01", "type": "data", "reason": "PLANTED DEFECT: reverse edge forming the cycle T01 -> T04 -> T01" },
@@ -15,6 +15,13 @@
     { "gate_id": "G1", "task_id": "T04", "seams": ["S1"], "acceptance_ref": "A1" }
   ],
   "unlock_contracts": [],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T01", "consumer_tasks": ["T04"], "rationale": "the api route implements C1 (logical owner 'api')" },
+    { "contract_id": "C2", "owner_task": "T02", "consumer_tasks": ["T01", "T04"], "rationale": "the cache module implements C2 (logical owner 'service')" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T01", "T02"], "rationale": "S1's logical participants bind to the route and cache tasks" }
+  ],
   "notes": {
     "fake_serialization_removed": [],
     "collisions_handled": ["none — PLANTED DEFECT: T01/T02 both own app/shared.py and are unordered"]

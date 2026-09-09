@@ -1,0 +1,58 @@
+{
+  "$id": "planning/repo-context-snapshot@1",
+  "title": "Repo context snapshot (bounded, reproducible scan grounding for planning + independent audit)",
+  "type": "object",
+  "required": [
+    "schema", "repo_revision", "scope_root", "scanned_at", "files",
+    "known_test_entrypoints", "known_shared_files", "known_todos",
+    "known_tech_debt", "known_seams", "scan_boundary", "unknown_areas"
+  ],
+  "properties": {
+    "schema": { "const": "planning/repo-context-snapshot@1" },
+    "repo_revision": { "type": "string", "minLength": 7 },
+    "scope_root": { "type": "string", "minLength": 1 },
+    "scanned_at": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "layer", "role", "imports", "exports"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "layer": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "imports": {
+            "type": "array",
+            "description": "Repo-relative paths (resolved within scope) of in-scope files this file imports — the one-hop dependency edges the auditor grounds hidden_dependency on.",
+            "items": { "type": "string" }
+          },
+          "exports": {
+            "type": "array",
+            "description": "Top-level public symbols (functions/classes) this file defines.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "known_test_entrypoints": { "type": "array", "items": { "type": "string" } },
+    "known_shared_files": {
+      "type": "array",
+      "description": "Files imported by >= 2 other in-scope files — shared core that needs explicit ownership/declaration.",
+      "items": { "type": "string" }
+    },
+    "known_todos": { "type": "array", "items": { "type": "string" } },
+    "known_tech_debt": { "type": "array", "items": { "type": "string" } },
+    "known_seams": { "type": "array", "items": { "type": "string" } },
+    "scan_boundary": {
+      "type": "array",
+      "description": "The explicit scope prefixes that WERE scanned.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "unknown_areas": {
+      "type": "array",
+      "description": "Top-level areas NOT scanned (explicitly marked, not silently absent).",
+      "items": { "type": "string" }
+    }
+  }
+}

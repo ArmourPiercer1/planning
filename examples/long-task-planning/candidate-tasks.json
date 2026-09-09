@@ -7,6 +7,7 @@
       "required_context": {
         "files": [
           "app/db/models.py",
+          "app/db/base.py (existing, read-only)",
           "alembic/versions/ (one new migration file)",
           "app/services/job_store.py (new)",
           "tests/services/test_job_store.py (new)",
@@ -70,6 +71,9 @@
       "required_context": {
         "files": [
           "app/main.py (existing)",
+          "app/api/routes/health.py (existing registration pattern, read-only)",
+          "app/api/routes/legacy.py (existing route, read-only — non-goal file referenced by the out_of_scope entry)",
+          "app/api/deps.py (existing DI, read-only)",
           "app/services/recovery.py (new)",
           "tests/test_startup_recovery.py (new)"
         ],

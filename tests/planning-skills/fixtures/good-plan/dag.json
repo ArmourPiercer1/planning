@@ -1,5 +1,5 @@
 {
-  "schema": "planning/dag@1",
+  "schema": "planning/dag@2",
   "edges": [
     { "from": "T01", "to": "T03", "type": "verification", "reason": "E2E closure exercises the real endpoint against the real cache" },
     { "from": "T02", "to": "T03", "type": "verification", "reason": "E2E closure exercises the real cache TTL and hit behavior" }
@@ -14,6 +14,13 @@
   ],
   "unlock_contracts": [
     { "contract_id": "C2", "unlocks": ["T01"] }
+  ],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T01", "consumer_tasks": ["T03"], "rationale": "the api route is the component that implements the GET /profiles endpoint (logical owner 'api')" },
+    { "contract_id": "C2", "owner_task": "T02", "consumer_tasks": ["T01", "T03"], "rationale": "the cache module is the component that implements the Cache interface (logical owner 'service')" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T01", "T02"], "rationale": "S1's logical participants 'api' and 'service' bind to the route task and the cache task" }
   ],
   "notes": {
     "fake_serialization_removed": [],

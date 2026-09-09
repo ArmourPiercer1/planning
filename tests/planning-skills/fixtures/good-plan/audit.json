@@ -1,10 +1,16 @@
 {
-  "schema": "planning/audit@1",
+  "schema": "planning/audit@2",
   "verdict": "PASS",
   "auditor": {
     "path": "fresh_subagent",
     "planner_conversation_isolated": true,
     "notes": "fixture plan — clean by construction"
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "files_verified": ["app/main.py", "app/api/routes/health.py", "tests/conftest.py"],
+    "notes": "context closures checked against the snapshot's one-hop imports; S1 wiring surface confirmed to pre-exist (supports the seam_integration omission)"
   },
   "findings": [],
   "deterministic": {
@@ -25,7 +31,8 @@
     "nondeterministic_acceptance",
     "lack_of_local_recoverability",
     "replan_only_by_append",
-    "communication_overhead"
+    "communication_overhead",
+    "repo_grounding_snapshot_check"
   ],
   "revision_round": 1
 }

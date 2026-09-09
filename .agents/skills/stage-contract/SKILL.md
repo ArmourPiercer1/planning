@@ -20,8 +20,11 @@ Vocabulary: `../../references/glossary.md`.
 ## Inputs
 
 - `<plan-dir>/input.md` (verbatim user task) — create it first if missing.
-- Repo notes: layer map of relevant directories, known tech debt/TODOs
-  (bounded scan only).
+- `<plan-dir>/repo-context-snapshot.json` (stage 0 output) — the bounded repo
+  scan: file/layer map, one-hop imports, known TODOs/tech debt, shared files.
+  It replaces an ad-hoc "repo notes" scan: read the snapshot, and spot-check
+  only files it lists. If it is missing, run stage 0 first — the contract's
+  seam and non-goal claims are only as good as the repo picture behind them.
 - User constraints and budget.
 
 ## Procedure
@@ -34,7 +37,10 @@ Vocabulary: `../../references/glossary.md`.
 3. **Shared contracts first (the heart of this stage).** List every interface
    that ≥ 2 tasks will touch (API, schema, state machine, service interface,
    data format). For each: `id` (C1…), `kind`, a spec precise enough that two
-   agents cannot interpret it differently, `owned_by` (task id or "user-provided"),
+   agents cannot interpret it differently, `logical_owner` (the
+   responsibility/layer that implements it — e.g. `persistence`, `api`,
+   `runtime`, or `planner (from user requirement)`; **never a task id — task
+   ids do not exist yet**, the DAG stage binds this to a concrete task),
    `frozen: true` for the ones that must unlock parallel work. **Freeze the
    seams that unlock parallelism now**; defer the rest — do not wait for a full
    design.
@@ -43,8 +49,10 @@ Vocabulary: `../../references/glossary.md`.
 5. **Frozen architecture decisions** (DA-…): structural choices only
    (worker model, storage, process boundaries), each with rationale + seams
    affected.
-6. **Integration seams** (S…): the exact meeting points, with participants and
-   the contract ids they carry.
+6. **Integration seams** (S…): the exact meeting points, with the contract ids
+   they carry and `participants` as LOGICAL roles/components (e.g.
+   `api`, `runtime`, `persistence`, `lifecycle`) — never task ids; the DAG
+   stage binds each participant role to a concrete task.
 7. **Deterministic acceptance** (A1…): observable behavior, each with
    `positive_case`, `negative_case`, `failure_behavior`, and `evidence`
    (a test name, command, or concrete observable — "returns 404 with field X",
@@ -64,6 +72,10 @@ Vocabulary: `../../references/glossary.md`.
 
 ## Heuristics
 
+- **No task ids, ever.** `logical_owner` and seam `participants` name
+  responsibilities/roles. Writing `T01` here front-loads a decomposition
+  decision and breaks when the DAG rebinds; plan-check rejects it as
+  `CONTRACT_OWNER_TASK_ID` / `SEAM_PARTICIPANT_TASK_ID`.
 - **Minimal contract**: if a spec only one task consumes, it belongs in that
   task's package, not in the contract.
 - **Acceptance is written test-first**: naming the test that will prove it
@@ -77,8 +89,10 @@ Vocabulary: `../../references/glossary.md`.
 
 ## Output
 
-`<plan-dir>/stage-contract.json` (schema `planning/stage-contract@1`).
-Single writer: this skill only.
+`<plan-dir>/stage-contract.json` (schema `planning/stage-contract@2`).
+Single writer: this skill only. The contract never references task ids —
+ownership is logical (`logical_owner`, role participants); concrete binding
+happens in the DAG stage, so rebinding a contract never rewrites this artifact.
 
 ## Failure & Escalation
 

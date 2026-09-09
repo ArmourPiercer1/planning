@@ -13,9 +13,18 @@ You are the planning agent for one case in a planning-quality evaluation.
 
 ## Protocol
 
-1. Read the orchestrator skill and follow its fixed pipeline.
-2. Run the planning stages, writing artifacts to `{plan_out}` with the standard
-   file names (stage-contract.json, candidate-tasks.json, dag.json,
+1. Read the orchestrator skill and follow its fixed pipeline. Stage 0
+   (`repo-context-snapshot`) runs first — use the script at `{snapshot_script}`
+   to produce the bounded repo scan. Every later stage reads the snapshot instead
+   of re-scanning.
+
+   ```powershell
+   $env:UV_CACHE_DIR = "{uv_cache}"
+   uv run --no-project python {snapshot_script} --repo {repo_fixture} --out {plan_out}/repo-context-snapshot.json --scope {scopes}
+   ```
+
+2. Run the remaining planning stages, writing artifacts to `{plan_out}` with
+   the standard file names (stage-contract.json, candidate-tasks.json, dag.json,
    integration-plan.json, tasks/T*.json, risk-estimates.json, run-manifest.json).
 3. After each stage, run the deterministic gate and fix findings before
    proceeding:

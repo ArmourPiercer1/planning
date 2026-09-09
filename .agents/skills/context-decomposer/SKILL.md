@@ -18,18 +18,28 @@ the DAG stage. Vocabulary: `../../references/glossary.md`.
 ## Inputs
 
 - `<plan-dir>/stage-contract.json` (frozen contracts, seams, acceptance, budget).
-- Repo map of relevant territory: file → layer inventory. Gather with a **bounded**
-  scan: directory listings, headers/signatures of key files. Do not read whole
-  modules; the decomposer needs the map, not the content.
+- `<plan-dir>/repo-context-snapshot.json` (stage 0) — the file → layer
+  inventory, the one-hop import graph, known shared files, known TODOs.
+  **This is your repo map — do not re-scan.** Read the snapshot; a targeted
+  deep read of one listed file is fine, a new directory walk is not. If the
+  snapshot's `unknown_areas` touches your territory, that is an input problem:
+  re-run stage 0 with a wider scope before decomposing.
 
 ## Procedure
 
-1. **Context inventory.** For the relevant territory, list files with their
+1. **Context inventory.** Take it from the snapshot: files with their
    responsibility layer (`ui / store / api / service / runtime / persistence /
-   lifecycle / e2e / tooling / docs`).
+   lifecycle / e2e / tooling / docs`), plus `known_shared_files` (high
+   contention — prefer to declare, not mutate) and `known_seams`.
 2. **Closures.** For each in-scope deliverable, list the actual closure:
    files that must be read, contracts that must be understood, concepts that
    must be mastered. Write it down — the closure list is the task boundary.
+   **Closure is transitive one hop**: if a file in the closure imports an
+   in-scope file (see the snapshot's import lists), declare that file in the
+   closure too — an import the executor discovers mid-task is a hidden
+   dependency (plan-check: `HIDDEN_DEPENDENCY`, BLOCKER for known shared
+   files). A context file that is not in the snapshot and not marked `(new)`
+   is a typo or an unscanned area (`CONTEXT_FILE_NOT_IN_SNAPSHOT`).
 3. **Merge vs split.** Merge two work items only when *shared-context benefit >
    cross-layer coupling cost*: they share most of their closure, and combining
    does not cross a stable seam. Split when a closure crosses ≥ 3 responsibility

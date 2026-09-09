@@ -1,0 +1,102 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "d7e219ecf89444b49190450556387ffb0967f216",
+  "scope_root": ".",
+  "scanned_at": "2026-09-09T16:40:33+00:00",
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "layer": "service",
+      "role": "profiles service fixture repo (planning-skills grounded tests).",
+      "imports": [],
+      "exports": []
+    },
+    {
+      "path": "app/api/__init__.py",
+      "layer": "api",
+      "role": "profiles API package.",
+      "imports": [],
+      "exports": []
+    },
+    {
+      "path": "app/api/profiles.py",
+      "layer": "api",
+      "role": "Profile lookup routes.",
+      "imports": [
+        "app/runtime_state.py",
+        "app/schema.py"
+      ],
+      "exports": [
+        "fetch",
+        "lookup_profile"
+      ]
+    },
+    {
+      "path": "app/runtime_state.py",
+      "layer": "service",
+      "role": "Per-request state carried through the profile pipeline.",
+      "imports": [],
+      "exports": [
+        "RequestState"
+      ]
+    },
+    {
+      "path": "app/schema.py",
+      "layer": "service",
+      "role": "Output schemas for profile endpoints.",
+      "imports": [],
+      "exports": [
+        "ProfileOut"
+      ]
+    },
+    {
+      "path": "app/store.py",
+      "layer": "persistence",
+      "role": "Frozen profile store — DO NOT MODIFY during the batch-lookup Stage.",
+      "imports": [],
+      "exports": [
+        "get_profile"
+      ]
+    },
+    {
+      "path": "app/worker.py",
+      "layer": "runtime",
+      "role": "Background profile refresh worker (existing, unrelated to the batch Stage).",
+      "imports": [
+        "app/runtime_state.py"
+      ],
+      "exports": [
+        "refresh_all"
+      ]
+    },
+    {
+      "path": "tests/test_api.py",
+      "layer": "e2e",
+      "role": "module: test_api",
+      "imports": [
+        "app/api/__init__.py"
+      ],
+      "exports": [
+        "test_lookup_returns_name"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_api.py"
+  ],
+  "known_shared_files": [
+    "app/runtime_state.py"
+  ],
+  "known_todos": [
+    "app/api/profiles.py:14: # TODO: serve batch lookups through the shared store",
+    "app/runtime_state.py:7: TODO: migrate RequestState to contextvars (non-blocking; a later Stage)."
+  ],
+  "known_tech_debt": [],
+  "known_seams": [
+    "app/runtime_state.py (imported across layers: api, runtime)"
+  ],
+  "scan_boundary": [
+    "."
+  ],
+  "unknown_areas": []
+}

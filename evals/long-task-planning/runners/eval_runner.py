@@ -36,6 +36,7 @@ SCHEMAS = EVALS / "schemas"
 PROMPTS = HERE / "prompts"
 SKILLS_DEFAULT = ROOT / ".agents" / "skills"
 UV_CACHE = ROOT / ".cache" / "uv"
+SNAPSHOT_SCRIPT = ROOT / ".agents" / "scripts" / "repo-snapshot.py"
 PLAN_CHECK = ROOT / ".agents" / "scripts" / "plan-check.py"
 
 sys.path.insert(0, str(HERE.parent / "scorers"))
@@ -233,6 +234,9 @@ def prepare(run_id: str, cases: list[str], variants: list[str], skills_dir: Path
                         .replace("{skills_dir}", str(skills_dir))
                         .replace("{glossary}", str(skills_dir.parent / "references" / "glossary.md"))
                         .replace("{plan_check}", str(PLAN_CHECK))
+                        .replace("{snapshot_script}", str(SNAPSHOT_SCRIPT))
+                        .replace("{repo_fixture}", str(work / "repo"))
+                        .replace("{scopes}", "")
                         .replace("{uv_cache}", str(UV_CACHE))
                         .replace("{ablation_block}", ablation_block))
             _write(run_dir / "prompt.md", prompt)

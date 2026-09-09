@@ -1,0 +1,98 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "d7e219ecf89444b49190450556387ffb0967f216",
+  "scope_root": ".",
+  "scanned_at": "2026-09-09T17:27:39+00:00",
+  "files": [
+    {
+      "path": "profiles/__init__.py",
+      "layer": "service",
+      "role": "module: __init__",
+      "imports": [],
+      "exports": []
+    },
+    {
+      "path": "profiles/api.py",
+      "layer": "api",
+      "role": "REST endpoints for user profile lookups.",
+      "imports": [
+        "profiles/runtime_state.py",
+        "profiles/schema.py"
+      ],
+      "exports": [
+        "get_profile",
+        "get_profiles"
+      ]
+    },
+    {
+      "path": "profiles/runtime_state.py",
+      "layer": "service",
+      "role": "Request-scoped runtime state.",
+      "imports": [],
+      "exports": [
+        "RequestState"
+      ]
+    },
+    {
+      "path": "profiles/schema.py",
+      "layer": "service",
+      "role": "Shared data schema for profile outputs.",
+      "imports": [],
+      "exports": [
+        "ProfileOut"
+      ]
+    },
+    {
+      "path": "profiles/store.py",
+      "layer": "persistence",
+      "role": "Profile persistence layer — considered frozen for this Stage.",
+      "imports": [],
+      "exports": [
+        "fetch_batch",
+        "fetch_by_id",
+        "save_profile"
+      ]
+    },
+    {
+      "path": "tests/__init__.py",
+      "layer": "e2e",
+      "role": "module: __init__",
+      "imports": [],
+      "exports": []
+    },
+    {
+      "path": "tests/test_api.py",
+      "layer": "e2e",
+      "role": "Tests for profile API endpoints.",
+      "imports": [
+        "profiles/api.py",
+        "profiles/runtime_state.py"
+      ],
+      "exports": [
+        "_reset_state",
+        "test_get_profile",
+        "test_get_profiles"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/__init__.py",
+    "tests/test_api.py"
+  ],
+  "known_shared_files": [
+    "profiles/runtime_state.py"
+  ],
+  "known_todos": [
+    "profiles/api.py:18: TODO: implement proper batch lookup instead of N+1 calls.",
+    "profiles/runtime_state.py:12: # TODO(contextvars): migrate to AsyncContextVar for async endpoints;"
+  ],
+  "known_tech_debt": [],
+  "known_seams": [
+    "profiles/runtime_state.py (imported across layers: api, e2e)"
+  ],
+  "scan_boundary": [
+    "profiles",
+    "tests"
+  ],
+  "unknown_areas": []
+}

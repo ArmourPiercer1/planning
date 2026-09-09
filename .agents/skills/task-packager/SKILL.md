@@ -32,9 +32,15 @@ For **each** task id (candidate leaves + integration tasks), write
    directories), contract ids, concepts. This is the *only* context the agent
    may load at startup.
 3. `inputs` — concrete inputs (upstream outputs, fixtures, data).
-4. `frozen_contracts` — for each consumed contract, `contract_id` +
-   `spec_ref` pointing at its spec in `stage-contract.json`. The executor
-   treats these as read-only.
+4. `frozen_contracts` — for each consumed contract, the **full inlined spec**:
+   `contract_id`, `kind`, `spec` (the complete verbatim spec text from
+   `stage-contract.json` — the executor must never open that file),
+   `source_ref` (`stage-contract.json#shared_contracts[C…]`), and
+   `source_hash` = `sha256:<hex>` of the spec text. plan-check re-hashes the
+   current stage contract and flags drift as `STALE_CONTRACT_SNAPSHOT`
+   (BLOCKER): if the contract changes after packaging, re-run this stage.
+   Helper: `uv run --no-project python ../../scripts/inline-frozen-contracts.py
+   --plan-dir <plan-dir>`. The executor treats these as read-only.
 5. `owned_paths` — from the candidate; integration tasks own their test paths.
 6. `allowed_dependencies` — upstream tasks whose *outputs* (not code-reading
    beyond outputs) this task may consume, with `what`.
@@ -63,9 +69,12 @@ For **each** task id (candidate leaves + integration tasks), write
 
 ## Heuristics
 
-- **Self-contained test**: read only the package (pretend you have never seen
-  the plan). If you cannot start the task, add what is missing — that is the
-  acceptance criterion for the package.
+- **Self-contained test**: read only the package + its `required_context.files`
+  (pretend you have never seen the plan). If you cannot start the task, add
+  what is missing — that is the acceptance criterion for the package. Every
+  consumed contract must be inlined in `frozen_contracts` with a matching
+  `source_hash`; a package that points at `stage-contract.json` for a spec is
+  not self-contained (`CONTRACT_NOT_INLINED`).
 - `required_context` minimalism is enforced by lint (> 25 files or a bare
   directory → finding). If a task truly needs that much, the boundary is wrong
   → back to `context-decomposer`.
@@ -76,7 +85,7 @@ For **each** task id (candidate leaves + integration tasks), write
 
 ## Output
 
-`<plan-dir>/tasks/<id>.json` per task (schema `planning/task-package@1`),
+`<plan-dir>/tasks/<id>.json` per task (schema `planning/task-package@2`),
 risk blocks finalized by stage 6.
 
 ## Failure & Escalation
@@ -94,7 +103,9 @@ risk blocks finalized by stage 6.
 `required_context.files` = [`app/services/report_worker.py` (new),
 `app/services/report_gen.py` (existing interface, read-only),
 `tests/services/test_report_worker.py` (new)]; `frozen_contracts` =
-[C3 state machine, C5 job store interface]; `acceptance_tests` include
+[C3 state machine, C5 job store interface] — each with the full spec inlined
+plus `source_hash` matching the current stage contract, so the executor never
+reads `stage-contract.json`; `acceptance_tests` include
 `{case: failure, description: "generator raises on attempt 3 of 3, job row
 writes status 'failed', attempts 3, error message, no 4th attempt",
 evidence: "pytest tests/services/test_report_worker.py::test_retry_exhaustion

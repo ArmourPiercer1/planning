@@ -19,17 +19,21 @@ by following the skills in
 | Oversized leaves | T06 spans 4 layers by design — the risk stage pre-commits a `checkpoint_and_split` per seam; audit F02 (round 2) notes it MINOR |
 | Blocker handling | T01 checkpoint shows B-class discovery (backlog); T06/T07 packages define the C-class paths |
 | Local recoverability | Each leaf checkpoints at stable subgoals; a failed leaf invalidates only its downstream subgraph |
+| Planner/auditor ungrounded in the real repo | `repo-context-snapshot.json` (stage 0, bounded script scan): context closures are checked against its import graph (hidden dependencies), the auditor spot-checks only snapshot-listed files and records a `grounding` block with the snapshot revision |
+| Contracts referencing not-yet-existing task ids | `stage-contract.json` names only LOGICAL owners/participants; `dag.json` carries the concrete `contract_bindings`/`seam_bindings` to task ids (stage 3) |
+| Task package not self-contained | `tasks/*.json` inline the FULL frozen contract specs with `source_hash`; the executor starts from package + `required_context.files` only — never stage-contract.json |
 
 ## Artifact map
 
 ```
 input.md                     raw user task (verbatim, incl. the scope-creep tease)
-stage-contract.json          6 frozen contracts, 3 seams, 6 deterministic acceptance items
+repo-context-snapshot.json   stage-0 bounded repo scan (files, layers, in-scope imports, TODOs)
+stage-contract.json          6 frozen contracts with logical owners, 3 seams with role participants
 candidate-tasks.json         4 leaves by context closure (T01 store, T02 worker, T03 API, T04 lifecycle)
-integration-plan.json        seams S1-S3 + integration tasks T05-T08 + E2E gates E1-E4
-dag.json                     13 typed edges, 6 parallel groups, critical path T01→T04→T05→T06→T07→T08
+integration-plan.json        seams S1-S3 + integration tasks T05-T08 (4 kinds present) + E2E gates E1-E4
+dag.json                     13 typed edges, 6 parallel groups, critical path T01→T04→T05→T06→T07→T08, contract/seam bindings
 risk-estimates.json          S/M/L footprint + warnings with rationale per task
-tasks/T01..T08.json          self-contained Task Packages (executor reads only these)
+tasks/T01..T08.json          self-contained Task Packages (frozen specs inlined + source_hash)
 audit-v1.json                round-1 audit: FAIL (BLOCKER hidden_integration_work + 2 findings)
 audit.json                   round-2 audit: PASS (3 MINOR findings carried as warnings)
 run-manifest.json            full pipeline + gate log incl. the targeted-revision round
@@ -60,7 +64,9 @@ schemas automatically.
 ## How an execution agent consumes this plan
 
 1. Read **only** `tasks/T01.json` (its package) and the files listed in its
-   `required_context`.
+   `required_context`. The package already inlines the full specs of every
+   consumed contract (`frozen_contracts`, each with `source_hash`) — no other
+   plan artifact is needed at startup.
 2. Implement; classify every discovered problem A/B/C (see
    `long-task-planning/references/execution-protocol.md`).
 3. At each stable subgoal, write `checkpoints/T01.json` (see the example

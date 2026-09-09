@@ -1,0 +1,56 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement the in-memory cache layer module app/cache_layer.py (get/set with per-id TTL) that the batch endpoint uses to skip repeated store reads, with unit tests",
+  "required_context": {
+    "files": ["app/cache_layer.py (new)"],
+    "contracts": [],
+    "concepts": ["in-memory TTL cache"]
+  },
+  "inputs": ["frozen contract C1 (inlined below)"],
+  "frozen_contracts": [],
+  "owned_paths": ["app/cache_layer.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "No disk or shared-memory backing (assumption A-1)",
+    "No invalidation API beyond TTL expiry"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies",
+    "Default TTL 60 seconds"
+  ],
+  "deliverables": [
+    { "what": "cache layer module", "where": "app/cache_layer.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T02-1", "case": "positive", "description": "set then get returns the value; get on absent key returns None", "evidence": "pytest tests/test_cache_layer.py::test_set_get asserts both cases" },
+    { "id": "AT-T02-2", "case": "failure", "description": "an entry read after its TTL elapses returns None from get", "evidence": "pytest tests/test_cache_layer.py::test_expiry asserts None after ttl elapse" }
+  ],
+  "failure_cases": [
+    { "scenario": "TTL clock jumps backwards", "expected_behavior": "entries are still served until their expiry instant passes — get returns the value, no negative TTL" }
+  ],
+  "integration_dependency": {
+    "seams": [],
+    "upstream_outputs": [],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T04"],
+    "notes": "record the exact get/set signatures in verified_facts"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 0,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

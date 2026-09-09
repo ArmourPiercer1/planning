@@ -1,0 +1,54 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Implement the store-backed batch read path used by the endpoint (get_profiles(ids) -> list of rows or None), with unit tests against the frozen store",
+  "required_context": {
+    "files": ["app/store.py (existing)"],
+    "contracts": [],
+    "concepts": ["batch store read"]
+  },
+  "inputs": ["frozen contract C1 (inlined below)"],
+  "frozen_contracts": [],
+  "owned_paths": ["app/store.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "No schema changes to the profile store",
+    "No caching inside the store module (T02 owns the cache layer)"
+  ],
+  "implementation_constraints": [
+    "Existing get_profile behavior must stay byte-identical for single-id reads"
+  ],
+  "deliverables": [
+    { "what": "get_profiles batch read", "where": "app/store.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T03-1", "case": "positive", "description": "get_profiles([p-1, p-2, p-x]) returns rows for known ids and None for p-x, in input order", "evidence": "pytest tests/test_store.py::test_batch_read asserts order and null for p-x" }
+  ],
+  "failure_cases": [
+    { "scenario": "empty ids list", "expected_behavior": "returns an empty list (no error)" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T04"],
+    "notes": "record the exact get_profiles signature in verified_facts"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["persistence"],
+    "cross_contracts": 0,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

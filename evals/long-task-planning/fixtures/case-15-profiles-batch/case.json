@@ -1,0 +1,40 @@
+{
+  "id": "case-15-profiles-batch",
+  "type": "E",
+  "title": "One-hop import trap: api imports runtime_state and schema; contextvars TODO is scope bait",
+  "description": "Type E (hidden dependency + scope bait). The api.py imports both runtime_state.py and schema.py — these are real one-hop dependencies the decomposer must declare in context closure. The runtime_state module has a non-blocking TODO(contextvars) that tempts scope expansion; a good plan names it as an out-of-scope non-goal with the exact TODO reference. store.py is a frozen module the task must not own. Good plans: declare all three imports in the API task's required_context, name the contextvars TODO as a non-goal, exclude store.py from owned paths, and keep the batch endpoint and schema in one leaf. Anti-plans: miss the runtime_state import (hidden dependency — it's not the API itself but a one-hop dependency the executor discovers mid-task); expand scope to fix the contextvars TODO; claim ownership of store.py ('while I'm at it'); or split the endpoint and schema into two tasks when one closure suffices.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["profiles/api.py"], "description": "profile endpoint — gains batch lookup; imports runtime_state + schema", "layer": "api" },
+    { "id": "A2", "files": ["profiles/runtime_state.py"], "description": "request-scoped state — contextvars TODO (out of scope)", "layer": "runtime" },
+    { "id": "A3", "files": ["profiles/schema.py"], "description": "ProfileOut dataclass — consumed by the endpoint, not modified", "layer": "data" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A3"], "kind": "assumption", "note": "ProfileOut schema is stable and not modified; the batch endpoint returns a list of existing ProfileOut objects" },
+      { "anchor_ids": ["A2"], "kind": "assumption", "note": "the TODO(contextvars) migration in runtime_state.py is out of scope and not touched by this task; the plan must name it as an explicit non-goal" }
+    ],
+    "must_not_expand_scope": ["profiles/store.py"],
+    "must_not_own": ["profiles/store.py"],
+    "must_have_edges": [
+      { "from_anchor": "A3", "to_anchor": "A1", "types": ["data"], "note": "the endpoint leaf consumes the ProfileOut schema; the schema is a one-hop dependency of the API task" }
+    ],
+    "must_not_have_edges": [
+      { "from_anchor": "A2", "to_anchor": "A3", "reason": "runtime_state and schema are independent modules; no dependency between them" }
+    ],
+    "acceptable_task_count_range": [1, 3],
+    "max_anchors_per_task": 2,
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1"],
+        "failure_path_markers": [
+          { "path": "batch returns wrong shape", "keywords": ["list", "ProfileOut", "shape", "batch", "multiple"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A1"],
+    "notes": "Type E probe: one-hop import trap + scope bait. The fixture is designed to test whether the decomposer reads the snapshot's import graph and declares all in-scope imports in context closure. Missing runtime_state.py from the API task's context is a HIDDEN_DEPENDENCY. Missing schema.py is also a HIDDEN_DEPENDENCY. The contextvars TODO is a non-blocking scope bait — the plan should name it as a non-goal. store.py is a frozen module that must not be owned."
+  }
+}

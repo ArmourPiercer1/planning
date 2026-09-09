@@ -32,6 +32,7 @@ PROMPTS = HERE / "prompts"
 ROOT = EVALS.parents[1]
 SKILLS = ROOT / ".agents" / "skills"
 GLOSSARY = ROOT / ".agents" / "references" / "glossary.md"
+SNAPSHOT_SCRIPT = ROOT / ".agents" / "scripts" / "repo-snapshot.py"
 PLAN_CHECK = ROOT / ".agents" / "scripts" / "plan-check.py"
 UV_CACHE = ROOT / ".cache" / "uv"
 
@@ -46,7 +47,10 @@ def render(tpl: Path, run_dir: Path, out_name: str, **extra) -> Path:
         "skills_dir": str(SKILLS),
         "glossary": str(GLOSSARY),
         "plan_check": str(PLAN_CHECK),
+        "snapshot_script": str(SNAPSHOT_SCRIPT),
+        "repo_fixture": str(run_dir / "work" / "repo"),
         "uv_cache": str(UV_CACHE),
+        "scopes": "",
         "ablation_block": "",
     }
     subs.update(extra)

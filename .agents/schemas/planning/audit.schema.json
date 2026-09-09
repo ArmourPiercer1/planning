@@ -1,10 +1,10 @@
 {
-  "$id": "planning/audit@1",
-  "title": "Plan audit verdict (independent path; deterministic layer + semantic layer)",
+  "$id": "planning/audit@2",
+  "title": "Plan audit verdict (v2: independent path + deterministic layer + repo-grounded semantic layer)",
   "type": "object",
   "required": ["schema", "verdict", "auditor", "findings", "deterministic", "checks_performed"],
   "properties": {
-    "schema": { "const": "planning/audit@1" },
+    "schema": { "const": "planning/audit@2" },
     "verdict": { "enum": ["PASS", "FAIL"] },
     "auditor": {
       "type": "object",
@@ -12,6 +12,16 @@
       "properties": {
         "path": { "enum": ["fresh_subagent", "fresh_session", "same_session_late_pass"] },
         "planner_conversation_isolated": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "grounding": {
+      "type": "object",
+      "description": "Repo grounding: which snapshot the auditor verified against and what it checked. The auditor stays conversation-isolated from the planner but may read repo-context-snapshot.json (and read-only files it lists) to check plan claims against code reality.",
+      "properties": {
+        "snapshot_ref": { "type": "string" },
+        "repo_revision": { "type": "string" },
+        "files_verified": { "type": "array", "items": { "type": "string" } },
         "notes": { "type": "string" }
       }
     },

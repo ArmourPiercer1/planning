@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 
+# test scratch dirs (recreated per run)
+tests/planning-skills/tmp-round2/
+
 # eval run working repos: nested .git + copied fixture (reproducible via
 # `eval_runner.py prepare`); plan artifacts, run results and reports under
 # runs/ are still tracked as evidence

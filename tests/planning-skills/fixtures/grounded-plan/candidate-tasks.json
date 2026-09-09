@@ -1,0 +1,53 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement POST /profiles/batch in app/api/profiles.py per contract C1 (per-id results, null for missing, 422 too_many_ids beyond 100), extending the existing test suite",
+      "required_context": {
+        "files": ["app/api/profiles.py (existing, extension target)", "tests/test_api.py (existing, extension target)"],
+        "contracts": ["C1"],
+        "concepts": ["existing route module pattern", "per-id result mapping"]
+      },
+      "owned_paths": ["app/api/profiles.py", "tests/test_api.py"],
+      "forbidden_scope": ["app/store.py (T03 owns it)", "app/runtime_state.py (non-goal file — do not migrate it)"],
+      "touched_layers": ["api"],
+      "inputs": ["frozen contract C1 in stage-contract.json"],
+      "outputs": ["batch endpoint in app/api/profiles.py", "extended tests/test_api.py"],
+      "downstream_consumers": ["T04"],
+      "split_rationale": "closure = extend one route module + its tests; PLANTED BY CONSTRUCTION: the context does not declare app/api/profiles.py's one-hop imports (app/runtime_state.py, app/schema.py) — the snapshot-based HIDDEN_DEPENDENCY check exists to catch exactly this"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the in-memory cache layer module app/cache_layer.py (get/set with per-id TTL) that the batch endpoint uses to skip repeated store reads, with unit tests",
+      "required_context": {
+        "files": ["app/cache_layer.py (new)"],
+        "contracts": [],
+        "concepts": ["in-memory TTL cache"]
+      },
+      "owned_paths": ["app/cache_layer.py"],
+      "forbidden_scope": ["app/api/**", "app/store.py"],
+      "touched_layers": ["service"],
+      "inputs": ["frozen contract C1 in stage-contract.json"],
+      "outputs": ["app/cache_layer.py module + unit tests"],
+      "downstream_consumers": ["T04"],
+      "split_rationale": "closure = one new module; PLANTED BY CONSTRUCTION: the new file lands in app/ next to store.py owned by T03, so new production wiring exists and the seam_integration omission below is NOT legitimate (HIDDEN_INTEGRATION_WORK)"
+    },
+    {
+      "id": "T03",
+      "objective": "Implement the store-backed batch read path used by the endpoint (get_profiles(ids) -> list of rows or None), with unit tests against the frozen store",
+      "required_context": {
+        "files": ["app/store.py (existing)"],
+        "contracts": [],
+        "concepts": ["batch store read"]
+      },
+      "owned_paths": ["app/store.py"],
+      "forbidden_scope": ["app/api/**"],
+      "touched_layers": ["persistence"],
+      "inputs": ["frozen contract C1 in stage-contract.json"],
+      "outputs": ["get_profiles batch read in app/store.py + unit tests"],
+      "downstream_consumers": ["T04"],
+      "split_rationale": "closure = extend one store module + its tests"
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Implement POST /profiles/batch in app/api/profiles.py per contract C1 (per-id results, null for missing, 422 too_many_ids beyond 100), extending the existing test suite",
+  "required_context": {
+    "files": [
+      "app/api/profiles.py (existing, extension target)",
+      "tests/test_api.py (existing, extension target)"
+    ],
+    "contracts": [
+      "C1"
+    ],
+    "concepts": [
+      "existing route module pattern",
+      "per-id result mapping"
+    ]
+  },
+  "inputs": [
+    "frozen contract C1 (inlined below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /profiles/batch body {ids: [str]} -> 200 {results: [{id, name} | null per id]}; more than 100 ids -> 422 error.code 'too_many_ids'",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:5ed7a7d6e9373241ecff514eb40606b533161f59d5f8772dc93cd1b11c809217"
+    }
+  ],
+  "owned_paths": [
+    "app/api/profiles.py",
+    "tests/test_api.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/store.py (T03 owns it) or app/runtime_state.py (contextvars migration is a named Stage non-goal)"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies",
+    "Batch beyond 100 ids returns 422 before any store read"
+  ],
+  "deliverables": [
+    {
+      "what": "batch endpoint",
+      "where": "app/api/profiles.py"
+    },
+    {
+      "what": "extended API tests",
+      "where": "tests/test_api.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-T01-1",
+      "case": "positive",
+      "description": "2 known + 1 unknown id returns 200 with 3 results, unknown = null",
+      "evidence": "pytest tests/test_api.py::test_batch_mixed asserts result count 3 and null for p-x"
+    },
+    {
+      "id": "AT-T01-2",
+      "case": "negative",
+      "description": "101 ids returns 422 error.code 'too_many_ids'",
+      "evidence": "pytest tests/test_api.py::test_batch_too_many asserts status 422 and code"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "store read raises for one id",
+      "expected_behavior": "that id maps to null, other ids still return (per C1 per-id semantics)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T04"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T04"
+    ],
+    "notes": "record the exact response field list in verified_facts for gate E1"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "api"
+    ],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

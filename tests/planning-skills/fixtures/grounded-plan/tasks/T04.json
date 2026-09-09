@@ -1,0 +1,99 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T04",
+  "objective": "Run the E2E closure gate for seam S1 — batch lookup with 2 known and 1 unknown id returns 200 with per-id results, unknown = null, and the store is queried for all ids — and produce the gate evidence",
+  "required_context": {
+    "files": [
+      "tests/test_batch_flow.py (new)",
+      "app/api/profiles.py (read-only, under test)"
+    ],
+    "contracts": [
+      "C1"
+    ],
+    "concepts": [
+      "E2E gate design",
+      "store call counting via test double"
+    ]
+  },
+  "inputs": [
+    "T01/T02/T03 checkpoints (changed_paths, verified_facts)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /profiles/batch body {ids: [str]} -> 200 {results: [{id, name} | null per id]}; more than 100 ids -> 422 error.code 'too_many_ids'",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:5ed7a7d6e9373241ecff514eb40606b533161f59d5f8772dc93cd1b11c809217"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_batch_flow.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "endpoint implementation under test (read-only)"
+    },
+    {
+      "task_id": "T03",
+      "what": "store batch read under test (read-only)"
+    }
+  ],
+  "non_goals": [
+    "No production code changes — gate defects are reported with seam location, not fixed here"
+  ],
+  "implementation_constraints": [
+    "The store is a test double that counts calls; the cache must be the real module"
+  ],
+  "deliverables": [
+    {
+      "what": "E2E gate test for S1",
+      "where": "tests/test_batch_flow.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-T04-1",
+      "case": "positive",
+      "description": "batch of 2 known + 1 unknown returns 200, 3 results, p-x null, store called once per id",
+      "evidence": "pytest tests/test_batch_flow.py::test_batch_lookup asserts results and store.call_count == 3"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "gate E1 fails while unit suites are green",
+      "expected_behavior": "record the failing gate + seam S1 + output in the checkpoint as a blocker"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [
+      "T01 + T03 checkpoints"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": [],
+    "notes": "Stage-closing checkpoint: remaining_dag empty, acceptance verdict in downstream_notes"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "e2e"
+    ],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

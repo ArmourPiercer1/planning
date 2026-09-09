@@ -1,0 +1,38 @@
+{
+  "schema": "planning/audit@2",
+  "verdict": "FAIL",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "fixture audit — verdict FAIL is consistent with the planted deterministic findings (hidden dependencies + hidden integration work)"
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "d7e219ecf89444b49190450556387ffb0967f216",
+    "files_verified": ["app/api/profiles.py", "app/runtime_state.py", "app/store.py"],
+    "notes": "confirmed app/api/profiles.py one-hop imports (runtime_state, schema) against the snapshot; confirmed the contextvars TODO is present and non-blocking; confirmed store.py is the frozen store the plan must not own-churn"
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MAJOR",
+      "check": "hidden_dependency",
+      "task_id": "T01",
+      "evidence": "T01 extends app/api/profiles.py but its context does not declare app/schema.py (one-hop import per snapshot) — the executor would discover it mid-task",
+      "suggested_fix": "declare app/schema.py in T01 required_context.files"
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 1,
+    "finding_count": 5
+  },
+  "checks_performed": [
+    "scope_creep",
+    "hidden_dependency",
+    "hidden_integration_work",
+    "ownership_collision",
+    "repo_grounding_snapshot_check"
+  ],
+  "revision_round": 1
+}

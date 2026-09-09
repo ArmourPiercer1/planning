@@ -1,21 +1,53 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T04",
   "objective": "Run a read-only contract consistency sweep of the endpoint and cache against contracts C1/C2, writing a deviation report for downstream consumption",
   "required_context": {
-    "files": ["app/api/routes/profiles.py (read-only)", "app/cache.py (read-only)", "tests/integration/test_consistency.py (new)"],
-    "contracts": ["C1", "C2"],
-    "concepts": ["read-only diffing against a frozen spec"]
+    "files": [
+      "app/api/routes/profiles.py (read-only)",
+      "app/cache.py (read-only)",
+      "tests/integration/test_consistency.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2"
+    ],
+    "concepts": [
+      "read-only diffing against a frozen spec"
+    ]
   },
-  "inputs": ["T01 + T02 checkpoints", "frozen contracts C1/C2 in stage-contract.json"],
-  "frozen_contracts": [
-    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
-    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  "inputs": [
+    "T01 + T02 checkpoints",
+    "frozen contracts C1/C2 in stage-contract.json"
   ],
-  "owned_paths": ["tests/integration/"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "GET /profiles/{id} returns 200 {id, name} for a known id or 404 {error: {code: 'not_found'}} for an unknown id",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:7b61951aa34aeb806933564e0fad36ee3dcc43eacf7aa4ed1269910d6d8e5609"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "Cache: get(key) -> value|None; set(key, value, ttl_seconds) -> None; 60s default TTL; in-memory only",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:57fa1d9635a95c4fcc40aac37f4c04d90704817d47d6c7e09e606ca2d04bc0f1"
+    }
+  ],
+  "owned_paths": [
+    "tests/integration/"
+  ],
   "allowed_dependencies": [
-    { "task_id": "T01", "what": "endpoint implementation (read-only diff)" },
-    { "task_id": "T02", "what": "cache implementation (read-only diff)" }
+    {
+      "task_id": "T01",
+      "what": "endpoint implementation (read-only diff)"
+    },
+    {
+      "task_id": "T02",
+      "what": "cache implementation (read-only diff)"
+    }
   ],
   "non_goals": [
     "No implementation changes — read-only sweep",
@@ -25,17 +57,32 @@
     "Output is a structured deviation report: list of {contract_id, file, deviation, severity} or 'no deviations'"
   ],
   "deliverables": [
-    { "what": "consistency deviation report", "where": "tests/integration/test_consistency.py + its report" }
+    {
+      "what": "consistency deviation report",
+      "where": "tests/integration/test_consistency.py + its report"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T04-1", "case": "positive", "description": "with clean implementations the sweep writes 'no deviations' and the test exits 0", "evidence": "pytest tests/integration/test_consistency.py -q exits 0" }
+    {
+      "id": "AT-T04-1",
+      "case": "positive",
+      "description": "with clean implementations the sweep writes 'no deviations' and the test exits 0",
+      "evidence": "pytest tests/integration/test_consistency.py -q exits 0"
+    }
   ],
   "failure_cases": [
-    { "scenario": "a deviation is ambiguous to read against the spec", "expected_behavior": "the report records both readings as unresolved; downstream escalates instead of guessing" }
+    {
+      "scenario": "a deviation is ambiguous to read against the spec",
+      "expected_behavior": "the report records both readings as unresolved; downstream escalates instead of guessing"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S1"],
-    "upstream_outputs": ["T01 + T02 checkpoints"],
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [
+      "T01 + T02 checkpoints"
+    ],
     "consumers": []
   },
   "handoff": {
@@ -46,7 +93,9 @@
   },
   "risk": {
     "context_footprint": "S",
-    "touched_layers": ["e2e"],
+    "touched_layers": [
+      "e2e"
+    ],
     "cross_contracts": 2,
     "statefulness": "low",
     "integration_distance": "low",

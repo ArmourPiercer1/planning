@@ -6,10 +6,14 @@ this protocol. It does not read the rest of the plan.
 
 ## Startup
 
-1. Read the Task Package only.
-2. Load exactly `required_context.files`, `required_context.contracts`
-   (resolved against `frozen_contracts[].spec_ref` → `stage-contract.json`),
-   and `required_context.concepts`.
+1. Read the Task Package only. **Never open `stage-contract.json`** — all
+   frozen contracts are inlined in the package's `frozen_contracts[]` with
+   matching `source_hash` (BLOCKER `STALE_CONTRACT_SNAPSHOT` if the hash
+   doesn't match what the current stage contract would produce; the packager
+   owns that).
+2. Load exactly `required_context.files` (the verbatim spec text is in
+   `frozen_contracts[].spec`, not a path you resolve), and
+   `required_context.concepts`.
 3. If context proves insufficient mid-run: expand **one file at a time**, and
    record each expansion in the checkpoint (`deviations`, with the reason).
    A directory-wide or repo-wide read is never a quiet fallback — it is an

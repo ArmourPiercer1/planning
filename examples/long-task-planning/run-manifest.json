@@ -5,6 +5,7 @@
   "created_at": "2026-07-23T10:00:00Z",
   "skill_versions": [
     "long-task-planning@1",
+    "repo-context-snapshot@1",
     "stage-contract@1",
     "context-decomposer@1",
     "dependency-dag@1",
@@ -14,6 +15,7 @@
     "plan-auditor@1"
   ],
   "pipeline": [
+    { "stage": "repo-context-snapshot", "status": "done", "gate": "plan-check validate repo-context-snapshot.json", "artifact": "repo-context-snapshot.json", "exit_code": 0, "fallbacks": [] },
     { "stage": "stage-contract", "status": "done", "gate": "plan-check validate stage-contract.json", "artifact": "stage-contract.json", "exit_code": 0, "fallbacks": [] },
     { "stage": "context-decomposer", "status": "done", "gate": "plan-check validate candidate-tasks.json", "artifact": "candidate-tasks.json", "exit_code": 0, "fallbacks": [] },
     { "stage": "dependency-dag", "status": "done", "gate": "plan-check validate dag.json", "artifact": "dag.json", "exit_code": 0, "fallbacks": [] },
@@ -25,6 +27,7 @@
     { "stage": "plan-auditor (round 2)", "status": "done", "gate": "audit verdict", "artifact": "audit.json", "exit_code": 0, "fallbacks": [] }
   ],
   "gates": [
+    { "name": "validate repo-context-snapshot.json", "exit_code": 0, "ts": "2026-07-23T10:02:00Z" },
     { "name": "validate stage-contract.json", "exit_code": 0, "ts": "2026-07-23T10:04:00Z" },
     { "name": "validate candidate-tasks.json", "exit_code": 0, "ts": "2026-07-23T10:09:00Z" },
     { "name": "validate dag.json", "exit_code": 0, "ts": "2026-07-23T10:13:00Z" },

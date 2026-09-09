@@ -1,28 +1,104 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T06",
   "objective": "Fix every seam deviation from the T05 consistency report so the wired system (API + pool + store + lifecycle) matches contracts C1-C6, changing leaf code only within its owned paths and re-running the affected leaf tests",
   "required_context": {
-    "files": ["tests/integration/test_contract_consistency.py (T05 output)", "app/db/models.py", "app/services/job_store.py", "app/services/report_worker.py", "app/api/routes/reports.py", "app/services/recovery.py", "app/main.py"],
-    "contracts": ["C1", "C2", "C3", "C4", "C5", "C6"],
-    "concepts": ["integration-only fixes", "per-leaf fix ownership (owns_fixes_for)", "deviation logging"]
+    "files": [
+      "tests/integration/test_contract_consistency.py (T05 output)",
+      "app/db/models.py",
+      "app/services/job_store.py",
+      "app/services/report_worker.py",
+      "app/api/routes/reports.py",
+      "app/services/recovery.py",
+      "app/main.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "C6"
+    ],
+    "concepts": [
+      "integration-only fixes",
+      "per-leaf fix ownership (owns_fixes_for)",
+      "deviation logging"
+    ]
   },
-  "inputs": ["T05 deviation report", "T01-T04 checkpoints (changed_paths + verified_facts)", "frozen contracts C1-C6 in stage-contract.json"],
-  "frozen_contracts": [
-    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
-    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
-    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
-    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
-    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
-    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  "inputs": [
+    "T05 deviation report",
+    "T01-T04 checkpoints (changed_paths + verified_facts)",
+    "frozen contracts C1-C6 in stage-contract.json"
   ],
-  "owned_paths": ["tests/integration/"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "schema",
+      "spec": "report_jobs table: id UUID pk; status enum('queued','running','retry_wait','done','failed'); attempts int 0..3; progress int 0..100; result_ref nullable text; error nullable text; created_at/updated_at timestamptz. SQLAlchemy model ReportJob in app/db/models.py; alembic migration creates the table.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:f0081a03b88d9a94e72e7d03cede48d69de5ff457fb04793423f2d5b3fa93128"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "api",
+      "spec": "POST /reports body {input: object} -> 202 {job_id: uuid} (422 on invalid body, error shape C6). GET /reports/{job_id} -> 200 {job_id, status, attempts, progress, result_ref, error, created_at} or 404 {error: {code: 'not_found', message}} for unknown/invalid uuid.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a02427261cebd01d47293e05ed641e220d2871db8a81cd8bbc194ca70be770ee"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "state",
+      "spec": "States queued, running, retry_wait, done, failed. Legal transitions: queued->running; running->retry_wait (attempt < 3, backoff 1s/4s/16s by attempt number); running->done; running->failed (attempt == 3); retry_wait->running; retry_wait->failed (attempt == 3). Crash recovery: any row with status running at startup transitions running->queued (recompute, idempotent per A-2); rows in retry_wait resume their schedule. attempts increments when leaving running toward retry_wait or failed; progress written by the worker between 0..100.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:cfcadd1ccc9592546b1c83c527504cc6f08f44c03675720acb4e3f6fce03cd75"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "service",
+      "spec": "ReportWorkerPool (app/services/report_worker.py): start(session_factory), stop(), submit(job_id: str) -> None (no-op if already queued in pool); run_job(job_id) executes one job to terminal state honoring C3. Pool size fixed at 3. Callable synchronously from tests.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:85efa8af0675f9a84624020ad667ae9f48a22b7fc13b4aaa0e32edef67329b18"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "service",
+      "spec": "JobStore (app/services/job_store.py), methods on a session: create_job(input_payload: dict) -> ReportJob (status queued); get(job_id) -> ReportJob|None; transition(job_id, from_status, to_status, **fields) -> ReportJob, raises IllegalTransition on illegal C3 transition; recover_stale(now) -> list[ReportJob] (running rows, per C3 recovery).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:e4a6908fc2ddfb5c3bd60f8546f167c60264219a60c5beb6a99831343e40dd64"
+    },
+    {
+      "contract_id": "C6",
+      "kind": "data",
+      "spec": "Error shape for all new-endpoint errors: {error: {code: str, message: str}}. Codes: 'not_found' (GET unknown id), 'invalid_body' (422). Job-level failure stored as report_jobs.error = {code: 'generation_failed', message: <str(exc)>} text field.",
+      "source_ref": "stage-contract.json#shared_contracts[C6]",
+      "source_hash": "sha256:57e01722770f6468b6b7908f2c4dfa64b27b0c28c2e7ace4acf9a4f39f85bd5e"
+    }
+  ],
+  "owned_paths": [
+    "tests/integration/"
+  ],
   "allowed_dependencies": [
-    { "task_id": "T05", "what": "deviation report (the fix list)" },
-    { "task_id": "T01", "what": "may patch app/db/models.py + app/services/job_store.py for seam defects only (owns_fixes_for)" },
-    { "task_id": "T02", "what": "may patch app/services/report_worker.py for seam defects only (owns_fixes_for)" },
-    { "task_id": "T03", "what": "may patch app/api/routes/reports.py for seam defects only (owns_fixes_for)" },
-    { "task_id": "T04", "what": "may patch app/main.py + app/services/recovery.py for seam defects only (owns_fixes_for)" }
+    {
+      "task_id": "T05",
+      "what": "deviation report (the fix list)"
+    },
+    {
+      "task_id": "T01",
+      "what": "may patch app/db/models.py + app/services/job_store.py for seam defects only (owns_fixes_for)"
+    },
+    {
+      "task_id": "T02",
+      "what": "may patch app/services/report_worker.py for seam defects only (owns_fixes_for)"
+    },
+    {
+      "task_id": "T03",
+      "what": "may patch app/api/routes/reports.py for seam defects only (owns_fixes_for)"
+    },
+    {
+      "task_id": "T04",
+      "what": "may patch app/main.py + app/services/recovery.py for seam defects only (owns_fixes_for)"
+    }
   ],
   "non_goals": [
     "No new features, no refactors beyond the deviation list, no style cleanup",
@@ -36,32 +112,77 @@
     "If the deviation list is large (> 10 entries), checkpoint_and_split per seam S1/S2/S3 before starting fixes (per risk warning)"
   ],
   "deliverables": [
-    { "what": "seam fixes across the four leaves (each mapped to a T05 entry)", "where": "leaf owned paths (see allowed_dependencies)" },
-    { "what": "updated integration consistency test state (green)", "where": "tests/integration/" }
+    {
+      "what": "seam fixes across the four leaves (each mapped to a T05 entry)",
+      "where": "leaf owned paths (see allowed_dependencies)"
+    },
+    {
+      "what": "updated integration consistency test state (green)",
+      "where": "tests/integration/"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T06-1", "case": "positive", "description": "after fixes, the full test suites of T01-T04 stay green: pytest tests/services tests/api tests/test_startup_recovery.py -q exits 0", "evidence": "pytest tests/services tests/api tests/test_startup_recovery.py -q exits 0" },
-    { "id": "AT-T06-2", "case": "positive", "description": "the T05 consistency report re-run writes 'no deviations' for every previously reported entry", "evidence": "pytest tests/integration/test_contract_consistency.py -q exits 0 and report lists each prior entry as resolved" },
-    { "id": "AT-T06-3", "case": "failure", "description": "a seam defect whose correct fix would require changing a frozen contract is NOT patched: it is emitted as a CONTRACT_CHANGE_REQUEST blocker", "evidence": "checkpoint T06 contains a blockers entry of kind CONTRACT_CHANGE_REQUEST when such a defect exists (test fixture scenario in the execution trace)" }
+    {
+      "id": "AT-T06-1",
+      "case": "positive",
+      "description": "after fixes, the full test suites of T01-T04 stay green: pytest tests/services tests/api tests/test_startup_recovery.py -q exits 0",
+      "evidence": "pytest tests/services tests/api tests/test_startup_recovery.py -q exits 0"
+    },
+    {
+      "id": "AT-T06-2",
+      "case": "positive",
+      "description": "the T05 consistency report re-run writes 'no deviations' for every previously reported entry",
+      "evidence": "pytest tests/integration/test_contract_consistency.py -q exits 0 and report lists each prior entry as resolved"
+    },
+    {
+      "id": "AT-T06-3",
+      "case": "failure",
+      "description": "a seam defect whose correct fix would require changing a frozen contract is NOT patched: it is emitted as a CONTRACT_CHANGE_REQUEST blocker",
+      "evidence": "checkpoint T06 contains a blockers entry of kind CONTRACT_CHANGE_REQUEST when such a defect exists (test fixture scenario in the execution trace)"
+    }
   ],
   "failure_cases": [
-    { "scenario": "a reported deviation is ambiguous (T05 marked it unresolved)", "expected_behavior": "the ambiguous entry is escalated in the checkpoint as a blocker of kind CONTRACT_CHANGE_REQUEST — a test fixture scenario asserts this (V1: stop + user decision); do not guess the intended spec" },
-    { "scenario": "a fix in one leaf breaks another leaf's suite", "expected_behavior": "record the interaction in deviations, fix at the seam (not by weakening the other leaf's test), re-run both suites" }
+    {
+      "scenario": "a reported deviation is ambiguous (T05 marked it unresolved)",
+      "expected_behavior": "the ambiguous entry is escalated in the checkpoint as a blocker of kind CONTRACT_CHANGE_REQUEST — a test fixture scenario asserts this (V1: stop + user decision); do not guess the intended spec"
+    },
+    {
+      "scenario": "a fix in one leaf breaks another leaf's suite",
+      "expected_behavior": "record the interaction in deviations, fix at the seam (not by weakening the other leaf's test), re-run both suites"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S1", "S2", "S3"],
-    "upstream_outputs": ["T05 deviation report", "T01-T04 checkpoints"],
-    "consumers": ["T07", "T08"]
+    "seams": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T05 deviation report",
+      "T01-T04 checkpoints"
+    ],
+    "consumers": [
+      "T07",
+      "T08"
+    ]
   },
   "handoff": {
     "checkpoint_required": true,
     "checkpoint_ref": "checkpoints/T06.json",
-    "downstream_consumers": ["T07", "T08"],
+    "downstream_consumers": [
+      "T07",
+      "T08"
+    ],
     "notes": "verified_facts must list every fix with (T05 entry id, file, change, leaf suite re-run result) — T07's gates assume a consistent system"
   },
   "risk": {
     "context_footprint": "L",
-    "touched_layers": ["service", "runtime", "api", "persistence"],
+    "touched_layers": [
+      "service",
+      "runtime",
+      "api",
+      "persistence"
+    ],
     "cross_contracts": 6,
     "statefulness": "medium",
     "integration_distance": "low",
@@ -70,7 +191,11 @@
     "p80": "90-135 min",
     "compaction_risk": "medium",
     "warnings": [
-      { "code": "SPLIT_RECHECK_REQUIRED", "detail": "fix scope is proportional to T05's diff, which is unknown before T05 runs", "rationale": "if the consistency diff is large, checkpoint_and_split per seam (S1/S2/S3) before starting fixes; owned fix rights are already per-leaf in owns_fixes_for" }
+      {
+        "code": "SPLIT_RECHECK_REQUIRED",
+        "detail": "fix scope is proportional to T05's diff, which is unknown before T05 runs",
+        "rationale": "if the consistency diff is large, checkpoint_and_split per seam (S1/S2/S3) before starting fixes; owned fix rights are already per-leaf in owns_fixes_for"
+      }
     ],
     "oversized_justification": null
   }

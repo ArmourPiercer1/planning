@@ -26,22 +26,24 @@ validator must stay explainable.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 
 SCHEMA_TO_FILE = {
-    "planning/stage-contract@1": "stage-contract.schema.json",
+    "planning/stage-contract@2": "stage-contract.schema.json",
     "planning/candidate-tasks@1": "candidate-tasks.schema.json",
-    "planning/dag@1": "dag.schema.json",
-    "planning/integration-plan@1": "integration-plan.schema.json",
-    "planning/task-package@1": "task-package.schema.json",
+    "planning/dag@2": "dag.schema.json",
+    "planning/integration-plan@2": "integration-plan.schema.json",
+    "planning/task-package@2": "task-package.schema.json",
     "planning/risk-estimates@1": "risk-estimates.schema.json",
-    "planning/audit@1": "audit.schema.json",
+    "planning/audit@2": "audit.schema.json",
     "planning/checkpoint@1": "checkpoint.schema.json",
     "planning/replan-request@1": "replan-request.schema.json",
     "planning/run-manifest@1": "run-manifest.schema.json",
+    "planning/repo-context-snapshot@1": "repo-context-snapshot.schema.json",
 }
 
 DEFAULT_SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas" / "planning"
@@ -92,6 +94,14 @@ OUTCOME_VERBS = re.compile(
 )
 
 BROAD_CONTEXT_FILE_THRESHOLD = 25  # more than this many required files = broad
+
+TASK_ID_RE = re.compile(r"^T[0-9]{2,}$")
+INTEGRATION_KINDS = ("contract_consistency", "seam_integration", "e2e_closure", "final_acceptance")
+
+
+def _norm_path(p) -> str:
+    """Normalize a plan path: drop the ' (new)' annotation and slashes."""
+    return str(p).replace("\\", "/").split(" (")[0].strip("/")
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +302,7 @@ class Plan:
         self.plan_dir = plan_dir
         self.schemas_dir = schemas_dir
         self.findings: list[dict] = []
+        self.snapshot = None
         self.contract = None
         self.candidates = None
         self.dag = None
@@ -309,6 +320,7 @@ class Plan:
     def load(self) -> bool:
         """Load all core artifacts; schema-invalid ones become BLOCKERs."""
         core = {
+            "snapshot": "repo-context-snapshot.json",
             "contract": "stage-contract.json",
             "candidates": "candidate-tasks.json",
             "dag": "dag.json",
@@ -359,6 +371,33 @@ class Plan:
             return []
         return [t["id"] for t in self.candidates["tasks"]]
 
+    def _new_wiring_present(self) -> bool:
+        """Deterministic proxy for 'this Stage adds production wiring':
+        a leaf task owns a NEW file (absent from the repo snapshot) in a
+        directory that already contains another leaf's code. Creating files
+        next to other tasks' code is wiring work — omitting
+        seam_integration in that situation is a planning defect."""
+        if self.snapshot is None or not self.candidates:
+            return False
+        snap_paths = {f["path"].replace("\\", "/").strip("/")
+                      for f in self.snapshot.get("files", [])}
+        existing_by_dir: dict[str, set[str]] = {}
+        for t in self.candidates["tasks"]:
+            for p in t["owned_paths"]:
+                np = _norm_path(p)
+                if np in snap_paths:
+                    d = np.rsplit("/", 1)[0] if "/" in np else ""
+                    existing_by_dir.setdefault(d, set()).add(t["id"])
+        for t in self.candidates["tasks"]:
+            for p in t["owned_paths"]:
+                np = _norm_path(p)
+                if np in snap_paths:
+                    continue
+                d = np.rsplit("/", 1)[0] if "/" in np else ""
+                if existing_by_dir.get(d, set()) - {t["id"]}:
+                    return True
+        return False
+
     def run(self) -> list[dict]:
         ids = self.task_ids()
         cand_ids = self.candidate_ids()
@@ -375,6 +414,9 @@ class Plan:
             if not (self.plan_dir / fname).exists():
                 self.add("MISSING_ARTIFACT", "BLOCKER", fname,
                          "core artifact missing; plan is incomplete (stage-contract exists)")
+        if not (self.plan_dir / "repo-context-snapshot.json").exists():
+            self.add("MISSING_ARTIFACT", "BLOCKER", "repo-context-snapshot.json",
+                     "stage-0 artifact missing — planner and auditor have no repo grounding")
         if not ids:
             return self.findings
         for tid in ids:
@@ -467,7 +509,8 @@ class Plan:
         if self.dag:
             for u in self.dag.get("unlock_contracts", []):
                 unlock[u["contract_id"]] = set(u["unlocks"])
-        owners = {c["id"]: c.get("owned_by", "") for c in self.contract.get("shared_contracts", [])}
+        owners = {b["contract_id"]: b["owner_task"]
+                  for b in (self.dag.get("contract_bindings", []) if self.dag else [])}
         for tid in cand_ids:
             t = cand[tid]
             for cid in t["required_context"]["contracts"]:
@@ -486,6 +529,133 @@ class Plan:
                         self.add("UNLOCK_NOT_DECLARED", "MINOR", "dag.json",
                                  f"task {tid} uses frozen contract {cid} in parallel with owner "
                                  f"{owner} but unlock_contracts does not list it", tid)
+
+        # --- stage-1/stage-3 separation: no task ids in the stage contract ----
+        # The stage contract may only name LOGICAL owners/participants; concrete
+        # task ids are produced by context-decomposition and bound in the DAG.
+        for c in self.contract.get("shared_contracts", []):
+            lo = str(c.get("logical_owner", ""))
+            if TASK_ID_RE.match(lo):
+                self.add("CONTRACT_OWNER_TASK_ID", "BLOCKER", "stage-contract.json",
+                         f"contract {c['id']} logical_owner is a task id ({lo!r}) — stage 1 must "
+                         f"name a logical responsibility; the DAG stage binds it to a concrete task")
+        for s in self.contract.get("integration_seams", []):
+            for p in s.get("participants", []):
+                if TASK_ID_RE.match(str(p)):
+                    self.add("SEAM_PARTICIPANT_TASK_ID", "BLOCKER", "stage-contract.json",
+                             f"seam {s['id']} participant {p!r} is a task id — seams name logical "
+                             f"participants (components/roles); the DAG stage binds them")
+
+        # --- bindings: every logical owner / seam participant maps to real tasks
+        if self.dag is not None:
+            cb = self.dag.get("contract_bindings", [])
+            sb = self.dag.get("seam_bindings", [])
+            cids_all = {c["id"] for c in self.contract.get("shared_contracts", [])}
+            sids_all = {s["id"] for s in self.contract.get("integration_seams", [])}
+            for c in self.contract.get("shared_contracts", []):
+                hits = [b for b in cb if b.get("contract_id") == c["id"]]
+                if not hits:
+                    self.add("UNBOUND_CONTRACT", "BLOCKER", "dag.json",
+                             f"contract {c['id']} (logical_owner {str(c.get('logical_owner'))!r}) "
+                             f"has no contract_bindings entry — every contract needs a concrete "
+                             f"owner task before the plan is complete")
+                elif len(hits) > 1:
+                    self.add("UNBOUND_CONTRACT", "MAJOR", "dag.json",
+                             f"contract {c['id']} has {len(hits)} contract_bindings entries "
+                             f"(exactly one required)")
+                elif hits[0].get("owner_task") not in idset:
+                    self.add("UNBOUND_CONTRACT", "BLOCKER", "dag.json",
+                             f"contract {c['id']} is bound to unknown task "
+                             f"{hits[0].get('owner_task')!r}")
+            for b in cb:
+                if b.get("contract_id") not in cids_all:
+                    self.add("UNBOUND_CONTRACT", "MAJOR", "dag.json",
+                             f"contract_bindings references unknown contract "
+                             f"{b.get('contract_id')!r}")
+            for s in self.contract.get("integration_seams", []):
+                hits = [b for b in sb if b.get("seam_id") == s["id"]]
+                if not hits:
+                    self.add("UNBOUND_SEAM", "BLOCKER", "dag.json",
+                             f"seam {s['id']} (participants {s.get('participants')}) has no "
+                             f"seam_bindings entry — every seam needs concrete participant tasks")
+                elif len(hits) > 1:
+                    self.add("UNBOUND_SEAM", "MAJOR", "dag.json",
+                             f"seam {s['id']} has {len(hits)} seam_bindings entries (exactly one required)")
+                else:
+                    pts = hits[0].get("participant_tasks", [])
+                    if len(set(pts)) < 2:
+                        self.add("UNBOUND_SEAM", "BLOCKER", "dag.json",
+                                 f"seam {s['id']} is bound to fewer than 2 distinct tasks: {pts}")
+                    for t in pts:
+                        if t not in idset:
+                            self.add("UNBOUND_SEAM", "BLOCKER", "dag.json",
+                                     f"seam {s['id']} participant binding references unknown task {t!r}")
+            for b in sb:
+                if b.get("seam_id") not in sids_all:
+                    self.add("UNBOUND_SEAM", "MAJOR", "dag.json",
+                             f"seam_bindings references unknown seam {b.get('seam_id')!r}")
+
+        # --- repo grounding: snapshot vs plan (hidden dependencies) -----------
+        if self.snapshot is not None:
+            snap_files = {f["path"].replace("\\", "/").strip("/"): f
+                          for f in self.snapshot.get("files", [])}
+            shared_files = set(self.snapshot.get("known_shared_files", []))
+            flagged: set[tuple[str, str]] = set()
+            for tid in cand_ids:
+                for f in cand[tid]["required_context"]["files"]:
+                    np = _norm_path(f)
+                    is_dir = str(f).rstrip().endswith("/") or "." not in np.rsplit("/", 1)[-1]
+                    if " (new" not in f and not is_dir and np not in snap_files:
+                        self.add("CONTEXT_FILE_NOT_IN_SNAPSHOT", "MAJOR",
+                                 "candidate-tasks.json",
+                                 f"task {tid} context file {f!r} is not in the repo snapshot and "
+                                 f"is not marked (new) — typo, wrong path, or an unscanned area", tid)
+            for tid in cand_ids:
+                declared = {_norm_path(f) for f in cand[tid]["required_context"]["files"]}
+                declared |= {_norm_path(p) for p in cand[tid]["owned_paths"]}
+                for f in cand[tid]["required_context"]["files"]:
+                    sf = snap_files.get(_norm_path(f))
+                    if not sf:
+                        continue
+                    for imp in sf.get("imports", []):
+                        key = (tid, imp)
+                        if imp in declared or key in flagged:
+                            continue
+                        flagged.add(key)
+                        sev = "BLOCKER" if imp in shared_files else "MAJOR"
+                        self.add("HIDDEN_DEPENDENCY", sev, "candidate-tasks.json",
+                                 f"task {tid} context file {f} imports {imp} (per repo snapshot) "
+                                 f"but the task neither declares nor owns it"
+                                 + (" — known shared core file" if sev == "BLOCKER" else ""), tid)
+
+        # --- frozen contract snapshots in packages (self-containedness) -------
+        contracts_by_id = {c["id"]: c for c in self.contract.get("shared_contracts", [])}
+        for tid, pkg in self.packages.items():
+            inlined = {fc.get("contract_id"): fc for fc in pkg.get("frozen_contracts", [])}
+            for cid in pkg.get("required_context", {}).get("contracts", []):
+                if cid not in inlined:
+                    self.add("CONTRACT_NOT_INLINED", "MAJOR", f"tasks/{tid}.json",
+                             f"task {tid} consumes contract {cid} but its package does not inline "
+                             f"the frozen spec — the executor would have to read stage-contract.json",
+                             tid)
+            for fc in pkg.get("frozen_contracts", []):
+                cid = fc.get("contract_id")
+                cur = contracts_by_id.get(cid)
+                if cur is None:
+                    self.add("CONTRACT_UNKNOWN", "MAJOR", f"tasks/{tid}.json",
+                             f"package {tid} inlines unknown contract {cid}", tid)
+                    continue
+                cur_spec = cur.get("spec", "")
+                if fc.get("spec") != cur_spec:
+                    self.add("STALE_CONTRACT_SNAPSHOT", "BLOCKER", f"tasks/{tid}.json",
+                             f"package {tid} inlined contract {cid} with a spec that differs from "
+                             f"the current stage-contract spec — re-package after contract changes",
+                             tid)
+                elif fc.get("source_hash") != "sha256:" + hashlib.sha256(
+                        cur_spec.encode("utf-8")).hexdigest():
+                    self.add("STALE_CONTRACT_SNAPSHOT", "BLOCKER", f"tasks/{tid}.json",
+                             f"package {tid} source_hash for contract {cid} does not match the "
+                             f"current stage-contract spec (contract changed after packaging)", tid)
 
         # --- acceptance text (vague phrases) --------------------------------
         def scan_text(text: str, where: str, tid: str | None, code_prefix=""):
@@ -541,12 +711,59 @@ class Plan:
                              f"task {tid} lists a bare top-level directory as context: {f!r}", tid)
                     break
 
-        # --- integration explicitness -----------------------------------------
+        # --- integration explicitness (present / merged / omitted / missing) ---
         if self.integration is not None:
-            kinds = {it["task_id"]: it["kind"] for it in self.integration["integration_tasks"]}
-            if not any(k in ("e2e_closure", "final_acceptance") for k in kinds.values()):
+            present: set[str] = set()
+            merged: set[str] = set()
+            for it in self.integration.get("integration_tasks", []):
+                k = it["kind"]
+                if k in INTEGRATION_KINDS:
+                    present.add(k)
+                for mk in it.get("merged_kinds", []):
+                    if mk in INTEGRATION_KINDS:
+                        merged.add(mk)
+                    if mk == k:
+                        self.add("INVALID_INTEGRATION_MERGE", "MAJOR", "integration-plan.json",
+                                 f"integration task {it['task_id']} merges its own kind {mk!r} "
+                                 f"(merge a DIFFERENT kind into this task, or make it primary)")
+            omitted = {o.get("kind") for o in self.integration.get("omitted_kinds", [])
+                       if o.get("kind") in INTEGRATION_KINDS}
+            for k in sorted(present & merged):
+                self.add("INVALID_INTEGRATION_MERGE", "MAJOR", "integration-plan.json",
+                         f"integration kind {k!r} is both a primary task kind and merged into "
+                         f"another task — pick exactly one satisfaction path")
+            for k in sorted(merged & omitted):
+                self.add("INVALID_INTEGRATION_MERGE", "MAJOR", "integration-plan.json",
+                         f"integration kind {k!r} is merged into a task AND listed in "
+                         f"omitted_kinds — pick exactly one satisfaction path")
+
+            new_wiring = self._new_wiring_present()
+            closure = {"e2e_closure", "final_acceptance"}
+            closure_satisfied = bool((present | merged | omitted) & closure)
+            if not closure_satisfied:
                 self.add("NO_INTEGRATION_GATE", "BLOCKER", "integration-plan.json",
-                         "no integration task of kind e2e_closure or final_acceptance exists")
+                         "no integration task of kind e2e_closure or final_acceptance exists "
+                         "(present, merged, or legitimately omitted)")
+            for kind in INTEGRATION_KINDS:
+                if kind in present or kind in merged or kind in omitted:
+                    continue
+                if kind in closure:
+                    continue  # the pair is gated above as one unit
+                if kind == "seam_integration":
+                    sev = "BLOCKER" if new_wiring else "MAJOR"
+                    detail = ("neither present, merged, nor omitted with justification"
+                              + (" and new wiring exists (a leaf adds files into an existing "
+                                 "seam directory)" if new_wiring else ""))
+                else:
+                    sev = "MAJOR"
+                    detail = "neither present, merged, nor omitted with justification"
+                self.add("INTEGRATION_KIND_MISSING", sev, "integration-plan.json",
+                         f"integration kind {kind!r} is {detail}")
+            if "seam_integration" in omitted and new_wiring:
+                self.add("HIDDEN_INTEGRATION_WORK", "BLOCKER", "integration-plan.json",
+                         "seam_integration is omitted with justification, but a leaf task creates "
+                         "new files in a directory that already contains another task's code — "
+                         "new wiring exists and the omission is not legitimate")
             contract_seams = {s["id"] for s in self.contract.get("integration_seams", [])}
             covered: set[str] = set()
             for s in self.integration.get("seams", []):
@@ -583,6 +800,19 @@ class Plan:
             if self.audit.get("verdict") == "PASS" and blockers:
                 self.add("AUDIT_VERDICT_MISMATCH", "BLOCKER", "audit.json",
                          f"audit verdict is PASS but {len(blockers)} BLOCKER finding(s) exist")
+
+        # --- audit grounding (the auditor must record its repo evidence) ---------
+        if self.audit is not None and self.snapshot is not None:
+            g = self.audit.get("grounding")
+            if not g:
+                self.add("AUDIT_NOT_GROUNDED", "MAJOR", "audit.json",
+                         "audit records no repo grounding — the auditor must verify plan claims "
+                         "against repo-context-snapshot.json and record the snapshot revision")
+            elif g.get("repo_revision") and g["repo_revision"] != self.snapshot.get("repo_revision"):
+                self.add("AUDIT_SNAPSHOT_MISMATCH", "MAJOR", "audit.json",
+                         f"audit grounded against snapshot {g.get('repo_revision')!r} but the "
+                         f"plan's snapshot is {self.snapshot.get('repo_revision')!r} — the repo "
+                         f"moved under the plan; re-snapshot and re-audit")
 
         # --- risk coverage ------------------------------------------------------
         if self.risk is not None:
@@ -642,8 +872,15 @@ def cmd_report(args) -> int:
     print(f"Stage: {plan.contract.get('stage_id')}")
     print(f"Objective: {plan.contract.get('objective')}")
     print(f"Tasks: {len(ids)} ({', '.join(ids)})")
+    if plan.snapshot:
+        print(f"Repo snapshot: {plan.snapshot.get('repo_revision')} "
+              f"({len(plan.snapshot.get('files', []))} files scanned, "
+              f"boundary={plan.snapshot.get('scan_boundary')})")
     print(f"Contracts: {len(plan.contract.get('shared_contracts', []))} "
           f"({sum(1 for c in plan.contract.get('shared_contracts', []) if c.get('frozen'))} frozen)")
+    if plan.dag:
+        print(f"  contract_bindings: {len(plan.dag.get('contract_bindings', []))}; "
+              f"seam_bindings: {len(plan.dag.get('seam_bindings', []))}")
     print(f"Acceptance criteria: {len(plan.contract.get('acceptance', []))}")
     if plan.dag:
         print(f"Edges: {len(plan.dag['edges'])}")

@@ -1,22 +1,69 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T04",
   "objective": "Wire ReportWorkerPool into the FastAPI lifespan in app/main.py and implement startup recovery (requeue stale running rows, resume retry_wait schedules) satisfying contracts C3/C4/C5, with lifecycle tests",
   "required_context": {
-    "files": ["app/main.py (existing)", "app/services/recovery.py (new)", "tests/test_startup_recovery.py (new)"],
-    "contracts": ["C3", "C4", "C5"],
-    "concepts": ["FastAPI lifespan startup/shutdown ordering", "idempotent requeue per A-2", "stale-row detection"]
+    "files": [
+      "app/main.py (existing)",
+      "app/api/routes/health.py (existing registration pattern, read-only)",
+      "app/api/routes/legacy.py (existing route, read-only)",
+      "app/api/deps.py (existing DI, read-only)",
+      "app/services/recovery.py (new)",
+      "tests/test_startup_recovery.py (new)"
+    ],
+    "contracts": [
+      "C3",
+      "C4",
+      "C5"
+    ],
+    "concepts": [
+      "FastAPI lifespan startup/shutdown ordering",
+      "idempotent requeue per A-2",
+      "stale-row detection"
+    ]
   },
-  "inputs": ["T01 JobStore implementation (real, data dependency)", "T02 ReportWorkerPool implementation (real, data dependency)", "frozen contracts C3/C4/C5 in stage-contract.json"],
-  "frozen_contracts": [
-    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
-    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
-    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" }
+  "inputs": [
+    "T01 JobStore implementation (real, data dependency)",
+    "T02 ReportWorkerPool implementation (real, data dependency)",
+    "frozen contracts C3/C4/C5 in stage-contract.json"
   ],
-  "owned_paths": ["app/main.py", "app/services/recovery.py", "tests/test_startup_recovery.py"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C3",
+      "kind": "state",
+      "spec": "States queued, running, retry_wait, done, failed. Legal transitions: queued->running; running->retry_wait (attempt < 3, backoff 1s/4s/16s by attempt number); running->done; running->failed (attempt == 3); retry_wait->running; retry_wait->failed (attempt == 3). Crash recovery: any row with status running at startup transitions running->queued (recompute, idempotent per A-2); rows in retry_wait resume their schedule. attempts increments when leaving running toward retry_wait or failed; progress written by the worker between 0..100.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:cfcadd1ccc9592546b1c83c527504cc6f08f44c03675720acb4e3f6fce03cd75"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "service",
+      "spec": "ReportWorkerPool (app/services/report_worker.py): start(session_factory), stop(), submit(job_id: str) -> None (no-op if already queued in pool); run_job(job_id) executes one job to terminal state honoring C3. Pool size fixed at 3. Callable synchronously from tests.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:85efa8af0675f9a84624020ad667ae9f48a22b7fc13b4aaa0e32edef67329b18"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "service",
+      "spec": "JobStore (app/services/job_store.py), methods on a session: create_job(input_payload: dict) -> ReportJob (status queued); get(job_id) -> ReportJob|None; transition(job_id, from_status, to_status, **fields) -> ReportJob, raises IllegalTransition on illegal C3 transition; recover_stale(now) -> list[ReportJob] (running rows, per C3 recovery).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:e4a6908fc2ddfb5c3bd60f8546f167c60264219a60c5beb6a99831343e40dd64"
+    }
+  ],
+  "owned_paths": [
+    "app/main.py",
+    "app/services/recovery.py",
+    "tests/test_startup_recovery.py"
+  ],
   "allowed_dependencies": [
-    { "task_id": "T01", "what": "JobStore implementation and report_jobs model (imported for recovery queries)" },
-    { "task_id": "T02", "what": "ReportWorkerPool class (imported into the lifespan)" }
+    {
+      "task_id": "T01",
+      "what": "JobStore implementation and report_jobs model (imported for recovery queries)"
+    },
+    {
+      "task_id": "T02",
+      "what": "ReportWorkerPool class (imported into the lifespan)"
+    }
   ],
   "non_goals": [
     "Do not touch app/api/** or app/db/models.py (T01 owns the model)",
@@ -30,34 +77,87 @@
     "Requeue uses JobStore.transition(running -> queued) so C3 legality still applies"
   ],
   "deliverables": [
-    { "what": "lifespan wiring (recovery then pool start; pool stop on shutdown)", "where": "app/main.py" },
-    { "what": "startup recovery module", "where": "app/services/recovery.py" },
-    { "what": "lifecycle test suite", "where": "tests/test_startup_recovery.py" }
+    {
+      "what": "lifespan wiring (recovery then pool start; pool stop on shutdown)",
+      "where": "app/main.py"
+    },
+    {
+      "what": "startup recovery module",
+      "where": "app/services/recovery.py"
+    },
+    {
+      "what": "lifecycle test suite",
+      "where": "tests/test_startup_recovery.py"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T04-1", "case": "positive", "description": "on app startup, rows with status 'running' are re-queued: after lifespan startup each such row has status 'queued' and its recompute is scheduled", "evidence": "pytest tests/test_startup_recovery.py::test_startup_requeues_running asserts row.status == 'queued' after startup" },
-    { "id": "AT-T04-2", "case": "positive", "description": "on app startup, rows with status 'retry_wait' resume: next run scheduled per C3 backoff, no immediate run if backoff not elapsed", "evidence": "pytest tests/test_startup_recovery.py::test_startup_resumes_retry_wait asserts the schedule and no premature run" },
-    { "id": "AT-T04-3", "case": "failure", "description": "startup with no stale rows: recovery is a no-op — the pool starts and the row count is unchanged", "evidence": "pytest tests/test_startup_recovery.py::test_startup_no_stale_noop asserts row count unchanged and pool started" },
-    { "id": "AT-T04-4", "case": "positive", "description": "shutdown: after lifespan exit, pool.stop() has run and no worker threads are active", "evidence": "pytest tests/test_startup_recovery.py::test_shutdown_stops_pool asserts active worker count == 0" }
+    {
+      "id": "AT-T04-1",
+      "case": "positive",
+      "description": "on app startup, rows with status 'running' are re-queued: after lifespan startup each such row has status 'queued' and its recompute is scheduled",
+      "evidence": "pytest tests/test_startup_recovery.py::test_startup_requeues_running asserts row.status == 'queued' after startup"
+    },
+    {
+      "id": "AT-T04-2",
+      "case": "positive",
+      "description": "on app startup, rows with status 'retry_wait' resume: next run scheduled per C3 backoff, no immediate run if backoff not elapsed",
+      "evidence": "pytest tests/test_startup_recovery.py::test_startup_resumes_retry_wait asserts the schedule and no premature run"
+    },
+    {
+      "id": "AT-T04-3",
+      "case": "failure",
+      "description": "startup with no stale rows: recovery is a no-op — the pool starts and the row count is unchanged",
+      "evidence": "pytest tests/test_startup_recovery.py::test_startup_no_stale_noop asserts row count unchanged and pool started"
+    },
+    {
+      "id": "AT-T04-4",
+      "case": "positive",
+      "description": "shutdown: after lifespan exit, pool.stop() has run and no worker threads are active",
+      "evidence": "pytest tests/test_startup_recovery.py::test_shutdown_stops_pool asserts active worker count == 0"
+    }
   ],
   "failure_cases": [
-    { "scenario": "a row transitions while recovery is scanning", "expected_behavior": "guarded by the transition check — a test asserts a second recovery pass finds no stale rows (idempotent)" },
-    { "scenario": "recovery runs after pool.start() by accident (ordering regression)", "expected_behavior": "a test asserting lifespan ordering fails — ordering is enforced, not assumed" }
+    {
+      "scenario": "a row transitions while recovery is scanning",
+      "expected_behavior": "guarded by the transition check — a test asserts a second recovery pass finds no stale rows (idempotent)"
+    },
+    {
+      "scenario": "recovery runs after pool.start() by accident (ordering regression)",
+      "expected_behavior": "a test asserting lifespan ordering fails — ordering is enforced, not assumed"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S3"],
-    "upstream_outputs": ["T01 JobStore + report_jobs model", "T02 ReportWorkerPool class"],
-    "consumers": ["T05", "T06", "T07", "T08"]
+    "seams": [
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T01 JobStore + report_jobs model",
+      "T02 ReportWorkerPool class"
+    ],
+    "consumers": [
+      "T05",
+      "T06",
+      "T07",
+      "T08"
+    ]
   },
   "handoff": {
     "checkpoint_required": true,
     "checkpoint_ref": "checkpoints/T04.json",
-    "downstream_consumers": ["T05", "T06", "T07", "T08"],
+    "downstream_consumers": [
+      "T05",
+      "T06",
+      "T07",
+      "T08"
+    ],
     "notes": "Record the exact lifespan ordering and the stale predicate in verified_facts — gate E2 depends on recovery-before-start semantics"
   },
   "risk": {
     "context_footprint": "M",
-    "touched_layers": ["lifecycle", "service"],
+    "touched_layers": [
+      "lifecycle",
+      "service"
+    ],
     "cross_contracts": 3,
     "statefulness": "medium",
     "integration_distance": "low",
@@ -66,7 +166,11 @@
     "p80": "75-110 min",
     "compaction_risk": "medium",
     "warnings": [
-      { "code": "SPLIT_RECHECK_REQUIRED", "detail": "p80 upper bound (110 min) exceeds the Stage budget leaf_p80_max (90 min)", "rationale": "recovery edge cases (stale detection, retry_wait reschedule, restart ordering) are the uncertainty source; checkpoint at the 'lifespan wiring done' subgoal regardless" }
+      {
+        "code": "SPLIT_RECHECK_REQUIRED",
+        "detail": "p80 upper bound (110 min) exceeds the Stage budget leaf_p80_max (90 min)",
+        "rationale": "recovery edge cases (stale detection, retry_wait reschedule, restart ordering) are the uncertainty source; checkpoint at the 'lifespan wiring done' subgoal regardless"
+      }
     ],
     "oversized_justification": null
   }

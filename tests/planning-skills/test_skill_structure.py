@@ -25,6 +25,7 @@ EXPECTED_SKILLS = {
     "plan-auditor",
     "checkpoint-handoff",
     "replan-controller",
+    "repo-context-snapshot",
 }
 
 # Keywords that must each appear in some H2 header (e.g. "## Failure & Escalation")

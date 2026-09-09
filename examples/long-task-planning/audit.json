@@ -1,10 +1,16 @@
 {
-  "schema": "planning/audit@1",
+  "schema": "planning/audit@2",
   "verdict": "PASS",
   "auditor": {
     "path": "fresh_subagent",
     "planner_conversation_isolated": true,
     "notes": "audit round 2 — after targeted revision (integration-planner re-run for E2/E3; stage-contract re-run for A6 wording + legacy non-goal)"
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "9f8e7d6c5b4a3210fedcba9876543210abcdef12",
+    "files_verified": ["app/main.py", "app/api/routes/health.py", "app/api/routes/legacy.py", "app/services/report_gen.py", "tests/conftest.py", "app/db/models.py"],
+    "notes": "context closures checked against the snapshot's one-hop imports (all leaves' declared imports are in their declared context or owned paths); app/main.py confirmed to be the single lifespan/startup hook, so the S3 lifecycle claim is grounded; legacy CSV TODO confirmed present in app/api/routes/legacy.py (the named non-goal is real, not imagined)"
   },
   "findings": [
     {
@@ -50,7 +56,8 @@
     "nondeterministic_acceptance",
     "lack_of_local_recoverability",
     "replan_only_by_append",
-    "communication_overhead"
+    "communication_overhead",
+    "repo_grounding_snapshot_check"
   ],
   "revision_round": 2
 }

@@ -1,17 +1,36 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T02",
   "objective": "Implement the in-memory Cache module (get/set with 60s TTL) matching contract C2 with unit tests covering the hit, miss, and expiry paths",
   "required_context": {
-    "files": ["app/cache.py (new)", "tests/test_cache.py (new)"],
-    "contracts": ["C2"],
-    "concepts": ["TTL expiry", "in-memory dict store"]
+    "files": [
+      "app/cache.py (new)",
+      "tests/test_cache.py (new)"
+    ],
+    "contracts": [
+      "C2"
+    ],
+    "concepts": [
+      "TTL expiry",
+      "in-memory dict store"
+    ]
   },
-  "inputs": ["frozen contract C2 in stage-contract.json"],
-  "frozen_contracts": [
-    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  "inputs": [
+    "frozen contract C2 in stage-contract.json"
   ],
-  "owned_paths": ["app/cache.py", "tests/test_cache.py"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "Cache: get(key) -> value|None; set(key, value, ttl_seconds) -> None; 60s default TTL; in-memory only",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:57fa1d9635a95c4fcc40aac37f4c04d90704817d47d6c7e09e606ca2d04bc0f1"
+    }
+  ],
+  "owned_paths": [
+    "app/cache.py",
+    "tests/test_cache.py"
+  ],
   "allowed_dependencies": [],
   "non_goals": [
     "Do not touch app/api/** (T01 owns the endpoint)"
@@ -21,30 +40,57 @@
     "get(key) returns None on both miss and expiry — callers cannot distinguish, per C2"
   ],
   "deliverables": [
-    { "what": "in-memory cache module", "where": "app/cache.py" },
-    { "what": "unit tests for hit, miss, and expiry", "where": "tests/test_cache.py" }
+    {
+      "what": "in-memory cache module",
+      "where": "app/cache.py"
+    },
+    {
+      "what": "unit tests for hit, miss, and expiry",
+      "where": "tests/test_cache.py"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T02-1", "case": "positive", "description": "set then get returns the stored value (cache hit)", "evidence": "pytest tests/test_cache.py::test_hit asserts the value is returned" },
-    { "id": "AT-T02-2", "case": "negative", "description": "get for an unset key returns None (cache miss)", "evidence": "pytest tests/test_cache.py::test_miss asserts get('unset') is None" }
+    {
+      "id": "AT-T02-1",
+      "case": "positive",
+      "description": "set then get returns the stored value (cache hit)",
+      "evidence": "pytest tests/test_cache.py::test_hit asserts the value is returned"
+    },
+    {
+      "id": "AT-T02-2",
+      "case": "negative",
+      "description": "get for an unset key returns None (cache miss)",
+      "evidence": "pytest tests/test_cache.py::test_miss asserts get('unset') is None"
+    }
   ],
   "failure_cases": [
-    { "scenario": "set called with ttl_seconds below 0", "expected_behavior": "a test asserts ValueError is raised — inputs are validated, not clamped silently" }
+    {
+      "scenario": "set called with ttl_seconds below 0",
+      "expected_behavior": "a test asserts ValueError is raised — inputs are validated, not clamped silently"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S1"],
+    "seams": [
+      "S1"
+    ],
     "upstream_outputs": [],
-    "consumers": ["T04"]
+    "consumers": [
+      "T04"
+    ]
   },
   "handoff": {
     "checkpoint_required": true,
     "checkpoint_ref": "checkpoints/T02.json",
-    "downstream_consumers": ["T04"],
+    "downstream_consumers": [
+      "T04"
+    ],
     "notes": "record the get/set signatures in verified_facts"
   },
   "risk": {
     "context_footprint": "S",
-    "touched_layers": ["service"],
+    "touched_layers": [
+      "service"
+    ],
     "cross_contracts": 1,
     "statefulness": "low",
     "integration_distance": "low",

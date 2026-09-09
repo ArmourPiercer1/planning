@@ -21,9 +21,13 @@ is the failure this stage exists to catch. Vocabulary:
 
 - Run as a **fresh subagent** (preferred) or fresh session that has **never
   seen the planning conversation**.
-- Inputs allowed: the plan directory (artifacts only), this skill, the
-  glossary. Inputs forbidden: the planning chat log, the planner's reasoning,
-  "the plan is basically fine, just check X".
+- Inputs allowed: the plan directory (artifacts only — including
+  `repo-context-snapshot.json`), this skill, the glossary, and **read-only
+  spot checks of files listed in the snapshot** (the grounding surface).
+  Inputs forbidden: the planning chat log, the planner's reasoning, "the plan
+  is basically fine, just check X", and free whole-repo scans (the snapshot is
+  the bounded picture of the repo; re-scanning everything defeats the stage-0
+  budget).
 - Record in `audit.json auditor` which path was used and that
   `planner_conversation_isolated: true` — set it false only if the orchestrator
   explicitly downgraded isolation, and note the reason.
@@ -32,6 +36,10 @@ is the failure this stage exists to catch. Vocabulary:
 
 - The plan directory (all artifacts, `tasks/`, `checkpoints/` if any) — the
   complete input set, nothing else.
+- `<plan-dir>/repo-context-snapshot.json` — the stage-0 repo picture (files,
+  layers, one-hop imports, shared files, TODOs). This is the auditor's grounding
+  surface: plan claims about the repo are checked against it, and spot checks
+  may open only the files it lists.
 - `plan-check.py` (the deterministic layer) and `../../references/glossary.md`
   (shared vocabulary for the findings).
 - The audit round number (1, or N after targeted revisions).
@@ -43,7 +51,24 @@ is the failure this stage exists to catch. Vocabulary:
    `audit.json deterministic`. Every deterministic finding carries over as a
    finding with `check: deterministic_lint` (or its specific semantic check)
    and the same severity.
-2. **Semantic layer** — for each check below, look for evidence in the
+2. **Grounding pass (new in @2).** Load `repo-context-snapshot.json`.
+   - Verify the plan's repo-facing claims against it: every context file
+     that should exist, the import edges behind `hidden_dependency` and
+     `late_contract_freeze` findings, the new-wiring facts behind any
+     `omitted_kinds` entry, and the named non-goals (the in-repo TODO
+     they cite is listed in `known_todos` — if it is not, the
+     non-goal may be imagined).
+   - Where a claim is checkable against a concrete file, do a read-only
+     spot check of that snapshot-listed file. Never walk the whole repo.
+   - If a spot check shows the repo moved under the plan (file content
+     or structure no longer matches the snapshot), record a finding
+     (`repo moved under the plan; re-run stage 0 and re-audit`) — the
+     deterministic layer already emits `AUDIT_SNAPSHOT_MISMATCH` when the
+     recorded revisions disagree.
+   - Record `audit.json grounding`: `snapshot_ref`, `repo_revision`,
+     `files_verified` (the snapshot-listed files you actually opened),
+     `notes`. A missing grounding block is `AUDIT_NOT_GROUNDED` (MAJOR).
+3. **Semantic layer** — for each check below, look for evidence in the
    artifacts and record a finding when present (each finding needs a quoted
    `evidence` location + the suggested fix):
    - `scope_creep` — in-scope items that are really B-class backlog or
@@ -53,7 +78,9 @@ is the failure this stage exists to catch. Vocabulary:
    - `late_contract_freeze` — a contract consumed in parallel with its owner
      that is not frozen; parallelism assumed before the seam spec exists;
    - `hidden_dependency` — a package reads a file/output not declared in its
-     required_context or allowed_dependencies;
+     required_context or allowed_dependencies (lint flags the snapshot-backed
+     one-hop import cases; the auditor judges the rest — outputs, fixtures,
+     data files);
    - `fake_serialization` — an edge whose reason does not survive the
      4-type test; a `fake_serialization_removed` list that is empty when the
      doc ordering clearly suggested edges;
@@ -66,6 +93,9 @@ is the failure this stage exists to catch. Vocabulary:
      implies (lint flags size; the auditor judges necessity);
    - `hidden_integration_work` — a seam with no gate; an E2E scenario list
      with no failure scenarios; "integration happens in T03" style leaks;
+     an `omitted_kinds` entry for `seam_integration` that the snapshot
+     contradicts (a leaf creates new files in a directory that already
+     contains another leaf's code — the new-wiring rule);
    - `nondeterministic_acceptance` — a criterion a third party could not
      judge PASS/FAIL from the text (lint flags phrase hits; the auditor
      confirms and catches phrase-free vagueness like "fast enough");
@@ -78,13 +108,13 @@ is the failure this stage exists to catch. Vocabulary:
    - `communication_overhead` — packages requiring the whole plan to be read;
      unnecessary reviewer/agent hops; checkpoint requirements that duplicate
      information.
-3. **Severity.** BLOCKER = cannot execute safely (structure/scope/acceptance
+4. **Severity.** BLOCKER = cannot execute safely (structure/scope/acceptance
    broken); MAJOR = should fix before execution; MINOR = cheap fix, note it.
    Assign by the effect on execution, not by annoyance.
-4. **Verdict.** `PASS` iff zero BLOCKER findings (MAJOR/MINOR are listed and
+5. **Verdict.** `PASS` iff zero BLOCKER findings (MAJOR/MINOR are listed and
    carried into the handoff as warnings). Otherwise `FAIL`.
-5. Write `audit.json` (schema `planning/audit@1`); gate with
-   `plan-check.py validate`.
+6. Write `audit.json` (schema `planning/audit@2`, including the
+   `grounding` block); gate with `plan-check.py validate`.
 
 ## Heuristics
 
@@ -108,9 +138,11 @@ is the failure this stage exists to catch. Vocabulary:
   (see `long-task-planning`); after 3 rounds, escalate to the user.
 - Deterministic and semantic layers disagree (lint clean, semantic BLOCKER) →
   trust the semantic layer, record both in the finding.
-- Auditor cannot verify a claim without reading beyond the plan directory
-  (e.g. "does this file exist?") → note it as an assumption in
-  `checks_performed`/notes, do not silently verify from memory.
+- Auditor cannot verify a claim without the snapshot or a snapshot-listed
+  file (e.g. a file outside `scan_boundary`) → note it as an assumption
+  in `checks_performed`/notes, do not silently verify from memory, and do
+  not walk the repo: the snapshot's `unknown_areas` is where such claims
+  live, and a plan that depends on them has a grounding defect.
 
 ## Examples
 

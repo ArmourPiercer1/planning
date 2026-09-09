@@ -1,5 +1,5 @@
 {
-  "schema": "planning/dag@1",
+  "schema": "planning/dag@2",
   "edges": [
     { "from": "T01", "to": "T04", "type": "data", "reason": "recovery logic queries real report_jobs rows; needs T01's store implementation and migration, not just the C5 interface" },
     { "from": "T02", "to": "T04", "type": "data", "reason": "lifespan wiring imports the real ReportWorkerPool; T04's tests import app.main which imports T02's module" },
@@ -31,7 +31,21 @@
     { "gate_id": "G4", "task_id": "T08", "seams": ["S1", "S2", "S3"], "acceptance_ref": "A2" }
   ],
   "unlock_contracts": [
-    { "contract_id": "C5", "unlocks": ["T02", "T03"] }
+    { "contract_id": "C5", "unlocks": ["T02", "T03"] },
+    { "contract_id": "C3", "unlocks": ["T01"] }
+  ],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T01", "consumer_tasks": ["T07"], "rationale": "logical owner 'persistence' binds to the leaf that implements report_jobs + model (T01)" },
+    { "contract_id": "C2", "owner_task": "T03", "consumer_tasks": ["T07", "T08"], "rationale": "logical owner 'api' binds to the leaf that implements both /reports endpoints (T03)" },
+    { "contract_id": "C3", "owner_task": "T02", "consumer_tasks": ["T01", "T04"], "rationale": "logical owner 'runtime' binds to the worker leaf that drives every C3 transition; T01's transition() enforces legality and T04's recovery consumes the recovery rules (T01 also runs in parallel via the frozen C3 — no ordering edge needed)" },
+    { "contract_id": "C4", "owner_task": "T02", "consumer_tasks": ["T04", "T07"], "rationale": "logical owner 'runtime' binds to the leaf that implements ReportWorkerPool (T02)" },
+    { "contract_id": "C5", "owner_task": "T01", "consumer_tasks": ["T02", "T03", "T04", "T07"], "rationale": "logical owner 'persistence' binds to the leaf that implements JobStore (T01); T02/T03 run in parallel against the frozen C5 fake (see unlock_contracts)" },
+    { "contract_id": "C6", "owner_task": "T03", "consumer_tasks": ["T02", "T07", "T08"], "rationale": "planner-derived error-shape contract is finalized at the API surface (T03); the worker stores job-level failures in the same shape" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T03", "T02", "T01"], "rationale": "S1's logical participants api/runtime/persistence bind to the route, worker, and store leaves" },
+    { "seam_id": "S2", "participant_tasks": ["T02", "T01"], "rationale": "S2's logical participants runtime/persistence bind to the worker and store leaves" },
+    { "seam_id": "S3", "participant_tasks": ["T04", "T02", "T01"], "rationale": "S3's logical participants lifecycle/runtime/persistence bind to the lifespan, worker, and store leaves" }
   ],
   "notes": {
     "fake_serialization_removed": [

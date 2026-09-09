@@ -19,8 +19,9 @@ avoid contamination.
 3. All variants run on the **same host model** (the host does not expose
    per-subagent model config in V1 — recorded in `spec.json.model`).
 4. The **audit** subagent is a fresh subagent that receives only the plan
-   directory + `plan-auditor` skill + glossary. It never sees the planner's
-   prompt, the repo, or the case.
+   directory (incl. `repo-context-snapshot.json`), the `plan-auditor` skill,
+   the glossary, and may do read-only spot checks of snapshot-listed files.
+   It never sees the planner's prompt, the task, or the case definition.
 5. The **executor** subagent (execution smoke only) receives only its prompt,
    the work repo (with baseline commit), and the plan artifacts it needs one
    package at a time.

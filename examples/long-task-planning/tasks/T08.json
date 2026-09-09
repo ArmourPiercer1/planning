@@ -1,26 +1,92 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T08",
   "objective": "Execute final acceptance: re-run the evidence commands for contract acceptance A1-A6 on the closed system and write the acceptance results table that closes the Stage",
   "required_context": {
-    "files": ["tests/api/test_reports.py (evidence re-run)", "tests/e2e/test_reports_flow.py (evidence re-run)", "tests/e2e/test_retry.py (evidence re-run)", "tests/services/test_job_store.py (evidence re-run)"],
-    "contracts": ["C1", "C2", "C3", "C4", "C5", "C6"],
-    "concepts": ["acceptance evidence collection", "no-waiver rule (a failing item stops the Stage)"]
+    "files": [
+      "tests/api/test_reports.py (evidence re-run)",
+      "tests/e2e/test_reports_flow.py (evidence re-run)",
+      "tests/e2e/test_retry.py (evidence re-run)",
+      "tests/services/test_job_store.py (evidence re-run)"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "C6"
+    ],
+    "concepts": [
+      "acceptance evidence collection",
+      "no-waiver rule (a failing item stops the Stage)"
+    ]
   },
-  "inputs": ["T07 gate evidence", "acceptance criteria A1-A6 in stage-contract.json", "T01-T07 checkpoints"],
-  "frozen_contracts": [
-    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
-    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
-    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
-    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
-    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
-    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  "inputs": [
+    "T07 gate evidence",
+    "acceptance criteria A1-A6 in stage-contract.json",
+    "T01-T07 checkpoints"
   ],
-  "owned_paths": ["tests/acceptance/"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "schema",
+      "spec": "report_jobs table: id UUID pk; status enum('queued','running','retry_wait','done','failed'); attempts int 0..3; progress int 0..100; result_ref nullable text; error nullable text; created_at/updated_at timestamptz. SQLAlchemy model ReportJob in app/db/models.py; alembic migration creates the table.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:f0081a03b88d9a94e72e7d03cede48d69de5ff457fb04793423f2d5b3fa93128"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "api",
+      "spec": "POST /reports body {input: object} -> 202 {job_id: uuid} (422 on invalid body, error shape C6). GET /reports/{job_id} -> 200 {job_id, status, attempts, progress, result_ref, error, created_at} or 404 {error: {code: 'not_found', message}} for unknown/invalid uuid.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a02427261cebd01d47293e05ed641e220d2871db8a81cd8bbc194ca70be770ee"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "state",
+      "spec": "States queued, running, retry_wait, done, failed. Legal transitions: queued->running; running->retry_wait (attempt < 3, backoff 1s/4s/16s by attempt number); running->done; running->failed (attempt == 3); retry_wait->running; retry_wait->failed (attempt == 3). Crash recovery: any row with status running at startup transitions running->queued (recompute, idempotent per A-2); rows in retry_wait resume their schedule. attempts increments when leaving running toward retry_wait or failed; progress written by the worker between 0..100.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:cfcadd1ccc9592546b1c83c527504cc6f08f44c03675720acb4e3f6fce03cd75"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "service",
+      "spec": "ReportWorkerPool (app/services/report_worker.py): start(session_factory), stop(), submit(job_id: str) -> None (no-op if already queued in pool); run_job(job_id) executes one job to terminal state honoring C3. Pool size fixed at 3. Callable synchronously from tests.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:85efa8af0675f9a84624020ad667ae9f48a22b7fc13b4aaa0e32edef67329b18"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "service",
+      "spec": "JobStore (app/services/job_store.py), methods on a session: create_job(input_payload: dict) -> ReportJob (status queued); get(job_id) -> ReportJob|None; transition(job_id, from_status, to_status, **fields) -> ReportJob, raises IllegalTransition on illegal C3 transition; recover_stale(now) -> list[ReportJob] (running rows, per C3 recovery).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:e4a6908fc2ddfb5c3bd60f8546f167c60264219a60c5beb6a99831343e40dd64"
+    },
+    {
+      "contract_id": "C6",
+      "kind": "data",
+      "spec": "Error shape for all new-endpoint errors: {error: {code: str, message: str}}. Codes: 'not_found' (GET unknown id), 'invalid_body' (422). Job-level failure stored as report_jobs.error = {code: 'generation_failed', message: <str(exc)>} text field.",
+      "source_ref": "stage-contract.json#shared_contracts[C6]",
+      "source_hash": "sha256:57e01722770f6468b6b7908f2c4dfa64b27b0c28c2e7ace4acf9a4f39f85bd5e"
+    }
+  ],
+  "owned_paths": [
+    "tests/acceptance/"
+  ],
   "allowed_dependencies": [
-    { "task_id": "T07", "what": "E2E gate evidence (A2/A3/A4/A5/A6 already produced)" },
-    { "task_id": "T01", "what": "unit evidence for A1 row assertions" },
-    { "task_id": "T03", "what": "API evidence for A1/A5/A6" }
+    {
+      "task_id": "T07",
+      "what": "E2E gate evidence (A2/A3/A4/A5/A6 already produced)"
+    },
+    {
+      "task_id": "T01",
+      "what": "unit evidence for A1 row assertions"
+    },
+    {
+      "task_id": "T03",
+      "what": "API evidence for A1/A5/A6"
+    }
   ],
   "non_goals": [
     "No code changes of any kind — this task only runs evidence and records results",
@@ -31,18 +97,41 @@
     "Write the results table {A1..A6: pass/fail + command + output excerpt} into the checkpoint"
   ],
   "deliverables": [
-    { "what": "acceptance results table A1-A6", "where": "tests/acceptance/results.json + checkpoint T08 verified_facts" }
+    {
+      "what": "acceptance results table A1-A6",
+      "where": "tests/acceptance/results.json + checkpoint T08 verified_facts"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T08-1", "case": "positive", "description": "all six evidence commands re-run: results.json records A1-A6 each as pass with the command and an output excerpt", "evidence": "tests/acceptance/results.json contains 6 entries, all pass, each with command + excerpt" },
-    { "id": "AT-T08-2", "case": "failure", "description": "if any A-item fails, the results table marks it failed with the failing command and the checkpoint stops (no waiver, no re-run beyond the 3-strike gate_failure rule)", "evidence": "results.json entry for the failing item is pass=false; checkpoint T08 status is blocked" }
+    {
+      "id": "AT-T08-1",
+      "case": "positive",
+      "description": "all six evidence commands re-run: results.json records A1-A6 each as pass with the command and an output excerpt",
+      "evidence": "tests/acceptance/results.json contains 6 entries, all pass, each with command + excerpt"
+    },
+    {
+      "id": "AT-T08-2",
+      "case": "failure",
+      "description": "if any A-item fails, the results table marks it failed with the failing command and the checkpoint stops (no waiver, no re-run beyond the 3-strike gate_failure rule)",
+      "evidence": "results.json entry for the failing item is pass=false; checkpoint T08 status is blocked"
+    }
   ],
   "failure_cases": [
-    { "scenario": "an evidence command errors for environmental reasons (fixture missing, DB unavailable)", "expected_behavior": "the results table records it as an environment failure (not an acceptance failure) with the exact error output; V1: stop and report to the user rather than waiving" }
+    {
+      "scenario": "an evidence command errors for environmental reasons (fixture missing, DB unavailable)",
+      "expected_behavior": "the results table records it as an environment failure (not an acceptance failure) with the exact error output; V1: stop and report to the user rather than waiving"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S1", "S2", "S3"],
-    "upstream_outputs": ["T07 gate evidence", "T01-T07 checkpoints"],
+    "seams": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T07 gate evidence",
+      "T01-T07 checkpoints"
+    ],
     "consumers": []
   },
   "handoff": {
@@ -53,7 +142,9 @@
   },
   "risk": {
     "context_footprint": "L",
-    "touched_layers": ["e2e"],
+    "touched_layers": [
+      "e2e"
+    ],
     "cross_contracts": 6,
     "statefulness": "low",
     "integration_distance": "low",
@@ -62,7 +153,11 @@
     "p80": "40-60 min",
     "compaction_risk": "low",
     "warnings": [
-      { "code": "CONTRACT_DENSITY", "detail": "re-runs acceptance evidence A1-A6 covering C1-C6", "rationale": "final acceptance is read-only evidence collection; no implementation context is loaded" }
+      {
+        "code": "CONTRACT_DENSITY",
+        "detail": "re-runs acceptance evidence A1-A6 covering C1-C6",
+        "rationale": "final acceptance is read-only evidence collection; no implementation context is loaded"
+      }
     ],
     "oversized_justification": null
   }

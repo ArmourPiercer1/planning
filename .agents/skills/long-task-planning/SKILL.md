@@ -1,6 +1,6 @@
 ---
 name: long-task-planning
-description: Master pipeline that compiles a bounded, large software engineering task into a verified execution DAG, running the fixed stages Stage Contract, context-bounded leaves, typed dependency DAG, integration plan, Task Packages, risk estimates, independent audit. Use when the user wants to plan a large multi-agent or multi-round engineering task, asks for an "execution DAG" or "task packages" or "stage plan", or when work is clearly too big for one agent run. NOT for small single-session tasks (under ~1h of work or fewer than 4 leaves), just do those directly.
+description: Master pipeline that compiles a bounded, large software engineering task into a verified execution DAG, running the fixed stages Repo Context Snapshot, Stage Contract, context-bounded leaves, typed dependency DAG, integration plan, Task Packages, risk estimates, independent audit. Stage 0 grounds every subsequent claim in a bounded repo scan. Use when the user wants to plan a large multi-agent or multi-round engineering task, asks for an "execution DAG" or "task packages" or "stage plan", or when work is clearly too big for one agent run. NOT for small single-session tasks (under ~1h of work or fewer than 4 leaves), just do those directly.
 ---
 
 # long-task-planning
@@ -22,8 +22,10 @@ auditor. Shared vocabulary: `../../references/glossary.md`. Schemas:
 ## Inputs
 
 1. The user task, written **verbatim** to `<plan-dir>/input.md`.
-2. Repo notes: relevant directories, layer map, known traps (a bounded scan is
-   enough; do not read the whole repo).
+2. Repo scan: run stage 0 first (`repo-context-snapshot` skill) to produce
+   `repo-context-snapshot.json` — the bounded file/layer map, one-hop imports,
+   shared files, known TODOs. Every later stage reads the snapshot instead of
+   re-scanning; the auditor grounds plan claims against it.
 3. User constraints (time budget, forbidden changes, dependencies to keep).
 
 `<plan-dir>` convention: `.plans/<stage-id>/` in the target repo (or a path the
@@ -33,6 +35,7 @@ user names). Create it before stage 1.
 
 | # | Stage skill | Writes | Gate |
 |---|---|---|---|
+| 0 | `repo-context-snapshot` | `repo-context-snapshot.json` | plan-check.py validate |
 | 1 | `stage-contract` | `stage-contract.json` | `plan-check.py validate` |
 | 2 | `context-decomposer` | `candidate-tasks.json` | `plan-check.py validate` |
 | 3 | `dependency-dag` | `dag.json` | `plan-check.py validate` |
@@ -41,7 +44,7 @@ user names). Create it before stage 1.
 | 6 | `plan-risk-estimator` | `risk-estimates.json`, fills `risk` blocks in packages | `plan-check.py validate` |
 | 7 | `plan-auditor` | `audit.json` | verdict PASS |
 
-1. Run stages 1–7 **in order**; each stage reads only the artifacts of earlier
+1. Run stages 0–7 **in order**; each stage reads only the artifacts of earlier
    stages plus the repo (never this conversation's reasoning).
 2. After every gate, append to `run-manifest.json` (`pipeline` + `gates`):
    stage name, artifact, gate command, exit code, any fallbacks. A non-zero gate
@@ -57,7 +60,12 @@ user names). Create it before stage 1.
    | hidden_integration_work, NO_INTEGRATION_GATE, SEAM_UNOWNED, INTEGRATION_TASK_NOT_IN_DAG | `integration-planner` |
    | nondeterministic_acceptance (package level), BARE_OBJECTIVE, MISSING_TASK_PACKAGE | `task-packager` |
    | RISK_ESTIMATE_MISSING, oversized without justification | `plan-risk-estimator` |
-   | schema_invalid | the stage that wrote that artifact |
+   | INTEGRATION_KIND_MISSING, HIDDEN_INTEGRATION_WORK, INVALID_INTEGRATION_MERGE | `integration-planner` |
+    | CONTRACT_OWNER_TASK_ID, SEAM_PARTICIPANT_TASK_ID, UNBOUND_CONTRACT, UNBOUND_SEAM | `dependency-dag` (binding step) |
+    | CONTEXT_FILE_NOT_IN_SNAPSHOT, HIDDEN_DEPENDENCY | `context-decomposer` (closure from snapshot) |
+    | STALE_CONTRACT_SNAPSHOT, CONTRACT_NOT_INLINED | `task-packager` (re-run or inline-frozen-contracts.py) |
+    | AUDIT_NOT_GROUNDED, AUDIT_SNAPSHOT_MISMATCH | `plan-auditor` (grounding pass) |
+    | schema_invalid | the stage that wrote that artifact |
 
    After 3 FAIL rounds: **stop and escalate to the user** with the full finding
    list. Never ship a FAIL plan.
@@ -68,7 +76,7 @@ user names). Create it before stage 1.
 
 `HANDOFF.md` contains: plan dir path; execution order (parallel groups from
 `dag.json`, integration gates last); for each leaf: "run `tasks/<id>.json` with a
-fresh agent; it reads only the package + its `required_context`"; pointer to the
+fresh agent; it reads only the package + its `required_context.files` (frozen contracts are inlined — the executor never opens `stage-contract.json`"; pointer to the
 execution protocol (this skill's `references/execution-protocol.md`); escalation
 paths (blockers → `CONTRACT_CHANGE_REQUEST` / `CORE_SEAM_BLOCKER` via
 `checkpoint-handoff`; unhealthy run → stop-report, no silent continuation).

@@ -1,5 +1,5 @@
 {
-  "schema": "planning/stage-contract@1",
+  "schema": "planning/stage-contract@2",
   "stage_id": "bad-plan",
   "objective": "Add a cached read-through endpoint for user profiles with a deterministic fallback path for store outages",
   "in_scope": [
@@ -16,11 +16,11 @@
     { "id": "DA-1", "decision": "in-memory dict cache with 60s TTL", "rationale": "no new dependencies allowed", "seams_affected": ["S1"] }
   ],
   "shared_contracts": [
-    { "id": "C1", "kind": "api", "spec": "GET /profiles/{id} returns 200 {id, name} for a known id or 404 {error: {code: 'not_found'}} for an unknown id", "owned_by": "T01", "frozen": true },
-    { "id": "C2", "kind": "service", "spec": "Cache: get(key) -> value|None; set(key, value, ttl_seconds) -> None; 60s default TTL; in-memory only", "owned_by": "T02", "frozen": true }
+    { "id": "C1", "kind": "api", "spec": "GET /profiles/{id} returns 200 {id, name} for a known id or 404 {error: {code: 'not_found'}} for an unknown id", "logical_owner": "api", "frozen": true },
+    { "id": "C2", "kind": "service", "spec": "Cache: get(key) -> value|None; set(key, value, ttl_seconds) -> None; 60s default TTL; in-memory only", "logical_owner": "service", "frozen": true }
   ],
   "integration_seams": [
-    { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "participants": ["T01", "T02"], "contract_ids": ["C1", "C2"] }
+    { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "participants": ["api", "service"], "contract_ids": ["C1", "C2"] }
   ],
   "acceptance": [
     { "id": "A1", "description": "the profile endpoint works correctly under all conditions", "positive_case": "requests succeed", "negative_case": "requests fail", "failure_behavior": "the system handles errors", "evidence": "test the endpoint" }

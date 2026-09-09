@@ -1,12 +1,24 @@
 {
-  "schema": "planning/integration-plan@1",
+  "schema": "planning/integration-plan@2",
   "seams": [
     { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "contract_ids": ["C1", "C2"], "covered_by": ["T03"] }
   ],
   "integration_tasks": [
-    { "task_id": "T03", "kind": "e2e_closure", "seams": ["S1"], "owns_fixes_for": ["T01", "T02"], "acceptance_ref": "A1" }
+    { "task_id": "T03", "kind": "e2e_closure", "merged_kinds": ["final_acceptance"], "seams": ["S1"], "owns_fixes_for": ["T01", "T02"], "acceptance_ref": "A1" }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "contract_consistency",
+      "reason": "This 2-leaf Stage freezes only two small contracts (C1 endpoint shape, C2 cache interface) and gate E1 exercises both end to end against the real modules; a separate read-only consistency sweep would add a serial hop without new coverage",
+      "evidence": ["E1", "C1", "C2"]
+    },
+    {
+      "kind": "seam_integration",
+      "reason": "The S1 wiring surface already exists in the repo (router registration in app/main.py, store double in tests/conftest.py); this Stage only adds the new route and cache modules next to existing files and creates no new production wiring between existing components",
+      "evidence": ["S1"]
+    }
   ],
   "e2e_gates": [
-    { "id": "E1", "scenario": "two GETs for the same profile id: the first hits the store, the second is served from the cache, and the store is called exactly once", "covers": ["S1"], "evidence": "pytest tests/e2e/test_profile_flow.py::test_read_through_cache" }
+    { "id": "E1", "scenario": "two GETs for the same profile id: the first hits the store, the second is served from the cache, and the store is called exactly once; a store outage returns 503 error.code 'store_unavailable'", "covers": ["S1"], "evidence": "pytest tests/e2e/test_profile_flow.py::test_read_through_cache" }
   ]
 }

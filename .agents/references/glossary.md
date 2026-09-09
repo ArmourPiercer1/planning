@@ -11,10 +11,16 @@ this glossary is the only prose definition each term needs.
 |---|---|
 | **Stage** | A bounded unit of long-task work with a clear objective and deterministic acceptance. One planning run produces exactly one Stage plan. A larger program is a sequence of Stages; this skill set plans one Stage at a time. |
 | **Stage Contract** | The frozen, minimal shared agreement that unlocks execution: objective, in/out-of-scope, frozen assumptions and architecture decisions, shared contracts, integration seams, deterministic acceptance, constraints, resource budget, allowed replan actions. Artifact: `stage-contract.json`. |
-| **Shared contract** | A cross-task interface that more than one task reads or writes: API signature, data schema, state machine, service interface, error semantics. Each has an `id` (e.g. `C1`), a kind, and a spec. Contracts are the unit of freezing. |
+| **Shared contract** | A cross-task interface that more than one task reads or writes: API signature, data schema, state machine, service interface, error semantics. Each has an `id` (e.g. `C1`), a kind, a spec, and a `logical_owner` naming the responsibility/layer that implements it (not a task id). Contracts are the unit of freezing. |
 | **Frozen contract / frozen decision** | A contract or architecture decision that execution agents may use but must not redefine. Changing one is a `CONTRACT_CHANGE_REQUEST`, not an inline edit. |
 | **Shared seam** | The exact place where two pieces of work meet: an interface call, a table, a state transition, a startup hook. Seams are what integration gates protect. |
-| **Leaf task** | The smallest schedulable execution unit. Every leaf is a bounded **Task Package** — never a bare "implement X" line. |
+| **Logical owner** | The responsibility or component that implements a shared contract or participates in a seam, named in the Stage Contract (e.g. `api`, `persistence`, `runtime`). Never a task id — task ids don't exist yet. Concrete binding to a leaf happens in the DAG stage. |
+| **Binding** | The step in the DAG stage that maps each `logical_owner` to a concrete `owner_task` (via `contract_bindings[]`) and each seam participant role to concrete `participant_tasks` (via `seam_bindings[]`). Rebinding = editing `dag.json` only; the stage contract is never rewritten. |
+| **Repo context snapshot** | Stage 0 artifact (`repo-context-snapshot.json`). A bounded, script-generated scan of the repo territory relevant to the Stage: file/layer map, one-hop import graph, known shared files, known seams across layers, TODO/FIXME census. Later stages use it as their repo map — no ad-hoc scanning. The auditor grounds plan claims against it. |
+| **Merged kind** | An integration kind satisfied by an integration task whose primary `kind` is different — recorded in that task's `merged_kinds` list (e.g. `final_acceptance` merged into an `e2e_closure` task). The merged kind is not missing; it's satisfied by a multi-purpose task. |
+| **Omitted kind** | An integration kind that is deliberately absent from the integration plan, with a structured `omitted_kinds[]` entry carrying a justification (`reason`, ≥ 1 sentence) and `evidence` (≥ 1 concrete reference). Omitting is legitimate only when the plan's facts support it; the new-wiring rule can forbid it. |
+| **New-wiring rule** | If any leaf creates a new file (absent from the snapshot) in a directory that already contains another leaf's existing code, new production wiring exists. `seam_integration` cannot be omitted — doing so is `HIDDEN_INTEGRATION_WORK` (BLOCKER). Omitting is only legitimate when the Stage adds no wiring between existing components. |
+| **Leaf task** | The smallest schedulable execution unit. Every leaf is a bounded **Task Package** — never a bare "implement X" line. Since @2, each consumed contract is inlined in the package's `frozen_contracts[]` with a full spec and `source_hash`; the executor never opens `stage-contract.json`. |
 | **Task Package** | The self-contained brief an execution agent needs to start a leaf: required context, inputs, frozen contracts, owned paths, non-goals, constraints, deliverables, acceptance tests, failure cases, integration dependency, handoff/checkpoint requirements, and an inline risk estimate. Artifact: `tasks/<id>.json`. |
 | **Context closure** | The minimal set of files, contracts, and concepts an agent must load to complete a task. Decomposition boundaries are drawn by context closure, not by feature/module/directory. |
 | **Owned path** | A file or directory a task may create/modify. Parallel tasks must have disjoint owned paths; otherwise that is an ownership collision. |
@@ -91,7 +97,8 @@ degenerate form; a legal replan may shrink or reshape work.
 
 ```
 <plan-dir>/
-  input.md                     raw user task (verbatim + repo notes)
+  repo-context-snapshot.json   repo-context-snapshot skill (stage 0)
+  input.md                     raw user task (verbatim)
   stage-contract.json          stage-contract skill
   candidate-tasks.json         context-decomposer skill
   integration-plan.json        integration-planner skill

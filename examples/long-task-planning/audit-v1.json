@@ -1,10 +1,16 @@
 {
-  "schema": "planning/audit@1",
+  "schema": "planning/audit@2",
   "verdict": "FAIL",
   "auditor": {
     "path": "fresh_subagent",
     "planner_conversation_isolated": true,
     "notes": "audit round 1 — before the revision loop"
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "9f8e7d6c5b4a3210fedcba9876543210abcdef12",
+    "files_verified": ["app/main.py", "app/api/routes/legacy.py", "tests/conftest.py"],
+    "notes": "round-1 grounding: confirmed the legacy CSV TODO in app/api/routes/legacy.py (F03) and the single lifespan hook in app/main.py (basis for the S3 seam claim)"
   },
   "findings": [
     {

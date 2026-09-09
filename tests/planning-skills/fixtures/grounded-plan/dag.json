@@ -1,0 +1,27 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    { "from": "T01", "to": "T04", "type": "verification", "reason": "E2E closure exercises the real batch endpoint" },
+    { "from": "T02", "to": "T04", "type": "verification", "reason": "E2E closure exercises the real cache layer" },
+    { "from": "T03", "to": "T04", "type": "data", "reason": "E2E closure asserts the store is queried (call counting)" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02", "T03"],
+    ["T04"]
+  ],
+  "critical_path": ["T01", "T04"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T04", "seams": ["S1"], "acceptance_ref": "A1" }
+  ],
+  "unlock_contracts": [],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T01", "consumer_tasks": ["T04"], "rationale": "logical owner 'api' binds to the leaf that implements the batch endpoint" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T01", "T03"], "rationale": "S1's logical participants api/service bind to the endpoint leaf and the store leaf" }
+  ],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": ["none — owned paths disjoint by construction"]
+  }
+}

@@ -1,19 +1,60 @@
 {
-  "schema": "planning/task-package@1",
+  "schema": "planning/task-package@2",
   "task_id": "T01",
   "objective": "Implement the ReportJob SQLAlchemy model, the alembic migration for report_jobs, and the JobStore module (create_job/get/transition/recover_stale) satisfying contracts C1 and C5, with unit tests against the testcontainers-Postgres fixture",
   "required_context": {
-    "files": ["app/db/models.py", "alembic/versions/ (one new migration file)", "app/services/job_store.py (new)", "tests/services/test_job_store.py (new)", "tests/conftest.py (fixture, read-only)"],
-    "contracts": ["C1", "C3", "C5"],
-    "concepts": ["SQLAlchemy declarative models", "alembic migrations", "illegal-state-transition guard"]
+    "files": [
+      "app/db/models.py",
+      "app/db/base.py (existing, read-only)",
+      "alembic/versions/ (one new migration file)",
+      "app/services/job_store.py (new)",
+      "tests/services/test_job_store.py (new)",
+      "tests/conftest.py (fixture, read-only)"
+    ],
+    "contracts": [
+      "C1",
+      "C3",
+      "C5"
+    ],
+    "concepts": [
+      "SQLAlchemy declarative models",
+      "alembic migrations",
+      "illegal-state-transition guard"
+    ]
   },
-  "inputs": ["frozen contracts C1/C3/C5 in stage-contract.json", "existing test db fixture in tests/conftest.py"],
-  "frozen_contracts": [
-    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
-    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
-    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" }
+  "inputs": [
+    "frozen contracts C1/C3/C5 in stage-contract.json",
+    "existing test db fixture in tests/conftest.py"
   ],
-  "owned_paths": ["app/db/models.py", "app/services/job_store.py", "alembic/versions/", "tests/services/test_job_store.py"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "schema",
+      "spec": "report_jobs table: id UUID pk; status enum('queued','running','retry_wait','done','failed'); attempts int 0..3; progress int 0..100; result_ref nullable text; error nullable text; created_at/updated_at timestamptz. SQLAlchemy model ReportJob in app/db/models.py; alembic migration creates the table.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:f0081a03b88d9a94e72e7d03cede48d69de5ff457fb04793423f2d5b3fa93128"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "state",
+      "spec": "States queued, running, retry_wait, done, failed. Legal transitions: queued->running; running->retry_wait (attempt < 3, backoff 1s/4s/16s by attempt number); running->done; running->failed (attempt == 3); retry_wait->running; retry_wait->failed (attempt == 3). Crash recovery: any row with status running at startup transitions running->queued (recompute, idempotent per A-2); rows in retry_wait resume their schedule. attempts increments when leaving running toward retry_wait or failed; progress written by the worker between 0..100.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:cfcadd1ccc9592546b1c83c527504cc6f08f44c03675720acb4e3f6fce03cd75"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "service",
+      "spec": "JobStore (app/services/job_store.py), methods on a session: create_job(input_payload: dict) -> ReportJob (status queued); get(job_id) -> ReportJob|None; transition(job_id, from_status, to_status, **fields) -> ReportJob, raises IllegalTransition on illegal C3 transition; recover_stale(now) -> list[ReportJob] (running rows, per C3 recovery).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:e4a6908fc2ddfb5c3bd60f8546f167c60264219a60c5beb6a99831343e40dd64"
+    }
+  ],
+  "owned_paths": [
+    "app/db/models.py",
+    "app/services/job_store.py",
+    "alembic/versions/",
+    "tests/services/test_job_store.py"
+  ],
   "allowed_dependencies": [],
   "non_goals": [
     "Do not touch app/api/**, app/main.py, or app/services/report_worker.py",
@@ -27,35 +68,89 @@
     "Tests use the existing testcontainers-Postgres fixture; no sqlite fallback, no async tests"
   ],
   "deliverables": [
-    { "what": "ReportJob model matching C1", "where": "app/db/models.py" },
-    { "what": "alembic migration creating report_jobs", "where": "alembic/versions/" },
-    { "what": "JobStore implementation matching C5", "where": "app/services/job_store.py" },
-    { "what": "unit test suite", "where": "tests/services/test_job_store.py" }
+    {
+      "what": "ReportJob model matching C1",
+      "where": "app/db/models.py"
+    },
+    {
+      "what": "alembic migration creating report_jobs",
+      "where": "alembic/versions/"
+    },
+    {
+      "what": "JobStore implementation matching C5",
+      "where": "app/services/job_store.py"
+    },
+    {
+      "what": "unit test suite",
+      "where": "tests/services/test_job_store.py"
+    }
   ],
   "acceptance_tests": [
-    { "id": "AT-T01-1", "case": "positive", "description": "create_job writes a row with status 'queued' and attempts 0; get returns that row", "evidence": "pytest tests/services/test_job_store.py::test_create_get asserts row.status == 'queued' and row.attempts == 0" },
-    { "id": "AT-T01-2", "case": "positive", "description": "transition(queued -> running) writes status 'running' and returns the updated row", "evidence": "pytest tests/services/test_job_store.py::test_transition_legal asserts row.status == 'running'" },
-    { "id": "AT-T01-3", "case": "failure", "description": "transition(queued -> done) raises IllegalTransition and the row keeps status 'queued'", "evidence": "pytest tests/services/test_job_store.py::test_transition_rejects_illegal uses pytest.raises(IllegalTransition) and asserts row.status == 'queued'" },
-    { "id": "AT-T01-4", "case": "positive", "description": "recover_stale(now) returns rows with status 'running' and updated_at older than now-300s, and returns an empty list when no stale rows exist", "evidence": "pytest tests/services/test_job_store.py::test_recover_stale asserts the returned row id set and the empty-list case" }
+    {
+      "id": "AT-T01-1",
+      "case": "positive",
+      "description": "create_job writes a row with status 'queued' and attempts 0; get returns that row",
+      "evidence": "pytest tests/services/test_job_store.py::test_create_get asserts row.status == 'queued' and row.attempts == 0"
+    },
+    {
+      "id": "AT-T01-2",
+      "case": "positive",
+      "description": "transition(queued -> running) writes status 'running' and returns the updated row",
+      "evidence": "pytest tests/services/test_job_store.py::test_transition_legal asserts row.status == 'running'"
+    },
+    {
+      "id": "AT-T01-3",
+      "case": "failure",
+      "description": "transition(queued -> done) raises IllegalTransition and the row keeps status 'queued'",
+      "evidence": "pytest tests/services/test_job_store.py::test_transition_rejects_illegal uses pytest.raises(IllegalTransition) and asserts row.status == 'queued'"
+    },
+    {
+      "id": "AT-T01-4",
+      "case": "positive",
+      "description": "recover_stale(now) returns rows with status 'running' and updated_at older than now-300s, and returns an empty list when no stale rows exist",
+      "evidence": "pytest tests/services/test_job_store.py::test_recover_stale asserts the returned row id set and the empty-list case"
+    }
   ],
   "failure_cases": [
-    { "scenario": "transition called with from_status that does not match the row's current status", "expected_behavior": "raises IllegalTransition; the row is unchanged" },
-    { "scenario": "get called with an unknown id", "expected_behavior": "returns None (callers map None to 404 per C2)" }
+    {
+      "scenario": "transition called with from_status that does not match the row's current status",
+      "expected_behavior": "raises IllegalTransition; the row is unchanged"
+    },
+    {
+      "scenario": "get called with an unknown id",
+      "expected_behavior": "returns None (callers map None to 404 per C2)"
+    }
   ],
   "integration_dependency": {
-    "seams": ["S2"],
+    "seams": [
+      "S2"
+    ],
     "upstream_outputs": [],
-    "consumers": ["T04", "T05", "T06", "T07", "T08"]
+    "consumers": [
+      "T04",
+      "T05",
+      "T06",
+      "T07",
+      "T08"
+    ]
   },
   "handoff": {
     "checkpoint_required": true,
     "checkpoint_ref": "checkpoints/T01.json",
-    "downstream_consumers": ["T04", "T05", "T06", "T07", "T08"],
+    "downstream_consumers": [
+      "T04",
+      "T05",
+      "T06",
+      "T07",
+      "T08"
+    ],
     "notes": "Recovery semantics in recover_stale are the load-bearing behavior for T04 and gate E2 — record exact row-selection predicate in verified_facts"
   },
   "risk": {
     "context_footprint": "M",
-    "touched_layers": ["persistence"],
+    "touched_layers": [
+      "persistence"
+    ],
     "cross_contracts": 3,
     "statefulness": "low",
     "integration_distance": "low",

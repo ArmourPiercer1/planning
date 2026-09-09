@@ -1,5 +1,5 @@
 {
-  "schema": "planning/integration-plan@1",
+  "schema": "planning/integration-plan@2",
   "seams": [
     { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "contract_ids": ["C1", "C2"], "covered_by": ["T03"] }
   ],
