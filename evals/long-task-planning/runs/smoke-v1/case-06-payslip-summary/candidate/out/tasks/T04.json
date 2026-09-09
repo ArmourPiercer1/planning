@@ -1,0 +1,114 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T04",
+  "objective": "Close the stage end-to-end: create tests/test_payslip_integration.py running the E2E gates for seams S1 and S2 (exact payslip text, cross-renderer determinism, unknown-employee failure), run the full test suite, and execute acceptance A1-A5 with recorded evidence.",
+  "required_context": {
+    "files": [
+      "payroll/calc.py",
+      "payroll/payslip.py",
+      "payroll/legacy_export.py",
+      "payroll/employees.py",
+      "tests/test_payroll.py",
+      "tests/test_payslip_summary.py",
+      "tests/test_contract_shape.py",
+      "tests/test_payslip_integration.py (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "S1: payslip renders compute_pay output including the exact summary line as the final element",
+      "S2: legacy XML inherits the sorted deduction-element order with every other byte unchanged (assumption A-2)",
+      "full-suite invocation from the repo root: python -m unittest discover -s tests -p 'test_*.py'",
+      "expected exact values: e1 gross 8000.00, insurance 400.00, tax 1600.00, net 6000.00, total 2000.00; e2 gross 3600.00, insurance 180.00, tax 720.00, net 2700.00, total 900.00"
+    ]
+  },
+  "inputs": [
+    "checkpoints/T01.json, checkpoints/T02.json, checkpoints/T03.json (verified facts + changed paths)",
+    "frozen C1 and C2 specs (stage-contract.json)",
+    "E2E gate definitions E1-E3 (integration-plan.json)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["tests/test_payslip_integration.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "the final sorted compute_pay; both consumers (payslip lines, legacy XML) are gated against it" },
+    { "task_id": "T02", "what": "the final render_payslip with the summary line" },
+    { "task_id": "T03", "what": "tests/test_contract_shape.py, included in the full-suite run" }
+  ],
+  "non_goals": [
+    "Do not re-implement any leaf work",
+    "Do not modify payroll/legacy_export.py, payroll/employees.py, or the fixture data",
+    "Do not rewrite pre-existing test bodies to make them pass (acceptance A3)",
+    "Integration-only fixes are limited to seam defects inside T01/T02 code (owns_fixes_for); any such patch is recorded in the affected leaf's checkpoint as a deviation"
+  ],
+  "implementation_constraints": [
+    "Integration-only fix: the minimal patch to a seam defect, recorded in the leaf's checkpoint; if the fix would exceed the leaf's boundary, emit CORE_SEAM_BLOCKER and stop the branch",
+    "E2E tests are deterministic: no timing, no randomness, no network",
+    "The stage gate closes only when the full suite exits 0"
+  ],
+  "deliverables": [
+    { "what": "E2E gate tests for S1/S2 including the failure scenario (unknown employee)", "where": "tests/test_payslip_integration.py (new)" },
+    { "what": "recorded evidence for acceptance A1-A5 (commands, exit codes, observed output)", "where": "checkpoints/T04.json (evidence)" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "test_e2e_payslip_full_text asserts render_payslip('e1') returns exactly the 7-element C2 list ending with 'Summary: net=6000.00 gross=8000.00 deductions=2000.00', and render_payslip('e2') ends with 'Summary: net=2700.00 gross=3600.00 deductions=900.00'",
+      "evidence": "the e2e test asserts lines equal the expected exact list (assertEqual); python -m unittest tests.test_payslip_integration -v exits 0"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "test_e2e_deterministic_renders asserts two consecutive render_payslip('e1') calls return identical lists and two export_employee_xml('e1') calls return identical strings, with the insurance deduction before tax in both",
+      "evidence": "the test asserts consecutive calls return identical output; ordered substring checks confirm the insurance deduction element precedes the tax element in the XML"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "test_e2e_unknown_employee_raises asserts render_payslip('e999') and export_employee_xml('e999') raise KeyError, preserving the pre-existing bad-input behavior",
+      "evidence": "the test asserts render_payslip('e999') and export_employee_xml('e999') raise KeyError; the suite exits 0"
+    },
+    {
+      "id": "AT4",
+      "case": "positive",
+      "description": "The full-suite run python -m unittest discover -s tests -p 'test_*.py' exits 0 with 'OK' and 0 errors, covering A1 (summary format), A2 (sorted order), A3 (pre-existing tests), A4 (legacy stability), A5 (contract shape)",
+      "evidence": "command exit code 0 and 'OK' in output; evidence recorded in checkpoints/T04.json"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A seam defect in T01/T02 code is found (e.g. legacy XML drifts beyond the accepted element-order change)",
+      "expected_behavior": "Apply the minimal integration-only patch to that leaf's module and record the deviation in the leaf's checkpoint; if the patch would exceed the leaf boundary, emit CORE_SEAM_BLOCKER and stop the branch"
+    },
+    {
+      "scenario": "The full suite fails on a pre-existing test",
+      "expected_behavior": "Do not rewrite the pre-existing test to make it pass (A3); diagnose and fix the code, or escalate as CONTRACT_CHANGE_REQUEST if the frozen spec itself is wrong"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["checkpoints/T01.json", "checkpoints/T02.json", "checkpoints/T03.json", "tests/test_contract_shape.py"],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": [],
+    "notes": "This is the final gate: e2e_closure with final_acceptance merged (see integration-plan.json notes). On success the stage closes; on failure, stop and escalate per the failure cases — no silent continuation."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "data",
+      "reason": "T03 diffs the final compute_pay implementation in payroll/calc.py against the frozen C1 spec, an artifact T01 produces."
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "data",
+      "reason": "T03 diffs the final render_payslip implementation against the frozen C2 spec, an artifact T02 produces."
+    },
+    {
+      "from": "T01",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's E2E gates verify the deterministic order at both compute_pay consumers (payslip lines and legacy XML) that T01 changes."
+    },
+    {
+      "from": "T02",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's E2E gates verify the summary line end-to-end as rendered by T02."
+    },
+    {
+      "from": "T03",
+      "to": "T04",
+      "type": "data",
+      "reason": "T04's full-suite gate must include T03's contract-shape test file, an output T03 produces."
+    }
+  ],
+  "parallel_groups": [["T01", "T02"], ["T03"], ["T04"]],
+  "critical_path": ["T01", "T03", "T04"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T04", "seams": ["S1", "S2"], "acceptance_ref": "A3" },
+    { "gate_id": "G2", "task_id": "T03", "seams": ["S1", "S2"], "acceptance_ref": "A5" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C1", "unlocks": ["T02"] }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T01",
+        "to": "T02",
+        "why_not_real": "The task document lists the summary line (change 1) before the sort (change 2) and a naive reading serializes one behind the other, but T02 consumes only the frozen C1 shape (the summary total is order-independent), owns disjoint paths, and no contract/data/ownership/verification dependency exists; the frozen C1 unlocks true parallelism instead of an edge."
+      }
+    ],
+    "collisions_handled": [
+      "None: all four tasks own disjoint paths; the single pre-existing test file tests/test_payroll.py is owned by T01 only, and T02's, T03's, and T04's new tests live in their own new files"
+    ],
+    "free_parallelism_trades": [
+      "T03 -> T04 is a real data edge (the full-suite gate must include T03's shape-test file), not a fear edge; it makes the critical path T01 -> T03 -> T04 (3 nodes) while keeping T01 and T02 parallel, which is shorter than serializing the leaves behind each other would be."
+    ]
+  }
+}

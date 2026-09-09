@@ -1,0 +1,43 @@
+{
+  "id": "case-03-discount-loyalty",
+  "type": "C",
+  "title": "Bulk + loyalty discounts: two features, one shared registry",
+  "description": "Type C (fake parallelism). The two features look independent ('bulk discount' vs 'loyalty program') and tempt a plan into two parallel tasks. But both land in the same shared mutable artifact (the default rule registry in shop/discounts.py), and the loyalty rule also pulls in the tier context (shop/loyalty.py). Parallel tasks that both own discounts.py collide; the honest structure is one rule-addition closure (both rules, one shared context) plus an e2e/composition test, with the engine's composition behavior (multiply all, round once at the end) frozen as a behavior contract.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["shop/pricing.py"], "description": "pricing engine and its composition/rounding behavior (frozen)", "layer": "engine" },
+    { "id": "A2", "files": ["shop/discounts.py"], "description": "Rule interface and the shared default rule registry (the collision point)", "layer": "rules" },
+    { "id": "A3", "files": ["shop/loyalty.py"], "description": "tier lookup context used by the loyalty rule predicate", "layer": "data" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1"], "kind": "behavior", "note": "engine composition behavior (all matching rules multiplicative, rounded to cents exactly once at the end) is frozen; new rules must slot into it without changing existing totals" },
+      { "anchor_ids": ["A2", "A3"], "kind": "contract", "note": "the Rule interface (name/factor/predicate) plus the registry list is the shared contract both features extend; the tier lookup API is part of the loyalty rule's contract" }
+    ],
+    "must_not_expand_scope": ["shop/payments.py", "shop/tax.py", "shop/promos.py"],
+    "must_have_edges": [
+      { "from_anchor": "A3", "to_anchor": "A2", "types": ["data"], "note": "the loyalty rule predicate consumes the tier lookup API" }
+    ],
+    "forbidden_parallel_pairs": [
+      { "anchor_ids": ["A2", "A3"], "shared_path": "shop/discounts.py", "note": "a bulk-rule task and a loyalty-rule task that both own the registry in parallel collide on shop/discounts.py; serialize them or merge them into one rule-addition closure" }
+    ],
+    "acceptable_task_count_range": [2, 4],
+    "max_anchors_per_task": 2,
+    "context_clusters": [
+      { "anchor_ids": ["A2", "A3"], "mode": "merge", "note": "both rules + the tier context form one small closure" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "composition", "keywords": ["compos", "multiplic", "stack", "both"] },
+          { "path": "existing behavior", "keywords": ["regression", "existing", "unchanged", "snapshot"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type C probe: does the plan notice that 'two features' is a lie at the file-ownership level? The registry is one mutable list — parallel writers collide. Watch for: two parallel rule tasks both owning discounts.py (forbidden pair), a missing freeze of the round-once behavior, and invented scope (payments, tax, a promo framework)."
+  }
+}

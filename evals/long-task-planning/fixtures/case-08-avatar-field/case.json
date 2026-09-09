@@ -1,0 +1,45 @@
+{
+  "id": "case-08-avatar-field",
+  "type": "H",
+  "title": "avatar_url across five layers: the mega-task temptation",
+  "description": "Type H (oversized leaf). The feature is small in code volume but touches five files across five layers (model, validators, service, handlers, serializers). The natural anti-plan is one task 'implement avatar_url' owning all five files — a phase-shaped leaf that no single fresh executor can close without reading everything. Good plans split along the layer closures (each task 1-2 anchors, 3-6 tasks total), freeze the two cross-layer contracts (owner-only rule; public-JSON omission rule), and gate the e2e path (handler -> service -> model -> serializer) including the non-owner rejection and the key-omission behavior.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["webapp/models.py"], "description": "Profile model + store (avatar_url field)", "layer": "model" },
+    { "id": "A2", "files": ["webapp/validators.py"], "description": "avatar_url validation (https, max 2048)", "layer": "validate" },
+    { "id": "A3", "files": ["webapp/service.py"], "description": "service update path + ownership rule", "layer": "service" },
+    { "id": "A4", "files": ["webapp/handlers.py"], "description": "request handler + error shapes", "layer": "handler" },
+    { "id": "A5", "files": ["webapp/serializers.py"], "description": "public JSON shape + omission rule", "layer": "serialize" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1", "A4"], "kind": "contract", "note": "the owner-only rule (user_id == profile_id, existing PermissionError path) is a cross-layer contract that avatar_url must ride on, not duplicate" },
+      { "anchor_ids": ["A5"], "kind": "contract", "note": "public JSON omission rule: key absent (not null/empty) when avatar_url is unset — a consumer contract" }
+    ],
+    "must_not_expand_scope": ["webapp/avatars_store.py", "webapp/upload.py", "webapp/migrations.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A3", "types": ["data"] },
+      { "from_anchor": "A2", "to_anchor": "A3", "types": ["contract"] },
+      { "from_anchor": "A3", "to_anchor": "A4", "types": ["contract"] },
+      { "from_anchor": "A1", "to_anchor": "A5", "types": ["data"] }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A1", "A2"], "note": "model change and validator change are disjoint closures; both feed the service join point" }
+    ],
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 2,
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A3", "A4", "A5"],
+        "failure_path_markers": [
+          { "path": "non-owner rejection", "keywords": ["403", "forbidden", "owner", "unauthorized", "reject"] },
+          { "path": "omission", "keywords": ["omit", "absent", "missing", "null", "not present"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type H probe: leaf boundedness. A single task owning >2 anchors (the mega 'avatar feature' task) is the flagship anti-plan — caught by max_anchors_per_task, acceptable_task_count_range, and phase_shaped_leaves. Invented scope (file storage, upload endpoint, DB migration) is the secondary bait — the task is URL-only, no storage."
+  }
+}

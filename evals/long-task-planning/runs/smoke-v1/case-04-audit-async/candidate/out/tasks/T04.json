@@ -1,0 +1,134 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T04",
+  "objective": "Wire make_audit_consumer to a Bus at topic 'audit' and write tests/test_audit_e2e.py covering gates E1-E4 (transfer publishes and the row lands via the bus; a raising audit subscriber still yields {'ok': True} with the transactions row written; redelivering the same published event yields exactly one row; bad amount publishes nothing and writes nothing), then run the full unittest suite green and record acceptance evidence for A1-A4.",
+  "required_context": {
+    "files": [
+      "tests/test_audit_e2e.py (new)",
+      "ledger/api.py",
+      "ledger/worker.py",
+      "ledger/events.py",
+      "ledger/db.py",
+      "tests/test_ledger.py",
+      "tests/test_audit_bus.py"
+    ],
+    "contracts": ["C1", "C2", "C3", "C4"],
+    "concepts": [
+      "end-to-end wiring: bus.subscribe(AUDIT_TOPIC, make_audit_consumer(store))",
+      "failure scenarios: raising subscriber, redelivery, bad amount",
+      "final acceptance: full unittest suite green + A1-A4 evidence recorded"
+    ]
+  },
+  "inputs": [
+    "T01 output: the publish path in handle_transfer (ledger/api.py)",
+    "T02 output: the consumer (ledger/worker.py) and its bus-level tests as a pattern",
+    "T03 output: the consistency report (checkpoints/T03.json)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "out/stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "out/stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "out/stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "out/stage-contract.json#shared_contracts[C4]" }
+  ],
+  "owned_paths": ["tests/test_audit_e2e.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "publish path + isolation behavior to exercise" },
+    { "task_id": "T02", "what": "consumer under test + bus-level test patterns" },
+    { "task_id": "T03", "what": "consistency report as a pre-gate input" }
+  ],
+  "non_goals": [
+    "re-designing the T01/T02 modules: integration-only patches for seam defects (topic name, field names, dedup key), each recorded as a deviation in the checkpoint",
+    "changes to ledger/events.py or ledger/db.py (DA-2)",
+    "rewriting the other leaves' test files"
+  ],
+  "implementation_constraints": [
+    "unittest style consistent with tests/test_ledger.py",
+    "each gate E1-E4 is a separate test method in TestAuditE2E",
+    "integration-only fix rights: T01/T02 modules may be patched for seam defects only, never for feature work"
+  ],
+  "deliverables": [
+    { "what": "E2E gate module E1-E4 with bus wiring", "where": "tests/test_audit_e2e.py" },
+    { "what": "A1-A4 acceptance evidence (commands + outcomes) and final full-suite result", "where": "checkpoints/T04.json" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T04-E1",
+      "case": "positive",
+      "description": "wiring the consumer to the bus, a successful transfer writes exactly 1 audit row via the consumer (keys equal AUDIT_EVENT_FIELDS) and exactly 1 transactions row; the response is {'ok': True}",
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_transfer_audit_lands_via_bus -v -> OK (test passes)"
+    },
+    {
+      "id": "T04-E2",
+      "case": "failure",
+      "description": "a raising audit subscriber leaves the response {'ok': True}, no exception escapes handle_transfer, the transactions row is written, and 0 audit rows exist",
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_handler_ok_when_audit_consumer_raises -v -> OK (test passes)"
+    },
+    {
+      "id": "T04-E3",
+      "case": "failure",
+      "description": "redelivering the same published event on 'audit' yields exactly 1 audit row; the second consume returns {'ok': True, 'deduped': True}",
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_redelivery_yields_one_row -v -> OK (test passes)"
+    },
+    {
+      "id": "T04-E4",
+      "case": "negative",
+      "description": "bad amount returns {'ok': False, 'error': 'bad-amount'} with 0 events on the bus, 0 transactions rows, and 0 audit rows",
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_bad_amount_publishes_nothing -v -> OK (test passes)"
+    },
+    {
+      "id": "T04-FINAL",
+      "case": "positive",
+      "description": "full suite: every test in the repo passes — existing tests plus all new modules — with 0 failures and 0 errors (merged final_acceptance)",
+      "evidence": "python -m unittest discover -s tests -v -> OK (test passes): 0 failures, 0 errors (all test suites green)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "E1 fails on a field-name or topic mismatch between the publisher and the consumer (a seam defect inside T01 or T02)",
+      "expected_behavior": "T04 applies an integration-only patch to the offending module, records the deviation in the checkpoint, and re-runs E1; it never rewrites the module's feature logic"
+    },
+    {
+      "scenario": "a leaf's own unit test fails during the full-suite run",
+      "expected_behavior": "record the failing test and its owner leaf in the checkpoint and stop the branch (local recoverability) — do not fix it inside T04 beyond a seam defect"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [
+      "T01: ledger/api.py",
+      "T02: ledger/worker.py",
+      "T03: consistency report (checkpoints/T03.json)"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": [],
+    "notes": "Terminal task: its checkpoint carries A1-A4 evidence plus the final full-suite result; on green, the Stage acceptance is met."
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 4,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "45-75 min",
+    "p80": "90-120 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      {
+        "code": "CONTRACT_DENSITY",
+        "detail": "consumes all four frozen contracts C1-C4",
+        "rationale": "the E2E module drives every seam; kept as one leaf because the gates share one bus wiring — splitting would re-wire the bus per gate and re-load the same four modules"
+      },
+      {
+        "code": "SPLIT_RECHECK_REQUIRED",
+        "detail": "p80 (90-120 min) exceeds the Stage leaf_p80_max (90 min)",
+        "rationale": "four gates plus a full-suite run in one leaf; if execution exceeds p80, checkpoint_and_split around the failure-scenario gates (E2, E3)"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

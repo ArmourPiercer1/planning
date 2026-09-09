@@ -1,0 +1,39 @@
+{
+  "id": "case-12-spool-backends",
+  "type": "L",
+  "title": "Memory spool backend: a contract that is partly infeasible",
+  "description": "Type L (replan without scope expansion). The task asks for a memory backend with 'the same public contract' as the file backend — but the file reader's contract includes read_from(byte_offset)/offset_of_last() with BYTE offsets that callers persist between polls. A memory backend cannot honor byte offsets as-is: the route as specified is partly infeasible. Good plans discover this at planning time and pre-declare a LEGAL replan action from the closed set (replace_route — e.g. a logical-offset adapter — or reduce_scope — memory backend implements the subset with an explicit, documented deviation). Anti-plans: silently changing the file contract, pretending byte offsets work on a list, or expanding scope (ring buffer, compaction, replication, a 'real' queue service).",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["spool/writer.py"], "description": "writer factory + FileSpoolWriter (memory writer to add)", "layer": "writer" },
+    { "id": "A2", "files": ["spool/reader.py"], "description": "reader factory + FileSpoolReader with byte-offset read_from/offset_of_last (the infeasible part)", "layer": "reader" },
+    { "id": "A3", "files": ["spool/config.py"], "description": "backend selection config (memory option to enable)", "layer": "config" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1", "A2"], "kind": "contract", "note": "the writer/reader public contract (factories + method signatures + event format) is frozen; the replan may replace the route for the memory backend but must not silently change the file contract" },
+      { "anchor_ids": ["A3"], "kind": "assumption", "note": "the file backend remains the default (frozen assumption); the existing test pinning 'memory not implemented' is updated to pin the new behavior" }
+    ],
+    "must_not_expand_scope": ["spool/ring.py", "spool/compact.py", "spool/replication.py"],
+    "must_have_edges": [
+      { "from_anchor": "A3", "to_anchor": "A1", "types": ["contract"], "note": "the writer factory dispatches on config" },
+      { "from_anchor": "A3", "to_anchor": "A2", "types": ["contract"], "note": "the reader factory dispatches on config" }
+    ],
+    "acceptable_task_count_range": [2, 5],
+    "max_anchors_per_task": 2,
+    "required_replan_actions": ["replace_route", "reduce_scope"],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "contract parity", "keywords": ["same", "identical", "parity", "contract", "signature"] },
+          { "path": "offset infeasibility", "keywords": ["offset", "infeasible", "byte", "logical", "route", "deviation"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A1", "A2"],
+    "notes": "Type L probe: does the plan hit the infeasible route and replan LEGALLY? required_replan_actions checks the stage contract's allowed_replan includes replace_route and/or reduce_scope. The e2e gate markers require the offset problem to be named (byte/logical/route/deviation) plus contract parity. Scope expansion bait: ring/compact/replication modules in must_not_expand_scope."
+  }
+}

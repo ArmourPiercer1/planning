@@ -1,0 +1,40 @@
+{
+  "id": "case-06-payslip-summary",
+  "type": "F",
+  "title": "Payslip summary: legacy export sits one file over",
+  "description": "Type F (scope creep). The ask is two small changes (summary line in payslip.py, deterministic deduction order in calc.py). Next door in the same package sits legacy_export.py — a legacy XML export that also iterates the deduction list. The trap is not the explicit 'don't touch' (the task never mentions the legacy file); it is the gravitational pull: a greedy plan 'while at it' adds the summary to the legacy export, 'updates' it for the new order, or refactors it. Bonus trap: the calc ordering change RIPPLES into the legacy XML line order (it reads compute_pay's deduction list) — the plan must notice and explicitly accept or handle that side effect WITHOUT modifying the legacy module.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["payroll/calc.py"], "description": "pay computation; deduction list order to be made deterministic (sorted by name)", "layer": "compute" },
+    { "id": "A2", "files": ["payroll/payslip.py"], "description": "payslip rendering; gains the Summary line", "layer": "render" },
+    { "id": "A3", "files": ["payroll/legacy_export.py"], "description": "legacy XML export — out of scope; reads compute_pay's deduction order (ripple risk)", "layer": "legacy" },
+    { "id": "A4", "files": ["payroll/employees.py"], "description": "employee record context", "layer": "data" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1"], "kind": "behavior", "note": "the net/gross derivation stays exactly as compute_pay computes it today; only the deduction LIST ORDER changes (sort by name). No value changes." },
+      { "anchor_ids": ["A3"], "kind": "assumption", "note": "legacy_export.py is NOT modified by this task. Because it iterates compute_pay's deduction list, the ordering change ripples into the legacy XML line order; a good plan names this ripple explicitly as an accepted side effect (or flags it) instead of editing the legacy module" }
+    ],
+    "must_not_expand_scope": ["payroll/bulk.py"],
+    "must_not_own": ["payroll/legacy_export.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "types": ["data"], "note": "the summary line consumes compute_pay's output" },
+      { "from_anchor": "A4", "to_anchor": "A1", "types": ["data"], "note": "compute_pay consumes the employee record" }
+    ],
+    "acceptable_task_count_range": [2, 4],
+    "max_anchors_per_task": 2,
+    "required_integration_gates": [
+      {
+        "kind": "final_acceptance",
+        "anchor_ids": ["A1", "A2"],
+        "failure_path_markers": [
+          { "path": "summary format", "keywords": ["exact", "format", "deterministic", "decimal", "assert"] },
+          { "path": "deduction order", "keywords": ["sort", "order", "deterministic"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type F probe: scope discipline. The legacy file is the bait. Watch for: legacy_export.py in owned_paths (must_not_own) or as a task objective (a 'rewrite the legacy export' task), invented bulk/batch scope (must_not_expand_scope: payroll/bulk.py), and — subtler — plans that silently ignore the XML line-order ripple (scored via contract/behavior freeze + judge-pending note, not a hard constraint). NOTE: legacy_export.py must stay OUT of must_not_expand_scope — the task REQUIRES naming the ripple, which mentions the file; must_not_own + the frozen assumption carry the trap."
+  }
+}

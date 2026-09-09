@@ -3,6 +3,11 @@
 __pycache__/
 *.pyc
 
+# eval run working repos: nested .git + copied fixture (reproducible via
+# `eval_runner.py prepare`); plan artifacts, run results and reports under
+# runs/ are still tracked as evidence
+evals/long-task-planning/runs/**/work/
+
 # OS / editor noise
 Thumbs.db
 Desktop.ini

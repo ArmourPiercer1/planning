@@ -1,0 +1,102 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "smoke-v1-case-06-payslip-summary",
+  "stage_id": "case-06-payslip-summary",
+  "created_at": "2026-09-09T13:55:00Z",
+  "skill_versions": [
+    "long-task-planning@1",
+    "stage-contract@1",
+    "context-decomposer@1",
+    "dependency-dag@1",
+    "integration-planner@1",
+    "task-packager@1",
+    "plan-risk-estimator@1"
+  ],
+  "pipeline": [
+    {
+      "stage": "stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate stage-contract.json",
+      "artifact": "stage-contract.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate candidate-tasks.json",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate dag.json",
+      "artifact": "dag.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate integration-plan.json; plan-check.py validate dag.json (amended)",
+      "artifact": "integration-plan.json, dag.json (amended with gates + edges)",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate tasks/T01.json tasks/T02.json tasks/T03.json tasks/T04.json",
+      "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json, tasks/T04.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate risk-estimates.json + re-validate all tasks/*.json (final risk blocks)",
+      "artifact": "risk-estimates.json, risk blocks in tasks/*.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-auditor",
+      "status": "skipped",
+      "gate": "independent audit delegated per eval prompt (audit.json written by the separate auditor after this run)",
+      "artifact": "audit.json (external)",
+      "fallbacks": []
+    },
+    {
+      "stage": "final-lint",
+      "status": "done",
+      "gate": "plan-check.py lint <plan-dir>",
+      "artifact": "lint report (final: 0 findings)",
+      "exit_code": 0,
+      "fallbacks": [
+        "First full lint reported 10 MINOR VAGUE_ACCEPTANCE findings (package acceptance/evidence strings lacked an observable-evidence marker word); 10 strings were reworded with explicit markers and all four packages re-validated (exit 0); final lint reports 0 BLOCKER / 0 MAJOR / 0 MINOR."
+      ]
+    }
+  ],
+  "gates": [
+    { "name": "validate:stage-contract.json", "exit_code": 0, "ts": "2026-09-09T13:54:00Z" },
+    { "name": "validate:candidate-tasks.json", "exit_code": 0, "ts": "2026-09-09T13:54:10Z" },
+    { "name": "validate:dag.json (stage 3, leaves only)", "exit_code": 0, "ts": "2026-09-09T13:54:20Z" },
+    { "name": "validate:integration-plan.json", "exit_code": 0, "ts": "2026-09-09T13:54:30Z" },
+    { "name": "validate:dag.json (stage 4, amended)", "exit_code": 0, "ts": "2026-09-09T13:54:31Z" },
+    { "name": "validate:tasks/T01.json", "exit_code": 0, "ts": "2026-09-09T13:54:40Z" },
+    { "name": "validate:tasks/T02.json", "exit_code": 0, "ts": "2026-09-09T13:54:41Z" },
+    { "name": "validate:tasks/T03.json", "exit_code": 0, "ts": "2026-09-09T13:54:42Z" },
+    { "name": "validate:tasks/T04.json", "exit_code": 0, "ts": "2026-09-09T13:54:43Z" },
+    { "name": "validate:risk-estimates.json", "exit_code": 0, "ts": "2026-09-09T13:54:50Z" },
+    { "name": "validate:tasks/T01..T04.json (stage 6 re-validation, final risk blocks)", "exit_code": 0, "ts": "2026-09-09T13:54:51Z" },
+    { "name": "lint:out (first full lint, 10 MINOR VAGUE_ACCEPTANCE)", "exit_code": 0, "ts": "2026-09-09T13:54:55Z" },
+    { "name": "validate:tasks/T01..T04.json (after MINOR rewording)", "exit_code": 0, "ts": "2026-09-09T13:55:00Z" },
+    { "name": "lint:out (final, 0 findings)", "exit_code": 0, "ts": "2026-09-09T13:55:01Z" },
+    { "name": "validate:run-manifest.json", "exit_code": 0, "ts": "2026-09-09T13:55:10Z" }
+  ],
+  "audit_verdict": "not_run",
+  "audit_rounds": 0,
+  "notes": "Stages 1-6 ran in order; every per-stage gate exited 0. Stage 7 (plan-auditor) was intentionally not run in this execution: the eval prompt delegates the independent audit to a separate auditor who reviews these artifacts after this run, so audit_verdict is not_run and audit.json is intentionally absent. Full lint after the risk stage: final state 0 BLOCKER / 0 MAJOR / 0 MINOR (the 10 MINOR VAGUE_ACCEPTANCE findings from the first lint pass were all fixed before the final lint; see final-lint fallbacks). Remaining MINOR findings listed for the auditor: none."
+}

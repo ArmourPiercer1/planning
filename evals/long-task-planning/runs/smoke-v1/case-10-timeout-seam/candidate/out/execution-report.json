@@ -1,0 +1,15 @@
+{
+  "per_task": [
+    { "task_id": "T01", "start": 1788964144, "end": 1788964329 },
+    { "task_id": "T02", "start": 1788964329, "end": 1788964423 },
+    { "task_id": "T03", "start": 1788964423, "end": 1788964541 },
+    { "task_id": "T04", "start": 1788964541, "end": 1788964628 }
+  ],
+  "tests": {
+    "passed": 15,
+    "failed": 0,
+    "failures": []
+  },
+  "integration_defects": 0,
+  "notes": "Serial execution T01 -> T02 -> T03 -> T04 following dag.json parallel groups ([[T01,T02],[T03],[T04]]); one package at a time, context limited to each package's required_context (plus named inputs integration-plan.json for T03/T04). T01: reimplemented consumer.job_timeout per frozen C1/DA-1 (timeout_ms -> timeout draft fallback -> DEFAULT_TIMEOUT_MS 30000); baseline failure 'AssertionError: 30000 != 500' reproduced pre-fix and closed post-fix (commit d19950b). T02: new tests/test_wire_contract.py, exactly 5 stdlib-unittest tests pinning C1/C2; all green at first run because T01 had already landed (the planned TDD red state was therefore not observed live; documented in checkpoints/T02.json with cross-reference to T01's baseline failure as evidence the test encodes the C1 chain) (commit 99f97a2). T03: new tests/integration/test_timeout_seam.py (3 no-mock seam tests), tests/integration/__init__.py, docs/wire-contract-consistency.md with per-field verdicts — all 'consistent'; no seam defect found, so no integration-only patch was applied (patch-eligible files untouched) (commit a551b78). T04: gates E1/E2 green on the unmodified fixture e2e file, E3 8/8 green, A5 discovery ran exactly 15 tests (2+3+2+5+3) with 0 failures 0 errors; the three pre-existing test files are byte-identical to baseline (git diff 4667f0d..HEAD empty over them); T04 modified no repo file (empty evidence commit e03ec3d). integration_defects = 0: every leaf unit suite was green before integration, and T03's seam gates passed on first run. No C-class blocker, no stop-report, no replan trigger. All four checkpoints (T01-T04) written to out/checkpoints/ and validated against planning/checkpoint@1 via plan-check.py. Per-file read telemetry appended to telemetry.jsonl. Final full-suite run (exec-prompt exact command, uv run --no-project python -m unittest discover -s <repo>/tests -t <repo>): 'Ran 15 tests ... OK', exit 0. Final repo state: e03ec3d on main. Sandbox 0o700-tempfile quirk was never hit (no test needed scratch dirs)."
+}

@@ -1,0 +1,296 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-10-timeout-seam",
+  "planner_variant": "baseline-a",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "prose",
+    "structural_validity": {
+      "lint_exit": null,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": null,
+      "audit_rounds": null,
+      "note": "n/a for prose plans (no schema artifacts)"
+    },
+    "contract_completeness": 0.7778,
+    "contract_completeness_detail": [
+      "objective",
+      "out_of_scope",
+      "frozen_contracts",
+      "acceptance",
+      "integration_seams",
+      "constraints",
+      "allowed_replan"
+    ],
+    "acceptance_determinism": 1.0,
+    "context_locality": {
+      "amplification_proxy": 1.455,
+      "per_task": [
+        {
+          "task_text": "`tests/test_producer.py` — asserts the **exact** dict equality",
+          "context_files": 2
+        },
+        {
+          "task_text": "`tests/test_consumer.py` — asserts `job_timeout({\"timeout\": 123}) == 123`",
+          "context_files": 2
+        },
+        {
+          "task_text": "`tests/test_pipeline_e2e.py` — the failing test",
+          "context_files": 1
+        },
+        {
+          "task_text": "**7 tests: 6 green, 1 red** — exactly as the task states.",
+          "context_files": 0
+        },
+        {
+          "task_text": "The single failure is",
+          "context_files": 0
+        },
+        {
+          "task_text": "**The producer is the emitting side, and its contract is settled, not",
+          "context_files": 0
+        },
+        {
+          "task_text": "**The producer's key is independently corroborated by the engine** — a",
+          "context_files": 0
+        },
+        {
+          "task_text": "**The producer cannot adapt.** `test_producer.py` pins the exact output",
+          "context_files": 2
+        },
+        {
+          "task_text": "**The consumer can adapt without breaking its tests.** Its unit tests",
+          "context_files": 0
+        },
+        {
+          "task_text": "**No middle layer can fix it.** The e2e test feeds the producer's dict",
+          "context_files": 0
+        },
+        {
+          "task_text": "*Consumer switches to `timeout_ms` exclusively (drops `timeout`)* — breaks",
+          "context_files": 0
+        },
+        {
+          "task_text": "*Producer emits `timeout` instead* — breaks `test_producer.py` exact-dict",
+          "context_files": 2
+        },
+        {
+          "task_text": "*Producer emits both keys* — breaks `test_producer.py` exact-dict equality",
+          "context_files": 2
+        },
+        {
+          "task_text": "*Wire adapter between producer and consumer* — the e2e test never passes",
+          "context_files": 0
+        },
+        {
+          "task_text": "*Change the default or the engine* — neither is broken. Rejected.",
+          "context_files": 0
+        },
+        {
+          "task_text": "`pipeline/producer.py` — no key renames, no extra keys (pinned by tests).",
+          "context_files": 1
+        },
+        {
+          "task_text": "`pipeline/engine.py` — engine/carrier semantics untouched (task rule).",
+          "context_files": 1
+        },
+        {
+          "task_text": "`pipeline/consumer.py::validate_job` and `DEFAULT_TIMEOUT_MS` — unchanged.",
+          "context_files": 1
+        },
+        {
+          "task_text": "All files under `tests/` — no test edits of any kind; the e2e test is the",
+          "context_files": 0
+        },
+        {
+          "task_text": "No new modules, no wire adapter, no dual-key renames on both sides.",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Edit** `pipeline/consumer.py`: replace `job_timeout` with the version in",
+          "context_files": 1
+        },
+        {
+          "task_text": "**Run the full suite** from the repo root:",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Manual spot-checks:**",
+          "context_files": 0
+        },
+        {
+          "task_text": "`job_timeout(producer.make_job(\"j1\", {}, timeout_ms=500)) == 500`",
+          "context_files": 0
+        },
+        {
+          "task_text": "`job_timeout({\"timeout\": 123}) == 123` (legacy key still honored)",
+          "context_files": 0
+        },
+        {
+          "task_text": "`job_timeout({}) == 30000` (default unchanged)",
+          "context_files": 0
+        },
+        {
+          "task_text": "`job_timeout({\"timeout_ms\": 500, \"timeout\": 123}) == 500` (precedence)",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Final read-only sweep:** confirm by grep that the only remaining users",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Job carrying both keys:** deterministic precedence (`timeout_ms` wins),",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Draft-key senders** (any existing producer that emits `timeout`): keep",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Value semantics:** no type coercion or range validation added — same",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Stale comment:** the e2e test's docstring says \"DESIGNED TO FAIL in the",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Rollback:** single-function, ~1-line revert in `consumer.py`; no schema",
+          "context_files": 1
+        }
+      ],
+      "max_context_files": 2,
+      "bare_directories": [],
+      "note": "proxy = files mentioned per task (owned paths are not declared in prose plans)"
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 0,
+        "total": 2,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A2",
+            "hit": false,
+            "via": null
+          },
+          {
+            "from": "A1",
+            "to": "A3",
+            "hit": false,
+            "via": null
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 0,
+        "details": []
+      },
+      "cycles": 0,
+      "edges_without_reason": null,
+      "unknown_task_edges": 0
+    },
+    "integration_explicitness": {
+      "score": 0.5,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 0,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 1,
+      "failure_gates": 0,
+      "fixes_owned": 0,
+      "case_requirements_met": null,
+      "note": "keyword-level detection only; prose does not declare gate structure"
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0,
+      "note": "anchor coverage per task from file mentions"
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "task_count": {
+      "actual": 33,
+      "range": [
+        2,
+        5
+      ],
+      "in_range": false
+    },
+    "gaming_flags": [
+      {
+        "code": "G1_OVER_FRAGMENTED",
+        "detail": "33 task lines > range max 5"
+      },
+      {
+        "code": "G3_CONTEXT_STARVATION",
+        "detail": "22/33 task lines mention no repo file"
+      }
+    ],
+    "judge_pending": [
+      {
+        "dimension": "recoverability",
+        "reason": "prose plans do not declare checkpoint/recovery structure"
+      }
+    ],
+    "metric_coverage": {
+      "contract_completeness": "partial",
+      "acceptance_determinism": "partial",
+      "context_locality": "partial",
+      "ownership_collisions": "not-measurable",
+      "dependency_precision": "partial",
+      "integration_explicitness": "partial",
+      "leaf_boundedness": "partial",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 324.1,
+    "tokens": null,
+    "context_read": 1.455,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": null,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-a\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-a\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-a\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

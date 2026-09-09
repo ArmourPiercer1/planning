@@ -1,0 +1,6 @@
+{
+  "wall_time_seconds": 1942.8,
+  "planning_wall_seconds": 564.1,
+  "audit_wall_seconds": 1378.7,
+  "note": "workflow Date.now() wall clock per agent; candidates include the audit loop (auditor + revision + re-audit) in wall_time_seconds"
+}

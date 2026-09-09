@@ -1,0 +1,59 @@
+{
+  "schema": "planning/integration-plan@1",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "Producer→consumer wire seam: the job dict from make_job(...) is handed to consumer.job_timeout. Consistency risks: field name (timeout_ms vs draft timeout), default value 30000, fallback precedence order (C1/DA-1).",
+      "contract_ids": ["C1"],
+      "covered_by": ["T03", "T04"]
+    },
+    {
+      "id": "S2",
+      "description": "Producer→engine wire seam: the job dict from make_job(...) is handed to engine.run_job. Consistency risks: field name timeout_ms, default 30000, comparison semantics work_ms > timeout_ms including the boundary work_ms == timeout_ms → 'done' (C1/C2).",
+      "contract_ids": ["C1", "C2"],
+      "covered_by": ["T03", "T04"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "seam_integration",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A1"
+    },
+    {
+      "task_id": "T04",
+      "kind": "e2e_closure",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A5"
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Happy path across S1 and S2: job = make_job('j1', {'cmd': 'x'}, timeout_ms=500) → consumer.job_timeout(job) returns 500 (not the default 30000); engine.run_job(job, 400) returns status 'done'.",
+      "covers": ["S1", "S2"],
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v → OK (unmodified fixture e2e test)"
+    },
+    {
+      "id": "E2",
+      "scenario": "Engine boundary across S2: job = make_job('j2', {'cmd': 'y'}, timeout_ms=100) → engine.run_job(job, 50) returns status 'done'; engine.run_job(job, 150) returns status 'timeout'.",
+      "covers": ["S2"],
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_engine_timeout -v → OK (unmodified fixture e2e test)"
+    },
+    {
+      "id": "E3",
+      "scenario": "Failure/bad-input scenarios across S1 (and default path of S2): job = {'id': 'x', 'payload': {}} with no timeout keys → consumer.job_timeout returns 30000 without raising, and engine.run_job(job, 31000) returns status 'timeout' via the default; job with only the draft key {'timeout': 123} → consumer returns 123 (DA-1 backward-compatible fallback).",
+      "covers": ["S1", "S2"],
+      "evidence": "python -m unittest tests.test_wire_contract tests.integration.test_timeout_seam -v → 'Ran 8 tests ... OK' (T02/T03 suites carry these scenarios)"
+    },
+    {
+      "id": "E4",
+      "scenario": "Final-acceptance closure (kinds e2e_closure + final_acceptance merged into T04 for this small plan, recorded per integration-planner rule): full unittest discovery over tests/ from the repo root runs exactly 15 tests with 0 failures and 0 errors, covering A1-A4.",
+      "covers": ["S1", "S2"],
+      "evidence": "python -m unittest discover -s tests -v → 'Ran 15 tests ... OK'"
+    }
+  ]
+}

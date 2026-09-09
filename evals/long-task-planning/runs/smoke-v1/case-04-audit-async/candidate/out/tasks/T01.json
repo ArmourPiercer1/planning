@@ -1,0 +1,95 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Replace the synchronous 'audit' table insert in handle_transfer (ledger/api.py) with a bus.publish on topic 'audit' in the frozen 5-field format, isolate publish failures so the handler still returns {'ok': True} for a valid transfer, and adjust tests/test_ledger.py so TestApi asserts the publish flow instead of the direct audit row.",
+  "required_context": {
+    "files": [
+      "ledger/api.py",
+      "ledger/events.py",
+      "ledger/db.py",
+      "ledger/worker.py",
+      "tests/test_ledger.py"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": [
+      "in-process pub/sub: subscribe/publish, in-order delivery, V1 subscriber-exception propagation",
+      "handler-level isolation of publish failures (try/except around bus.publish)",
+      "backward-compatible wire format: event key set exactly AUDIT_EVENT_FIELDS"
+    ]
+  },
+  "inputs": ["frozen specs C1/C2/C3 in out/stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "out/stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "out/stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "out/stage-contract.json#shared_contracts[C3]" }
+  ],
+  "owned_paths": ["ledger/api.py", "tests/test_ledger.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "changes to ledger/events.py, ledger/db.py, ledger/worker.py",
+    "changing the values of AUDIT_EVENT_FIELDS or AUDIT_TOPIC (C1)",
+    "changing the transactions row shape, its ordering before the publish, or the bad-amount rejection (C2)",
+    "adding dependencies, threads, or a queue (A-1, DA-1)"
+  ],
+  "implementation_constraints": [
+    "stdlib only; unittest style matching tests/test_ledger.py",
+    "handle_transfer keeps its exact signature (C2)",
+    "the transactions insert stays first and unchanged; bus.publish happens after it",
+    "isolation: wrap the bus.publish call in try/except Exception and still return {'ok': True} on a raise — no re-raise, no response-shape change (A-2)",
+    "update the handle_transfer docstring to describe the new publish flow (the legacy comment is removed)"
+  ],
+  "deliverables": [
+    { "what": "publish path + publish-failure isolation in handle_transfer", "where": "ledger/api.py" },
+    { "what": "adjusted TestApi: publish-spy test, isolation test, bad-amount no-event test; TestStore/TestBus/TestWorker unchanged", "where": "tests/test_ledger.py" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T01-A1",
+      "case": "positive",
+      "description": "handle_transfer returns {'ok': True}; a spy subscriber on 'audit' captures exactly 1 event whose key set equals set(AUDIT_EVENT_FIELDS) with values matching the transfer arguments; with no subscriber the 'audit' table stays empty and the 'transactions' table holds exactly 1 row",
+      "evidence": "python -m unittest tests.test_ledger.TestApi.test_transfer_publishes_audit_event -v -> OK (test passes)"
+    },
+    {
+      "id": "T01-A2",
+      "case": "failure",
+      "description": "an audit subscriber that raises RuntimeError leaves handle_transfer returning {'ok': True} with the transactions row written and no exception escaping the handler",
+      "evidence": "python -m unittest tests.test_ledger.TestApi.test_transfer_ok_when_audit_consumer_raises -v -> OK (test passes)"
+    },
+    {
+      "id": "T01-A3",
+      "case": "negative",
+      "description": "amount <= 0 returns {'ok': False, 'error': 'bad-amount'}; the spy captures 0 events and no transactions row is written",
+      "evidence": "python -m unittest tests.test_ledger.TestApi.test_bad_amount_rejected_no_event -v -> OK (test passes)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "bus.publish raises because a subscriber raised during delivery",
+      "expected_behavior": "the handler swallows the exception and returns {'ok': True}; the transactions row is already in the store because the insert happens before the publish"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "T04 exercises this publish path end-to-end; the isolation behavior (C2) is gate E2. The only existing test changed is TestApi.test_transfer_ok_and_audit_written, rewritten to subscribe a spy/consumer — the task explicitly moves audit persistence off the request path."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["api", "e2e"],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Modify pipeline/consumer.py job_timeout to resolve the frozen C1 timeout chain (job['timeout_ms'] → job['timeout'] draft-key fallback → DEFAULT_TIMEOUT_MS 30000) so the consumer sees the producer-set timeout; make tests/test_pipeline_e2e.py::test_pipeline_e2e_effective_timeout pass without changing producer.py, engine.py, or any existing test file.",
+  "required_context": {
+    "files": [
+      "pipeline/consumer.py",
+      "pipeline/producer.py",
+      "tests/test_consumer.py",
+      "tests/test_pipeline_e2e.py"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "job wire format: dict with keys id, payload, timeout_ms",
+      "C1 fallback precedence: timeout_ms > timeout > DEFAULT_TIMEOUT_MS (DA-1)",
+      "unittest invocation from repo root (python -m unittest)"
+    ]
+  },
+  "inputs": [
+    "frozen C1 spec (stage-contract.json → shared_contracts[C1])",
+    "frozen C2 spec (stage-contract.json → shared_contracts[C2])",
+    "DA-1 decision (stage-contract.json → frozen_architecture[DA-1])"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["pipeline/consumer.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not rename or drop 'timeout_ms' in pipeline/producer.py",
+    "Do not change engine.run_job logic or comparison semantics (C2 frozen)",
+    "Do not edit tests/test_producer.py, tests/test_consumer.py, or tests/test_pipeline_e2e.py",
+    "Do not add new dependencies, configuration, or public APIs",
+    "Do not add retry/queue/async job features or payload-schema changes"
+  ],
+  "implementation_constraints": [
+    "Stdlib only — no new imports beyond those consumer.py already has",
+    "Keep DEFAULT_TIMEOUT_MS = 30000 and the existing module docstring style",
+    "job_timeout must return int milliseconds in every branch (timeout_ms hit, fallback hit, default)",
+    "No file changes outside owned_paths; every other repo file is read-only for this task"
+  ],
+  "deliverables": [
+    { "what": "job_timeout implementing the C1 resolution chain (timeout_ms → timeout → DEFAULT_TIMEOUT_MS)", "where": "pipeline/consumer.py" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T01-AT1",
+      "case": "positive",
+      "description": "consumer.job_timeout(producer.make_job('j1', {'cmd': 'x'}, timeout_ms=500)) returns 500",
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v → 'Ran 1 test ... OK'"
+    },
+    {
+      "id": "T01-AT2",
+      "case": "positive",
+      "description": "consumer.job_timeout(producer.make_job('j2', {'cmd': 'y'})) returns 30000 (default timeout_ms branch)",
+      "evidence": "python -m unittest tests.test_consumer -v → 'Ran 3 tests ... OK', exit code 0 (test_job_timeout_default green)"
+    },
+    {
+      "id": "T01-AT3",
+      "case": "negative",
+      "description": "consumer.job_timeout({'timeout': 123}) returns 123 — the draft-key fallback required by DA-1 is preserved",
+      "evidence": "python -m unittest tests.test_consumer.TestConsumer.test_job_timeout_reads_consumer_key -v → OK, exit code 0"
+    },
+    {
+      "id": "T01-AT4",
+      "case": "failure",
+      "description": "If the 'timeout_ms' branch is missing, the e2e test fails with assertEqual(500) receiving 30000 — this distinguishes a resolution-order bug from a default-return bug",
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v → FAIL with '30000 != 500' when job_timeout still reads only 'timeout'"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "job carries only the draft key: {'timeout': 123}",
+      "expected_behavior": "job_timeout returns 123 (fallback branch), not 30000"
+    },
+    {
+      "scenario": "job is an empty dict {}",
+      "expected_behavior": "job_timeout returns 30000 (DEFAULT_TIMEOUT_MS branch), no exception"
+    },
+    {
+      "scenario": "job carries both 'timeout_ms': 500 and 'timeout': 123",
+      "expected_behavior": "job_timeout returns 500 — timeout_ms wins per C1 precedence order"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "Checkpoint must record: final job_timeout resolution order; confirmation that producer.py, engine.py, and the three existing test files are byte-identical to baseline; any deviation from the C1 chain as a CONTRACT_CHANGE_REQUEST (never an inline key rename)."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-60 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

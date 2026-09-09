@@ -1,0 +1,11 @@
+﻿{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\prompt.md"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\task.md"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\pipeline\\__init__.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\pipeline\\producer.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\pipeline\\engine.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\pipeline\\consumer.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\tests\\test_producer.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\tests\\test_consumer.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\tests\\test_pipeline_e2e.py"}
+{"ts":"2026-09-09T13:48:47.5669544Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\work\\repo\\tests\\__init__.py"}
+{"ts":"2026-09-09T13:49:36.2965362Z","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\out\\plan.md"}

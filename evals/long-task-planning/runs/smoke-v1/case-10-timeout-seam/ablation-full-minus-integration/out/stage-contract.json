@@ -1,0 +1,171 @@
+{
+  "schema": "planning/stage-contract@1",
+  "stage_id": "fix-job-pipeline-timeout-seam",
+  "objective": "Fix the job pipeline timeout defect so the producer-set timeout reaches downstream consumers: job_timeout in pipeline/consumer.py resolves the frozen wire key timeout_ms first (draft 'timeout' key kept only as a deprecated fallback), producer and engine stay unchanged, every existing test case remains green unmodified, and tests/test_pipeline_e2e.py goes fully green.",
+  "in_scope": [
+    "Explicit, frozen decision of which side adapts to the wire contract (recorded as DA-1: the consumer side adapts)",
+    "Change job_timeout in pipeline/consumer.py to resolve timeout_ms (authoritative) -> 'timeout' (deprecated fallback) -> DEFAULT_TIMEOUT_MS (30000)",
+    "Add unit tests in tests/test_consumer.py covering the resolution order (additive only; existing test cases untouched)",
+    "Add e2e seam regression tests in tests/test_pipeline_e2e.py (additive only; existing test cases untouched)",
+    "Whole test suite green: tests/test_producer.py, tests/test_consumer.py, tests/test_pipeline_e2e.py (pytest exit code 0)"
+  ],
+  "out_of_scope": [
+    {
+      "item": "Removing the draft 'timeout' key fallback from consumer.job_timeout",
+      "reason": "removal changes observable behavior for legacy jobs and would break the existing green unit test that pins the draft key; defer to a later Stage once all producers are known to emit only timeout_ms"
+    },
+    {
+      "item": "Any change to pipeline/producer.py (key rename, signature, default value)",
+      "reason": "producer's timeout_ms is the frozen reference wire contract per DA-1; renaming on the producer side would also force engine and 2 green producer unit tests to change, violating 'do not rename keys on both sides'"
+    },
+    {
+      "item": "Any change to pipeline/engine.py semantics (comparison operator, status literals, default)",
+      "reason": "task constraint: do not change the simulated carrier/engine semantics beyond the fix; engine already consumes the wire key and is green"
+    },
+    {
+      "item": "Introducing a real transport/serialization layer between producer, engine, and consumer",
+      "reason": "the simulated pass-through job dict is the carrier; adding a serializer changes carrier semantics beyond the fix"
+    },
+    {
+      "item": "Extending consumer.validate_job (e.g. type-checking timeout_ms, range checks)",
+      "reason": "validate_job is not part of the defect; changing it alters a behavior no in-scope task needs and would add a new contract obligation"
+    }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-1",
+      "statement": "The job dict is the wire carrier: producer, engine, and consumer exchange the same dict object with no serializer in between",
+      "rationale": "tests/test_pipeline_e2e.py passes producer.make_job output directly to consumer.job_timeout and engine.run_job; no encoding layer exists anywhere in the repo"
+    },
+    {
+      "id": "A-2",
+      "statement": "timeout_ms and work_ms are integers in the same unit (milliseconds)",
+      "rationale": "field names and the engine comparison (work_ms > timeout_ms) plus the e2e expectations (timeout_ms=100 with work_ms 50 -> done, 150 -> timeout) are consistent only under one shared unit"
+    },
+    {
+      "id": "A-3",
+      "statement": "Every job in this system is emitted by producer.make_job and therefore carries timeout_ms; the draft 'timeout' key has no in-repo emitter",
+      "rationale": "only consumer.py references the 'timeout' key; keeping it as a fallback is migration tolerance, not a live dual contract, so the fallback cannot mask a second wire format"
+    },
+    {
+      "id": "A-4",
+      "statement": "The baseline failure is exactly one test (test_pipeline_e2e_effective_timeout, consumer job_timeout returns 30000 instead of 500) and all other tests pass",
+      "rationale": "verified by running the suite on the baseline fixture: '1 failed, 6 passed'; the task statement and the e2e file docstring agree with this result"
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-1",
+      "decision": "The consumer side adapts to the wire contract: timeout_ms (the producer's key) is the authoritative timeout field on the wire; the consumer's draft 'timeout' key is demoted to a deprecated, lower-priority fallback. No key is renamed on the producer side or the engine side, and no job is ever written with both keys by this stage.",
+      "rationale": "producer's timeout_ms is documented as the producer contract, is already consumed by engine, and is pinned by 2 green producer unit tests plus the green engine e2e case; the consumer's 'timeout' key is explicitly a draft (consumer.py NOTE) with no in-repo emitter. Consumer-side adaptation satisfies the task's mandatory decision, keeps every existing unit test green with zero test edits (the fallback preserves test_job_timeout_reads_consumer_key), and leaves engine semantics untouched.",
+      "seams_affected": ["S1"]
+    },
+    {
+      "id": "DA-2",
+      "decision": "The code fix is confined to pipeline/consumer.py; test work is additive-only in tests/test_consumer.py and tests/test_pipeline_e2e.py. No new modules, no package layout change, no new dependencies.",
+      "rationale": "smallest diff that implements DA-1; keeps the defect locally recoverable (a failed leaf invalidates only its own files) and preserves the green baseline for everything outside the seam",
+      "seams_affected": ["S1", "S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "schema",
+      "spec": "Job wire schema (pre-existing, frozen): producer.make_job(job_id, payload, timeout_ms=30000) returns exactly {'id': <job_id>, 'payload': <payload>, 'timeout_ms': <int ms>}; timeout_ms is the authoritative timeout key on the wire. Engine consumes it via job.get('timeout_ms', 30000) with the strict comparison work_ms > timeout_ms -> status 'timeout', else status 'done'. Producer and engine behavior is frozen as-is for this stage; any change to the job dict shape, key names, or the engine comparison is out of scope.",
+      "owned_by": "user-provided",
+      "frozen": true,
+      "unfreeze_rule": "any change to the job dict shape, key names, defaults, or engine comparison is a CONTRACT_CHANGE_REQUEST decided by the planning layer"
+    },
+    {
+      "id": "C2",
+      "kind": "service",
+      "spec": "Consumer timeout resolution (frozen by DA-1): job_timeout(job) returns job['timeout_ms'] if that key is present, else job['timeout'] (deprecated draft key, fallback only) if that key is present, else DEFAULT_TIMEOUT_MS (30000). validate_job is unchanged: it raises ValueError when 'id' or 'payload' is missing and returns True otherwise. DEFAULT_TIMEOUT_MS stays defined in pipeline/consumer.py with value 30000.",
+      "owned_by": "T01",
+      "frozen": true,
+      "unfreeze_rule": "any change to the resolution order, the fallback policy, or validate_job semantics is a CONTRACT_CHANGE_REQUEST"
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "Producer -> consumer wire hand-off: the job dict from producer.make_job is parsed by consumer.job_timeout / consumer.validate_job; the timeout defect lives exactly at this seam (timeout_ms emitted, draft 'timeout' expected)",
+      "participants": ["pipeline/producer.py", "pipeline/consumer.py"],
+      "contract_ids": ["C1", "C2"]
+    },
+    {
+      "id": "S2",
+      "description": "Producer -> engine wire hand-off: the job dict from producer.make_job is executed by engine.run_job; already consistent (both sides use timeout_ms) and frozen unchanged in this stage",
+      "participants": ["pipeline/producer.py", "pipeline/engine.py"],
+      "contract_ids": ["C1"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "Consumer returns the producer-set timeout at the S1 seam (the baseline defect is that it returns the default 30000 instead)",
+      "positive_case": "producer.make_job('j1', {'cmd': 'x'}, timeout_ms=500) -> consumer.job_timeout(job) returns 500",
+      "negative_case": "a job dict with no timeout_ms but timeout=123 -> job_timeout returns 123 (deprecated fallback); a job dict with neither key -> job_timeout returns 30000 (DEFAULT_TIMEOUT_MS)",
+      "failure_behavior": "if timeout_ms is not honored, job_timeout returns 30000 for the positive case and pytest fails test_pipeline_e2e_effective_timeout with assertion 30000 != 500, exactly as in the baseline",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_effective_timeout -> passed (baseline: failed)"
+    },
+    {
+      "id": "A2",
+      "description": "Full suite green with zero modifications to existing test cases (additive tests only)",
+      "positive_case": "python -m pytest tests/ from the repo root exits 0 with all producer, consumer, and e2e tests passing, including the new regression tests",
+      "negative_case": "any existing test case modified, removed, or skipped fails acceptance even when the pytest exit code is 0 (checked by diff of the three pre-existing test files' original cases)",
+      "failure_behavior": "pytest exits non-zero; the failing test name localizes the defect to T01 (consumer resolution) or to a T02 regression case, so one leaf's failure invalidates only its own subgraph",
+      "evidence": "pytest tests/ -> exit code 0, 0 failed (baseline: exactly 1 failed, 6 passed)"
+    },
+    {
+      "id": "A3",
+      "description": "Engine returns unchanged statuses at the S2 seam (frozen): work_ms above timeout_ms -> status 'timeout', work_ms at or below -> status 'done'",
+      "positive_case": "engine.run_job(job with timeout_ms=100, work_ms=50) returns {'id': 'j2', 'status': 'done'}; engine.run_job(job with timeout_ms=100, work_ms=150) returns status 'timeout'",
+      "negative_case": "work_ms equal to timeout_ms (100 vs 100) returns status 'done' because the frozen comparison is strict (work_ms > timeout_ms)",
+      "failure_behavior": "any change to the comparison, the status literals, or the default in pipeline/engine.py or pipeline/producer.py raises a CONTRACT_CHANGE_REQUEST (C-class), not an inline fix",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_engine_timeout -> passed; diff of pipeline/ shows producer.py and engine.py unmodified"
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "process",
+      "rule": "exactly one side adapts to the wire key (the consumer, per DA-1); renaming keys on both sides - e.g. switching producer to emit 'timeout' - is forbidden"
+    },
+    {
+      "kind": "process",
+      "rule": "pipeline/engine.py and pipeline/producer.py must be byte-identical at stage close (no semantic or cosmetic change)"
+    },
+    {
+      "kind": "dependency",
+      "rule": "no new dependencies; stdlib plus the existing test runner (unittest/pytest) only"
+    },
+    {
+      "kind": "style",
+      "rule": "existing test methods stay byte-identical; all new tests are additive (new test methods inside the existing test files)"
+    }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 4,
+    "stage_estimate": "2-4 dev-hours (two small sequential leaves plus verification)"
+  },
+  "allowed_replan": [
+    "split",
+    "merge",
+    "change_dependency",
+    "defer",
+    "reduce_scope",
+    "replace_route",
+    "checkpoint_and_split",
+    "request_contract_revision"
+  ],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Which side adapts to the wire contract - the producer's timeout_ms or the consumer's draft 'timeout' key?",
+      "blocking": true,
+      "owner": "planner",
+      "resolution": "resolved in this contract by frozen decision DA-1: the consumer side adapts - timeout_ms becomes the authoritative wire key, the draft 'timeout' key is kept only as a deprecated lower-priority fallback; rationale recorded on DA-1 (producer key is the documented contract, already consumed by engine and pinned by 3 green tests; consumer key is an explicitly drafted, emitter-less key)"
+    }
+  ]
+}

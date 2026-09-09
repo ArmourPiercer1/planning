@@ -1,0 +1,165 @@
+{
+  "schema": "planning/stage-contract@1",
+  "stage_id": "case-06-payslip-summary",
+  "objective": "Add a deterministic 2-decimal summary line as the final line of every rendered payslip, and make compute_pay's deduction list deterministic by sorting it by name, so all compute_pay consumers (payslip and legacy export) are stable, with new tests for both changes and all existing tests kept passing.",
+  "in_scope": [
+    "payroll/calc.py: compute_pay returns the deductions list sorted by name (insurance before tax); amounts, rates, and rounding unchanged",
+    "payroll/payslip.py: render_payslip appends a final line in the exact form 'Summary: net=<net> gross=<gross> deductions=<total>' with all three values formatted to 2 decimals and <total> the sum of all deduction amounts",
+    "New tests: exact-format summary line test in tests/test_payslip_summary.py (new file) and exact sorted-order test as a new method in the existing tests/test_payroll.py",
+    "New integration tests: contract-shape test tests/test_contract_shape.py (new) and E2E gate tests tests/test_payslip_integration.py (new)",
+    "Verification that payroll/legacy_export.py keeps passing with no code change and that its XML inherits the sorted deduction-element order with no other byte change"
+  ],
+  "out_of_scope": [
+    {
+      "item": "Code changes to payroll/legacy_export.py",
+      "reason": "Marked LEGACY (HR-4411, removal scheduled Q3): docstring says do not extend or refactor, keep the byte format stable until cutover; its existing substring tests keep passing under the reorder."
+    },
+    {
+      "item": "Adding a Summary line to the legacy XML export",
+      "reason": "The task defines the summary line as the final line of the payslip (render_payslip output); the XML format must stay byte-stable."
+    },
+    {
+      "item": "Changing deduction rates (20% tax, 5% insurance), the gross/net formula, or rounding",
+      "reason": "The task changes order and presentation only; existing test test_compute_pay_values pins the values 8000.0/1600.0/400.0/6000.0."
+    },
+    {
+      "item": "Changing fixture data in payroll/employees.py",
+      "reason": "Test fixture records e1/e2; the task does not ask for new employees or values."
+    },
+    {
+      "item": "Refactoring or migrating the test suite (pytest, moving existing test methods, splitting files)",
+      "reason": "The repo uses unittest; moving existing tests is a refactor unrelated to the two requested changes."
+    },
+    {
+      "item": "Removing legacy_export.py (HR-4411 Q3 cutover)",
+      "reason": "Tracked by a separate ticket; the cutover is not part of this stage."
+    }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-1",
+      "statement": "The deduction set stays exactly {tax: round(gross*0.20, 2), insurance: round(gross*0.05, 2)} as in calc.py today; only the order changes, never the amounts. Invalidated if the task is re-scoped to add, remove, or rename deductions.",
+      "rationale": "The task says make the existing list deterministic by sorting; existing tests pin all amounts."
+    },
+    {
+      "id": "A-2",
+      "statement": "The legacy_export 'keep the byte format stable until the cutover' requirement (HR-4411) means deterministic output across runs, not a frozen current insertion order: the task statement says sorting makes 'the payslip (and anything else built on compute_pay) stable', so the legacy XML deduction-element order becomes sorted (insurance before tax) and every other byte stays unchanged. Invalidated if the HR-4411 owner requires tax before insurance in the legacy XML.",
+      "rationale": "Both statements come from the same task text; the legacy test's substring assertions pass under the reorder either way."
+    },
+    {
+      "id": "A-3",
+      "statement": "The summary line is the last element of the list returned by render_payslip (appended after the 'Net: ...' line); render_payslip keeps returning list[str], not a joined string. Invalidated if a consumer requires a joined string or a different terminator.",
+      "rationale": "render_payslip currently returns list[str]; the task says the payslip 'must end with a final line', i.e. the last line of that artifact."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-1",
+      "decision": "The summary line is computed in payroll/payslip.py from the compute_pay result; payroll/calc.py stays a pure calculation returning {gross, deductions, net} with no formatting knowledge",
+      "rationale": "Keeps the current module responsibilities: calc computes, payslip presents. Formatting in calc would leak presentation into the calculation layer.",
+      "seams_affected": ["S1"]
+    },
+    {
+      "id": "DA-2",
+      "decision": "The legacy export path is unchanged structurally: legacy_export.py keeps reading compute_pay and rendering XML; only its deduction iteration order (inherited from compute_pay) changes",
+      "rationale": "HR-4411 forbids extending or refactoring legacy_export; the sort belongs in compute_pay so every consumer inherits it.",
+      "seams_affected": ["S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "service",
+      "spec": "payroll.calc.compute_pay(employee: dict with keys 'id','name','hourly','hours') -> dict with exactly the keys {'gross': float, 'deductions': list, 'net': float}; gross = round(hourly*hours, 2); deductions is a list of (name: str, amount: float) 2-tuples containing exactly ('tax', round(gross*0.20, 2)) and ('insurance', round(gross*0.05, 2)), sorted by name ascending (so 'insurance' precedes 'tax'); net = round(gross - sum(amounts), 2). Insertion order is no longer part of the contract.",
+      "owned_by": "T01",
+      "frozen": true,
+      "unfreeze_rule": "Only via a CONTRACT_CHANGE_REQUEST decided by the planning layer; executors may not edit the spec."
+    },
+    {
+      "id": "C2",
+      "kind": "data",
+      "spec": "payroll.payslip.render_payslip(employee_id: str) -> list[str] with exactly the elements ['Payslip for {name} ({id})', '', 'Gross: {gross:.2f}', '  - {name}: {amount:.2f}' for each deduction in compute_pay order, 'Net: {net:.2f}', 'Summary: net={net:.2f} gross={gross:.2f} deductions={total:.2f}'], where total = sum of all deduction amounts and the summary line is the last element. For e1 the last element is exactly 'Summary: net=6000.00 gross=8000.00 deductions=2000.00'; for e2 'Summary: net=2700.00 gross=3600.00 deductions=900.00'.",
+      "owned_by": "T02",
+      "frozen": true,
+      "unfreeze_rule": "Only via a CONTRACT_CHANGE_REQUEST decided by the planning layer; executors may not edit the spec."
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "payslip.py consumes the compute_pay result to render payslip lines including the new summary line; what can silently diverge: deduction-line order, the summary total, the 2-decimal formatting of the three values",
+      "participants": ["T01", "T02", "T04"],
+      "contract_ids": ["C1", "C2"]
+    },
+    {
+      "id": "S2",
+      "description": "legacy_export.py iterates compute_pay deductions to render the legacy XML; what can silently diverge: deduction-element order (byte stability vs deterministic sort per A-2), amount formatting",
+      "participants": ["T01", "T04"],
+      "contract_ids": ["C1"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "render_payslip returns a payslip whose final line is the exact 2-decimal summary line",
+      "positive_case": "For e1: asserts lines[-1] == 'Summary: net=6000.00 gross=8000.00 deductions=2000.00' and lines[-2] == 'Net: 6000.00'; for e2: asserts lines[-1] == 'Summary: net=2700.00 gross=3600.00 deductions=900.00'",
+      "negative_case": "A payslip whose final line is missing, or is 'Summary: net=6000 gross=8000 deductions=2000' (no 2 decimals), fails the exact-equality test; the legacy XML contains no 'Summary' line",
+      "failure_behavior": "render_payslip('e999') raises KeyError from employees.get_employee exactly as before the change; no summary line is rendered",
+      "evidence": "tests/test_payslip_summary.py::test_summary_line_exact_format (assertEqual on lines[-1]) and tests/test_payslip_integration.py::test_e2e_payslip_full_text, both run via python -m unittest"
+    },
+    {
+      "id": "A2",
+      "description": "compute_pay returns the deductions list sorted by name",
+      "positive_case": "asserts compute_pay(get_employee('e1'))['deductions'] == [('insurance', 400.0), ('tax', 1600.0)] and compute_pay(get_employee('e2'))['deductions'] == [('insurance', 180.0), ('tax', 720.0)]",
+      "negative_case": "The old insertion order [('tax', 1600.0), ('insurance', 400.0)] fails the new test with an assertEqual mismatch",
+      "failure_behavior": "If the sort is removed, the new test fails with the insertion-order list; there is no silent fallback to insertion order",
+      "evidence": "tests/test_payroll.py::TestCalc::test_deductions_sorted_by_name (assertEqual on the exact tuple list)"
+    },
+    {
+      "id": "A3",
+      "description": "All pre-change tests keep passing unmodified: the suite exits 0",
+      "positive_case": "The four pre-change test functions (test_compute_pay_values, test_deductions_covers_all_names, test_render_payslip_lines, test_export_shape) all report OK and the suite exits 0 with 0 errors",
+      "negative_case": "Any pre-change test erroring or failing fails this gate; existing test bodies must not be rewritten to make them pass",
+      "failure_behavior": "A non-zero exit code from python -m unittest discover blocks stage closure",
+      "evidence": "python -m unittest discover -s tests -p 'test_*.py' from the repo root → 'OK', exit code 0"
+    },
+    {
+      "id": "A4",
+      "description": "export_employee_xml returns byte-stable legacy XML with structure and values unchanged; only the deduction element order follows C1",
+      "positive_case": "asserts export_employee_xml('e1') contains '<gross>8000.00</gross>' and '<net>6000.00</net>', that '<deduction name=\"insurance\">400.00</deduction>' precedes '<deduction name=\"tax\">1600.00</deduction>', and that two consecutive calls return identical strings",
+      "negative_case": "The XML contains no new tags, no new attributes, no whitespace change, and no 'Summary' content",
+      "failure_behavior": "A byte difference between two consecutive calls fails the E2E gate (non-deterministic output)",
+      "evidence": "tests/test_payslip_integration.py::test_e2e_deterministic_renders (assertEqual on two calls) and ::test_e2e_legacy_export_order (ordered substring assertions)"
+    },
+    {
+      "id": "A5",
+      "description": "The contract-shape test verifies the final implementations match the frozen C1/C2 specs exactly",
+      "positive_case": "The shape test asserts compute_pay returns exactly the keys {gross, deductions, net}, deductions is a list of (str, float) 2-tuples sorted by name, and render_payslip's last element matches the regex '^Summary: net=\\d+\\.\\d{2} gross=\\d+\\.\\d{2} deductions=\\d+\\.\\d{2}$'; all tests pass",
+      "negative_case": "An extra return key, a non-tuple deduction entry, an unsorted list, or a summary line without exactly 2 decimals fails a shape test",
+      "failure_behavior": "A shape test fails with the assertion diff; the integration task records the mismatch instead of patching the module",
+      "evidence": "tests/test_contract_shape.py (new) → python -m unittest tests.test_contract_shape -v → OK"
+    }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "No new runtime or test dependencies; stdlib + unittest only" },
+    { "kind": "style", "rule": "Keep the existing unittest style and naming of tests/test_payroll.py; new test files follow the same style" },
+    { "kind": "process", "rule": "Each task modifies only its owned_paths; payroll/legacy_export.py and payroll/employees.py are read-only for all tasks" },
+    { "kind": "performance", "rule": "No performance target beyond the existing pure-function implementation; sorting a 2-element list is trivial" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 2,
+    "stage_estimate": "2-4 h of agent time (two parallel leaves, then sequential integration gates)"
+  },
+  "allowed_replan": ["split", "merge", "change_dependency", "reduce_scope", "checkpoint_and_split", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does the HR-4411 'keep the byte format stable' requirement forbid reordering deduction elements in the legacy XML?",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "Resolved by the task text itself: it explicitly says sorting makes 'the payslip (and anything else built on compute_pay) stable', so the reorder is in scope and all other bytes stay unchanged (assumption A-2). If the HR-4411 owner objects, raise request_contract_revision against C1."
+    }
+  ]
+}

@@ -1,0 +1,789 @@
+{
+  "run_id": "smoke-v1",
+  "per_variant": {
+    "baseline-a": {
+      "metrics": [
+        {
+          "metric": "Contract completeness",
+          "direction": "higher",
+          "mean": 0.6667,
+          "min": 0.5556,
+          "max": 0.7778,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-06-payslip-summary"
+        },
+        {
+          "metric": "Acceptance determinism",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Context locality (amplification proxy)",
+          "direction": "lower",
+          "mean": 1.2257,
+          "min": 1.0,
+          "max": 1.455,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Hazardous ownership collisions",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Dependency precision (must-have hit rate)",
+          "direction": "higher",
+          "mean": 0.2778,
+          "min": 0.0,
+          "max": 0.5,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Integration explicitness (case reqs met)",
+          "direction": "higher",
+          "mean": 0.1667,
+          "min": 0.0,
+          "max": 0.5,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Phase-shaped leaves",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Local recoverability",
+          "direction": "higher",
+          "mean": null,
+          "min": null,
+          "max": null,
+          "measured_runs": 0,
+          "total_runs": 3,
+          "worst_run_case": null
+        },
+        {
+          "metric": "Scope discipline",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        }
+      ],
+      "e_vector": {
+        "success": {
+          "mean": 1.0,
+          "n": 3
+        },
+        "wall_time": {
+          "mean": 325.1666666666667,
+          "n": 3
+        },
+        "tokens": {
+          "mean": null,
+          "n": 0
+        },
+        "context_read": {
+          "mean": 1.2256666666666667,
+          "n": 3
+        },
+        "rework": {
+          "mean": null,
+          "n": 0
+        },
+        "integration_defects": {
+          "mean": null,
+          "n": 0
+        },
+        "scope_creep": {
+          "mean": 0.0,
+          "n": 3
+        },
+        "replans": {
+          "mean": null,
+          "n": 0
+        },
+        "compactions": {
+          "mean": null,
+          "n": 0
+        },
+        "local_recoverability": {
+          "mean": null,
+          "n": 0
+        }
+      },
+      "gaming_flags": {
+        "G1_OVER_FRAGMENTED": [
+          "case-04-audit-async: 28 task lines > range max 6",
+          "case-06-payslip-summary: 50 task lines > range max 4",
+          "case-10-timeout-seam: 33 task lines > range max 5"
+        ],
+        "G2_ALL_SERIAL": [
+          "case-04-audit-async: no parallelism mentioned anywhere in the plan"
+        ],
+        "G3_CONTEXT_STARVATION": [
+          "case-04-audit-async: 27/28 task lines mention no repo file",
+          "case-06-payslip-summary: 41/50 task lines mention no repo file",
+          "case-10-timeout-seam: 22/33 task lines mention no repo file"
+        ]
+      },
+      "judge_pending": [
+        "case-04-audit-async/baseline-a: recoverability — prose plans do not declare checkpoint/recovery structure",
+        "case-06-payslip-summary/baseline-a: recoverability — prose plans do not declare checkpoint/recovery structure",
+        "case-10-timeout-seam/baseline-a: recoverability — prose plans do not declare checkpoint/recovery structure"
+      ],
+      "runs": 3
+    },
+    "baseline-b": {
+      "metrics": [
+        {
+          "metric": "Contract completeness",
+          "direction": "higher",
+          "mean": 0.6667,
+          "min": 0.5556,
+          "max": 0.7778,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-06-payslip-summary"
+        },
+        {
+          "metric": "Acceptance determinism",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Context locality (amplification proxy)",
+          "direction": "lower",
+          "mean": 1.3097,
+          "min": 1.0,
+          "max": 1.818,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Hazardous ownership collisions",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Dependency precision (must-have hit rate)",
+          "direction": "higher",
+          "mean": 0.1667,
+          "min": 0.0,
+          "max": 0.5,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Integration explicitness (case reqs met)",
+          "direction": "higher",
+          "mean": 0.3333,
+          "min": 0.0,
+          "max": 0.5,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-06-payslip-summary"
+        },
+        {
+          "metric": "Phase-shaped leaves",
+          "direction": "lower",
+          "mean": 0.3333,
+          "min": 0,
+          "max": 1,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Local recoverability",
+          "direction": "higher",
+          "mean": null,
+          "min": null,
+          "max": null,
+          "measured_runs": 0,
+          "total_runs": 3,
+          "worst_run_case": null
+        },
+        {
+          "metric": "Scope discipline",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        }
+      ],
+      "e_vector": {
+        "success": {
+          "mean": 1.0,
+          "n": 3
+        },
+        "wall_time": {
+          "mean": 277.09999999999997,
+          "n": 3
+        },
+        "tokens": {
+          "mean": null,
+          "n": 0
+        },
+        "context_read": {
+          "mean": 1.3096666666666668,
+          "n": 3
+        },
+        "rework": {
+          "mean": null,
+          "n": 0
+        },
+        "integration_defects": {
+          "mean": null,
+          "n": 0
+        },
+        "scope_creep": {
+          "mean": 0.0,
+          "n": 3
+        },
+        "replans": {
+          "mean": null,
+          "n": 0
+        },
+        "compactions": {
+          "mean": null,
+          "n": 0
+        },
+        "local_recoverability": {
+          "mean": null,
+          "n": 0
+        }
+      },
+      "gaming_flags": {
+        "G1_OVER_FRAGMENTED": [
+          "case-04-audit-async: 58 task lines > range max 6",
+          "case-06-payslip-summary: 52 task lines > range max 4",
+          "case-10-timeout-seam: 49 task lines > range max 5"
+        ],
+        "G2_ALL_SERIAL": [
+          "case-04-audit-async: no parallelism mentioned anywhere in the plan"
+        ],
+        "G3_CONTEXT_STARVATION": [
+          "case-04-audit-async: 49/58 task lines mention no repo file",
+          "case-06-payslip-summary: 41/52 task lines mention no repo file",
+          "case-10-timeout-seam: 38/49 task lines mention no repo file"
+        ]
+      },
+      "judge_pending": [
+        "case-04-audit-async/baseline-b: recoverability — prose plans do not declare checkpoint/recovery structure",
+        "case-06-payslip-summary/baseline-b: recoverability — prose plans do not declare checkpoint/recovery structure",
+        "case-10-timeout-seam/baseline-b: recoverability — prose plans do not declare checkpoint/recovery structure"
+      ],
+      "runs": 3
+    },
+    "candidate": {
+      "metrics": [
+        {
+          "metric": "Contract completeness",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Acceptance determinism",
+          "direction": "higher",
+          "mean": 0.9117,
+          "min": 0.881,
+          "max": 0.9412,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Context locality (amplification proxy)",
+          "direction": "lower",
+          "mean": 3.1667,
+          "min": 2.25,
+          "max": 5.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Hazardous ownership collisions",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Dependency precision (must-have hit rate)",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Integration explicitness (case reqs met)",
+          "direction": "higher",
+          "mean": 0.6667,
+          "min": 0.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-06-payslip-summary"
+        },
+        {
+          "metric": "Phase-shaped leaves",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Local recoverability",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 1,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        },
+        {
+          "metric": "Scope discipline",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 3,
+          "total_runs": 3,
+          "worst_run_case": "case-04-audit-async"
+        }
+      ],
+      "e_vector": {
+        "success": {
+          "mean": 1.0,
+          "n": 3
+        },
+        "wall_time": {
+          "mean": 2068.6,
+          "n": 3
+        },
+        "tokens": {
+          "mean": null,
+          "n": 0
+        },
+        "context_read": {
+          "mean": 13.5,
+          "n": 3
+        },
+        "rework": {
+          "mean": 0.0154,
+          "n": 1
+        },
+        "integration_defects": {
+          "mean": 0.0,
+          "n": 1
+        },
+        "scope_creep": {
+          "mean": 0.0,
+          "n": 3
+        },
+        "replans": {
+          "mean": 0.3333333333333333,
+          "n": 3
+        },
+        "compactions": {
+          "mean": null,
+          "n": 0
+        },
+        "local_recoverability": {
+          "mean": 1.0,
+          "n": 2
+        }
+      },
+      "gaming_flags": {},
+      "judge_pending": [],
+      "runs": 3
+    },
+    "ablation-full-minus-integration": {
+      "metrics": [
+        {
+          "metric": "Contract completeness",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Acceptance determinism",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Context locality (amplification proxy)",
+          "direction": "lower",
+          "mean": 4.0,
+          "min": 4.0,
+          "max": 4.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Hazardous ownership collisions",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Dependency precision (must-have hit rate)",
+          "direction": "higher",
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Integration explicitness (case reqs met)",
+          "direction": "higher",
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Phase-shaped leaves",
+          "direction": "lower",
+          "mean": 0.0,
+          "min": 0,
+          "max": 0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        },
+        {
+          "metric": "Local recoverability",
+          "direction": "higher",
+          "mean": null,
+          "min": null,
+          "max": null,
+          "measured_runs": 0,
+          "total_runs": 1,
+          "worst_run_case": null
+        },
+        {
+          "metric": "Scope discipline",
+          "direction": "higher",
+          "mean": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "measured_runs": 1,
+          "total_runs": 1,
+          "worst_run_case": "case-10-timeout-seam"
+        }
+      ],
+      "e_vector": {
+        "success": {
+          "mean": 0.0,
+          "n": 1
+        },
+        "wall_time": {
+          "mean": 1333.6,
+          "n": 1
+        },
+        "tokens": {
+          "mean": null,
+          "n": 0
+        },
+        "context_read": {
+          "mean": 4.0,
+          "n": 1
+        },
+        "rework": {
+          "mean": null,
+          "n": 0
+        },
+        "integration_defects": {
+          "mean": null,
+          "n": 0
+        },
+        "scope_creep": {
+          "mean": 0.0,
+          "n": 1
+        },
+        "replans": {
+          "mean": 0.0,
+          "n": 1
+        },
+        "compactions": {
+          "mean": null,
+          "n": 0
+        },
+        "local_recoverability": {
+          "mean": null,
+          "n": 0
+        }
+      },
+      "gaming_flags": {},
+      "judge_pending": [],
+      "runs": 1
+    }
+  },
+  "runs": [
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-04-audit-async",
+      "planner_variant": "baseline-a",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 310.9,
+        "tokens": null,
+        "context_read": 1.0,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-04-audit-async",
+      "planner_variant": "baseline-b",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 290.7,
+        "tokens": null,
+        "context_read": 1.111,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-04-audit-async",
+      "planner_variant": "candidate",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 1942.8,
+        "tokens": null,
+        "context_read": 2.25,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": 1,
+        "compactions": null,
+        "local_recoverability": 1.0
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-06-payslip-summary",
+      "planner_variant": "baseline-a",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 340.5,
+        "tokens": null,
+        "context_read": 1.222,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-06-payslip-summary",
+      "planner_variant": "baseline-b",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 229.5,
+        "tokens": null,
+        "context_read": 1.0,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-06-payslip-summary",
+      "planner_variant": "candidate",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 1546.6,
+        "tokens": null,
+        "context_read": 2.25,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": 0,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-10-timeout-seam",
+      "planner_variant": "ablation-full-minus-integration",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": false,
+        "wall_time": 1333.6,
+        "tokens": null,
+        "context_read": 4.0,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": 0,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-10-timeout-seam",
+      "planner_variant": "baseline-a",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 324.1,
+        "tokens": null,
+        "context_read": 1.455,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-10-timeout-seam",
+      "planner_variant": "baseline-b",
+      "model": "host-session-model",
+      "phase": "planning-only",
+      "e_vector": {
+        "success": true,
+        "wall_time": 311.1,
+        "tokens": null,
+        "context_read": 1.818,
+        "rework": null,
+        "integration_defects": null,
+        "scope_creep": 0,
+        "replans": null,
+        "compactions": null,
+        "local_recoverability": null
+      }
+    },
+    {
+      "run_id": "smoke-v1",
+      "case_id": "case-10-timeout-seam",
+      "planner_variant": "candidate",
+      "model": "host-session-model",
+      "phase": "planning+execution",
+      "e_vector": {
+        "success": true,
+        "wall_time": 2716.4,
+        "tokens": null,
+        "context_read": 36,
+        "rework": 0.0154,
+        "integration_defects": 0,
+        "scope_creep": 0,
+        "replans": 0,
+        "compactions": null,
+        "local_recoverability": 1.0
+      }
+    }
+  ]
+}

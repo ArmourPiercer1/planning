@@ -1,0 +1,85 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "FAIL",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Fresh isolated auditor; inputs limited to the plan directory (input.md, stage-contract.json, candidate-tasks.json, dag.json, tasks/T01.json, tasks/T02.json, risk-estimates.json, run-manifest.json), the plan-auditor skill, and the shared glossary. Assumptions (not verifiable without reading beyond the plan directory): the baseline suite state in frozen assumption A-4 ('1 failed, 6 passed'), the actual code of pipeline/consumer.py, and the existence of the repo files were taken from the plan's own declarations (input.md repo notes + A-4), not re-verified against the fixture. The two deterministic BLOCKERs are one artifact (integration-plan.json) reported by two lint checks; the plan declares its absence an intentional ablation (input.md 'Stage override (ablation)' and run-manifest.json notes), but per the plan-auditor procedure deterministic findings carry over with the same severity and the verdict rule (PASS iff zero BLOCKER findings, deterministic + semantic) yields FAIL. All other layers are clean: every semantic check was reasoned about (see checks_performed), no MAJOR/BLOCKER semantic defect beyond the declared ablation gap, no nondeterministic acceptance, disjoint ownership, no fake serialization, local recoverability intact."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "BLOCKER",
+      "check": "deterministic_lint",
+      "task_id": null,
+      "evidence": "plan-check.py lint (this audit run, step 1): {\"code\": \"MISSING_ARTIFACT\", \"severity\": \"BLOCKER\", \"artifact\": \"integration-plan.json\", \"detail\": \"core artifact missing; plan is incomplete (stage-contract exists)\"}. The plan declares the absence intentional: input.md User constraints - \"Stage override (ablation): integration-planner stage removed - no seam census, no integration tasks, no E2E gate tasks, no `owns_fixes_for`; `integration-plan.json` is intentionally absent\"; run-manifest.json notes - \"The full lint therefore reports exactly two BLOCKER lines, both MISSING_ARTIFACT for integration-plan.json (one artifact, two lint checks); this is the sole remaining BLOCKER and is expected, not a plan defect.\"",
+      "suggested_fix": "Restore integration-plan.json by running the integration-planner stage (seam census over S1/S2, explicit e2e_closure and final_acceptance integration tasks with owns_fixes_for) and re-run plan-check.py lint; or, if the ablation is to stand, the orchestrator must explicitly waive the core-artifact requirement in the run protocol - the auditor carries the deterministic finding over with the same severity and cannot waive it."
+    },
+    {
+      "id": "F02",
+      "severity": "BLOCKER",
+      "check": "deterministic_lint",
+      "task_id": null,
+      "evidence": "plan-check.py lint (this audit run, step 1): {\"code\": \"MISSING_ARTIFACT\", \"severity\": \"BLOCKER\", \"artifact\": \"integration-plan.json\", \"detail\": \"integration-plan.json missing or invalid\"} - the integration-explicitness lint branch, i.e. the second of the two lint checks reporting the same missing artifact; run-manifest.json full-lint fallbacks: \"lint round 2: 2 BLOCKER (the same single expected ablation artifact, reported by two lint checks), 0 MAJOR, 0 MINOR\".",
+      "suggested_fix": "Same as F01: one restored (or formally waived) integration-plan.json resolves both deterministic findings; until then the plan directory is incomplete against the artifact index (glossary) and lint exit code is 1."
+    },
+    {
+      "id": "F03",
+      "severity": "MAJOR",
+      "check": "hidden_integration_work",
+      "task_id": "T02",
+      "evidence": "dag.json: \"integration_gates\": [] with notes.ablation - \"integration_gates is intentionally empty and no integration task ids exist; the e2e closure rides on leaf T02 (verification-typed edge, its AT4 full-suite case is the closure evidence for acceptance A2)\". stage-contract.json integration_seams S1: \"Producer -> consumer wire hand-off ... the timeout defect lives exactly at this seam\" - no dedicated integration-gate task exists for S1 (integration-plan.json absent, see F01/F02). Mitigations are declared: risk-estimates.json warnings on both leaves - \"ABLATION_NO_INTEGRATION_GATE ... seam S1 (producer -> consumer) has no dedicated integration gate task; this leaf's fix is verified by leaf T02 instead\"; tasks/T02.json handoff.notes - \"No integration gate task exists in this ablated run (integration-planner removed); T02's AT4 full-suite case carries the e2e closure\"; T02 carries three failure scenarios (consumer resolves legacy key first -> T01 defect; new pre-existing failure -> T01-scope regression; engine e2e case fails -> CONTRACT_CHANGE_REQUEST).",
+      "suggested_fix": "In a non-ablated run, restore the integration gate: an explicit e2e_closure/final_acceptance task covering seam S1 (contract-consistency check over C1/C2 plus full-suite E2E closure, including failure scenarios) referenced in dag.json integration_gates, per the glossary rule that a gate is \"an explicit task (never an assumption)\". For this ablated run the verification-typed leaf T02 is an acceptable, fully declared mitigation - keep the ABLATION_NO_INTEGRATION_GATE warnings in the handoff and treat the residual risk as orchestrator-accepted."
+    },
+    {
+      "id": "F04",
+      "severity": "MINOR",
+      "check": "hidden_dependency",
+      "task_id": "T02",
+      "evidence": "tasks/T02.json implementation_constraints: \"run the suite from the repo root: python -m pytest tests/\" and AT4 description: \"full-suite closure: every producer, consumer, engine, and e2e test passes together with zero failures\" - so T02 executes tests/test_producer.py as part of its acceptance - but T02 required_context.files is [\"tests/test_pipeline_e2e.py\", \"pipeline/producer.py\", \"pipeline/consumer.py\", \"pipeline/engine.py\", \"tests/test_consumer.py\"] and omits tests/test_producer.py.",
+      "suggested_fix": "Add tests/test_producer.py to T02 required_context.files (it is executed by the full-suite acceptance and therefore part of T02's closure); low cost because T02 forbidden_scope already names the file as read-only."
+    },
+    {
+      "id": "F05",
+      "severity": "MINOR",
+      "check": "scope_creep",
+      "task_id": "T01",
+      "evidence": "candidate-tasks.json T01 objective: \"add unit tests in tests/test_consumer.py covering the resolution order (timeout_ms primary, legacy fallback, both-keys priority, default)\" vs tasks/T01.json objective: \"add unit tests in tests/test_consumer.py covering timeout_ms primary and both-keys priority\" - implementation_constraints commit exactly two new methods (test_job_timeout_timeout_ms_primary, test_job_timeout_timeout_ms_wins_over_legacy), AT5 pins \"7 passed, 0 failed (2 producer + 5 consumer, of which 2 are new)\" and T02 AT4 pins \"11 passed, 0 failed\"; an executor following the candidate wording and adding four new consumer tests would break both committed counts (13 passed).",
+      "suggested_fix": "Align candidate-tasks.json T01 objective with the package commitment: two added methods (timeout_ms primary, both-keys priority); note that the legacy-fallback (123) and default (30000) behaviors are already pinned by the unmodified pre-existing tests test_job_timeout_reads_consumer_key and test_job_timeout_default, so the union covers the full resolution order."
+    },
+    {
+      "id": "F06",
+      "severity": "MINOR",
+      "check": "replan_only_by_append",
+      "task_id": null,
+      "evidence": "stage-contract.json allowed_replan = [\"split\", \"merge\", \"change_dependency\", \"defer\", \"reduce_scope\", \"replace_route\", \"checkpoint_and_split\", \"request_contract_revision\"] - \"reorder\", part of the glossary closed legal replan set, is absent with no recorded rationale. The list is not reduced to scope growth (defer/reduce_scope/replace_route are present), and in this plan the only edge T01->T02 is a mandatory verification dependency, so reorder is currently inoperative.",
+      "suggested_fix": "Add \"reorder\" to stage-contract.json allowed_replan (full closed legal set) or record its intentional omission; no execution impact in this two-leaf plan."
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 1,
+    "finding_count": 2,
+    "counts": {
+      "BLOCKER": 2,
+      "MAJOR": 0,
+      "MINOR": 0
+    }
+  },
+  "checks_performed": [
+    "scope_creep",
+    "insufficient_non_goals",
+    "late_contract_freeze",
+    "hidden_dependency",
+    "fake_serialization",
+    "ownership_collision",
+    "oversized_leaf",
+    "broad_context_loading",
+    "hidden_integration_work",
+    "nondeterministic_acceptance",
+    "lack_of_local_recoverability",
+    "replan_only_by_append",
+    "communication_overhead"
+  ],
+  "revision_round": 1
+}

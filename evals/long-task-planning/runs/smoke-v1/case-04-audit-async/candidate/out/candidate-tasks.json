@@ -1,0 +1,75 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Replace the synchronous 'audit' table insert in handle_transfer (ledger/api.py) with a bus.publish on topic 'audit' in the frozen 5-field format, isolate publish failures so the handler still returns {'ok': True} for a valid transfer, and adjust tests/test_ledger.py so TestApi asserts the publish flow instead of the direct audit row.",
+      "required_context": {
+        "files": [
+          "ledger/api.py",
+          "ledger/events.py",
+          "ledger/db.py",
+          "ledger/worker.py",
+          "tests/test_ledger.py"
+        ],
+        "contracts": ["C1", "C2", "C3"],
+        "concepts": [
+          "in-process pub/sub: subscribe/publish, in-order delivery, V1 subscriber-exception propagation",
+          "handler-level isolation of publish failures (try/except around bus.publish)",
+          "backward-compatible wire format: event key set exactly AUDIT_EVENT_FIELDS"
+        ]
+      },
+      "owned_paths": ["ledger/api.py", "tests/test_ledger.py"],
+      "forbidden_scope": [
+        "ledger/events.py (read-only, DA-2)",
+        "ledger/db.py (read-only, DA-2)",
+        "ledger/worker.py (owned by T02)",
+        "the values of AUDIT_EVENT_FIELDS / AUDIT_TOPIC (C1)",
+        "the transactions insert shape and ordering (C2)",
+        "new dependencies, threads, or queues"
+      ],
+      "touched_layers": ["api", "e2e"],
+      "inputs": ["frozen specs C1/C2/C3 from stage-contract.json"],
+      "outputs": [
+        "ledger/api.py with the publish path and publish-failure isolation",
+        "tests/test_ledger.py with adjusted TestApi tests (publish spy, isolation, bad-amount no-event); TestStore/TestBus/TestWorker unchanged"
+      ],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "The closure is handle_transfer plus its direct test file: one api layer + one test boundary, 5 files, 3 frozen contracts; the worker module is cut at the bus seam because T02's tests drive the consumer through the bus with hand-built C1 events, never through handle_transfer."
+    },
+    {
+      "id": "T02",
+      "objective": "Write tests/test_audit_bus.py that drive make_audit_consumer through a real Bus — publish on 'audit' creates exactly one audit row and a redelivered copy of the same event (same ts, actor, action) creates no second row — and extend ledger/worker.py only if a new test fails against the current consumer, preserving the (ts, actor, action) dedup key.",
+      "required_context": {
+        "files": [
+          "ledger/worker.py",
+          "ledger/events.py",
+          "ledger/db.py",
+          "tests/test_ledger.py"
+        ],
+        "contracts": ["C1", "C3", "C4"],
+        "concepts": [
+          "at-least-once delivery and idempotent consumption",
+          "dedup via store.find before insert on (ts, actor, action)",
+          "bus-level redelivery as a test scenario (publish the same event twice)"
+        ]
+      },
+      "owned_paths": ["ledger/worker.py", "tests/test_audit_bus.py"],
+      "forbidden_scope": [
+        "ledger/api.py (owned by T01)",
+        "ledger/events.py (read-only, DA-2)",
+        "ledger/db.py (read-only, DA-2)",
+        "tests/test_ledger.py (owned by T01 — read as a style reference only)",
+        "changing the dedup key or the make_audit_consumer(store) signature (C4)"
+      ],
+      "touched_layers": ["runtime", "e2e"],
+      "inputs": ["frozen specs C1/C3/C4 from stage-contract.json"],
+      "outputs": [
+        "tests/test_audit_bus.py (bus-level persist + redelivery dedup tests)",
+        "ledger/worker.py unchanged, or minimally extended if a test forces it"
+      ],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "The closure is the consumer module plus a new dedicated test file: the existing consumer is verified against frozen C4 without touching handle_transfer, so the bus seam separates it cleanly from T01's api closure."
+    }
+  ]
+}

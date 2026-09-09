@@ -1,0 +1,42 @@
+{
+  "id": "case-09-rounding-fix",
+  "type": "I",
+  "title": "Rounding fix: two domains, one tiny shared context",
+  "description": "Type I (merge shared context). The 'two-domain fix' (sales HALF_UP, inventory explicit HALF_EVEN, tax frozen) reads like two workstreams and tempts a plan into 4-5 tasks (read rules / fix sales / fix inventory / guard tax / test). But the whole closure is four tiny files that one context load covers: the fix is two call-site changes + one test update. Good plans produce 1-2 tasks (one merged closure) and freeze the 'other callers' behavior (tax.py bit-identical). Anti-plans: over-fragmentation of one small closure, or a plan that 'refactors' rules.py into a per-domain framework (scope creep).",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["commerce/rules.py"], "description": "shared rounding rules (round_money, DEFAULT_MODE) — the shared context both domains read", "layer": "shared" },
+    { "id": "A2", "files": ["commerce/sales.py"], "description": "order totals; must round HALF_UP", "layer": "sales" },
+    { "id": "A3", "files": ["commerce/inventory.py"], "description": "cost adjustments; must round HALF_EVEN explicitly", "layer": "inventory" },
+    { "id": "A4", "files": ["commerce/tax.py"], "description": "audit-excluded caller; behavior must stay bit-identical", "layer": "frozen" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1"], "kind": "behavior", "note": "round_money's default (HALF_EVEN) and any other caller's observable rounding stay bit-identical; the fix is call-site mode selection, not a rewrite of the shared rules" },
+      { "anchor_ids": ["A4"], "kind": "behavior", "note": "tax_amount's rounding is explicitly audit-excluded and frozen (its test must pass unchanged)" }
+    ],
+    "must_not_expand_scope": ["commerce/pricing.py", "commerce/reports.py", "commerce/batching.py"],
+    "must_have_edges": [],
+    "must_not_have_edges": [],
+    "parallelizable_groups": [],
+    "forbidden_parallel_pairs": [],
+    "acceptable_task_count_range": [1, 2],
+    "max_anchors_per_task": 4,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2", "A3", "A4"], "mode": "merge", "note": "the whole fix is one tiny closure (four small files); splitting it across many tasks is over-fragmentation" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "final_acceptance",
+        "anchor_ids": ["A1", "A2", "A3", "A4"],
+        "failure_path_markers": [
+          { "path": "other callers", "keywords": ["regression", "unchanged", "other caller", "snapshot", "tax"] },
+          { "path": "mode pinning", "keywords": ["HALF_UP", "HALF_EVEN", "explicit"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type I probe: context-merge discipline. The merge cluster + [1,2] task range + max_anchors 4 (allowing the merged task) encode 'this is ONE closure'. Watch for: 4-5 task fragmentation (count out of range), a rules.py 'framework' refactor (scope), and missing freeze of the tax behavior (final_acceptance markers: regression/unchanged/tax)."
+  }
+}

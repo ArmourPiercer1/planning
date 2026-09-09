@@ -1,0 +1,10 @@
+﻿{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\prompt.md"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\ledger\\__init__.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\ledger\\db.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\ledger\\events.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\ledger\\api.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\ledger\\worker.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\tests\\test_ledger.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\work\\repo\\tests\\__init__.py"}
+{"ts":"2026-09-09T21:48:42.6219981+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\task.md"}
+{"ts":"2026-09-09T21:49:38.0092223+08:00","op":"read","path":"D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\out\\plan.md"}

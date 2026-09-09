@@ -1,0 +1,58 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Fresh subagent with no access to the planning conversation; inputs were only the plan directory (candidate/out), the plan-auditor skill, and the glossary, per the audit prompt. This is revision_round 2 and supersedes the round-1 audit.json (FAIL: plan directory empty, two BLOCKERs — missing stage-contract.json and no acceptance text anywhere). Both round-1 BLOCKERs are resolved: the full artifact set now exists (input.md, stage-contract.json, candidate-tasks.json, dag.json, integration-plan.json, risk-estimates.json, tasks/T01-T04.json, run-manifest.json) and plan-check.py lint exits 0 with 0 findings. No repo fixture (work/repo) or evaluation file outside the plan directory was read. Written by overwriting the round-1 audit.json, as the single writer of the file."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T04",
+      "evidence": "stage-contract.json acceptance A4.evidence = 'python -m unittest tests.test_ledger.TestApi.test_transfer_still_writes_transactions -v -> OK; existing tests.test_ledger.TestApi.test_bad_amount_rejected -> OK'. But input.md states the pre-change suite has 'TestApi (2 tests)' and names only 'TestApi.test_transfer_ok_and_audit_written' (the one T01 rewrites per tasks/T01.json handoff.notes), and tasks/T01.json's final TestApi names are test_transfer_publishes_audit_event / test_transfer_ok_when_audit_consumer_raises / test_bad_amount_rejected_no_event. At most one of A4's two 'existing' test names can exist in the fixture, and T01's adjusted names match neither as-is, so at least one of the two A4 evidence commands would error at final acceptance. The A4 case texts themselves (exact keys {'from','to','amount','ts'}, 1 row on success, 0 rows on rejection) are deterministic and judgeable from the text.",
+      "suggested_fix": "Point A4.evidence at tests that exist in the final suite, e.g. 'python -m unittest tests.test_ledger.TestApi.test_transfer_publishes_audit_event -v -> OK' (which per tasks/T01.json acceptance_tests[T01-A1] asserts the transactions row and the empty audit table) plus the rewritten existing test under its actual final name; keep the A4 case texts unchanged."
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "replan_only_by_append",
+      "task_id": null,
+      "evidence": "stage-contract.json frozen_assumptions A-1.rationale says 'Invalidation: the user later requires delivery across processes (would be a replace_route replan)', but stage-contract.json allowed_replan = [split, merge, reorder, change_dependency, reduce_scope, checkpoint_and_split, request_contract_revision] omits replace_route (and defer). The replan action the plan text references is not a permitted action in the contract.",
+      "suggested_fix": "Add 'replace_route' (and 'defer' if deferrals are intended) to allowed_replan, or reword A-1's invalidation clause to 'a new Stage, or a request_contract_revision replan', so every referenced replan action is legal under the contract."
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "check": "oversized_leaf",
+      "task_id": "T04",
+      "evidence": "tasks/T04.json objective enumerates sub-deliverables: 'cover gates E1-E4 (transfer publishes and the row lands via the bus; a raising audit subscriber still yields {ok: True} ...; redelivering the same published event yields exactly one row; bad amount publishes nothing and writes nothing), then run the full unittest suite green and record acceptance evidence for A1-A4'; risk-estimates.json T04 p80 = '90-120 min' exceeds stage-contract.json resource_budget.leaf_p80_max = '90 min'. Already mitigated in-plan: risk-estimates.json and tasks/T04.json carry the SPLIT_RECHECK_REQUIRED warning with a concrete split ('if execution exceeds p80, checkpoint_and_split around the failure-scenario gates (E2, E3)') and a CONTRACT_DENSITY rationale for keeping the gates in one leaf.",
+      "suggested_fix": "No pre-execution change required. Carry the SPLIT_RECHECK_REQUIRED warning into the run manifest and honor it: if T04 execution exceeds p80, checkpoint_and_split around E2/E3 as the warning prescribes; optionally pre-structure a T05 owning E2/E3 to bring T04's p80 under 90 min."
+    }
+  ],
+  "deterministic": {
+    "tool": "uv run --no-project python D:\\AI_Coworking\\skill-build\\planning\\.agents\\scripts\\plan-check.py lint D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\candidate\\out (with $env:UV_CACHE_DIR=D:\\AI_Coworking\\skill-build\\planning\\.cache\\uv)",
+    "exit_code": 0,
+    "finding_count": 0,
+    "note": "0 BLOCKER / 0 MAJOR / 0 MINOR; consistent with run-manifest.json gate 'final: plan-check.py lint out (after MINOR fixes, 0 findings)'. No deterministic findings to carry over."
+  },
+  "checks_performed": [
+    "scope_creep — performed; clean: all six stage-contract.json in_scope items map 1:1 to the task's four numbered requirements plus the explicitly requested new tests (bus-level publish/consume incl. dedupe, consistency pins, E2E gates); out_of_scope names the concrete repo temptations (Bus.publish isolation, real async infra/broker, ledger/db.py, field/topic changes, observability, transactions-path refactor)",
+    "insufficient_non_goals — performed; clean: non-goals name specific refactors and changes (e.g. 'Changing Bus.publish to isolate subscriber exceptions', 'Changing the values of AUDIT_EVENT_FIELDS or AUDIT_TOPIC'), not a vague 'no refactoring'; each task package's non_goals names exact files and contract surfaces",
+    "late_contract_freeze — performed; clean: C1-C4 all frozen=true with unfreeze rules; the only parallel pair (T01||T02) does not cross-consume each other's owned contracts (T01 consumes C1/C2/C3 with C2 self-owned and C1/C3 user-provided; T02 consumes C1/C3/C4 with C4 self-owned); the C2/C4 consumers T03 and T04 run after their owners via verification edges",
+    "hidden_dependency — performed; clean: every cross-task read is declared — T03 inputs name 'checkpoint outputs of T01 and T02' and allowed_dependencies name the changed api.py/worker.py; T04 inputs name T01/T02 outputs and 'T03 output: the consistency report (checkpoints/T03.json)'; T01's read of T02-owned ledger/worker.py is declared in required_context.files and forbidden_scope (read-only)",
+    "fake_serialization — performed; clean: all 5 dag.json edges survive the 4-type test (T01->T03 verification, T02->T03 verification, T01->T04 verification, T02->T04 verification, T03->T04 ownership with a real read-while-write reason: T04's integration-only fix rights over T01/T02 modules vs T03's read-only diff of the same modules, trade recorded in notes.free_parallelism_trades); notes.fake_serialization_removed records the removed T01->T02 doc-order edge with reasoning",
+    "ownership_collision — performed; clean: owned path sets are disjoint (T01: ledger/api.py + tests/test_ledger.py; T02: ledger/worker.py + tests/test_audit_bus.py; T03: tests/test_contract_consistency.py; T04: tests/test_audit_e2e.py); the only unordered pair T01||T02 is disjoint; T04's conditional write rights over T01/T02 modules are ordered after both via verification edges; ledger/events.py and ledger/db.py are read by all and owned by none (DA-2)",
+    "oversized_leaf — performed; MINOR finding (F03): T04's objective enumerates sub-deliverables (gates E1-E4 + full suite + A1-A4 evidence) and its p80 (90-120 min) exceeds leaf_p80_max (90 min); mitigated in-plan by SPLIT_RECHECK_REQUIRED with a concrete checkpoint_and_split path; no XL footprints (S/S/L/L) so the XL-without-justification clause does not apply",
+    "broad_context_loading — performed; clean: the fixture is six small files (~20-60 lines each per input.md); each package's required_context equals its closure (T01: 5 files incl. read-only worker.py for the consumer contract; T02: 4 files; T03: 4 modules it diffs; T04: 7 files incl. the two new test files it consumes); nothing reads beyond what its deliverable needs",
+    "hidden_integration_work — performed; clean: both seams S1/S2 are covered by declared integration tasks (T03 contract_consistency, T04 e2e_closure with owns_fixes_for [T01, T02]); dag.json integration_gates G1-G5 map every seam to a gate and an acceptance ref; E2E gates E1-E4 include failure scenarios (E2 raising subscriber, E3 redelivery, E4 bad amount), not only happy paths; final_acceptance merged into T04 is recorded in integration-plan.json notes",
+    "nondeterministic_acceptance — performed; MINOR finding (F01): A4's case texts are deterministic (exact row keys, exact counts, exact error shape), but A4.evidence cites two 'existing' TestApi tests of which at most one can exist per input.md's fixture inventory, and neither matches T01's final TestApi test names as-is; all other acceptance texts (A1-A3, A5, T01-A1..A3, T02-A1/A2, T03-A1/A2, T04-E1..E4, T04-FINAL) name concrete observable assertions and runnable unittest evidence",
+    "lack_of_local_recoverability — performed; clean: a single leaf failure invalidates only its downstream subgraph (T01/T02 -> T03,T04; T03 -> T04); T04's failure_cases route a leaf unit-test failure back to the owner leaf ('record the failing test and its owner leaf in the checkpoint and stop the branch (local recoverability) — do not fix it inside T04 beyond a seam defect') instead of restarting the Stage; shared read-only modules are owned by nobody; the T03->T04 ordering removes the read-while-write skew that would otherwise force re-running T03 after T04 patches",
+    "replan_only_by_append — performed; MINOR finding (F02): allowed_replan carries 7 of the 9 legal closed-set actions including split/merge/reorder/change_dependency/reduce_scope/checkpoint_and_split/request_contract_revision (not append-only), but the plan text references a replace_route replan (A-1 invalidation) that allowed_replan does not permit; defer is likewise absent",
+    "communication_overhead — performed; clean: every task package is self-contained (own required_context, frozen_contracts spec_refs into stage-contract.json, own non_goals, constraints, deliverables, deterministic acceptance tests, failure cases, handoff); no package requires reading the whole plan; checkpoints carry per-task evidence (T03 consistency report, T04 A1-A4 evidence) without cross-duplication of other tasks' information",
+    "assumption: input.md's bounded-scan fixture inventory ('TestApi (2 tests)', only test_transfer_ok_and_audit_written named; 'tests all green') is treated as authoritative for the pre-change test suite; the repo fixture itself lives outside the plan directory and was not read. All other findings are verified from plan-directory artifacts only."
+  ],
+  "revision_round": 2
+}

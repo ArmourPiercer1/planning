@@ -1,0 +1,101 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "case-04-audit-async-candidate",
+  "stage_id": "audit-async-decoupling",
+  "created_at": "2026-09-09T21:25:00Z",
+  "skill_versions": [
+    "long-task-planning@V1",
+    "stage-contract@V1",
+    "context-decomposer@V1",
+    "dependency-dag@V1",
+    "integration-planner@V1",
+    "task-packager@V1",
+    "plan-risk-estimator@V1"
+  ],
+  "pipeline": [
+    {
+      "stage": "stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate out/stage-contract.json",
+      "artifact": "stage-contract.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate out/candidate-tasks.json",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate out/dag.json",
+      "artifact": "dag.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate out/integration-plan.json + out/dag.json (amended)",
+      "artifact": "integration-plan.json, dag.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate out/tasks/T01.json T02.json T03.json T04.json",
+      "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json, tasks/T04.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate out/risk-estimates.json",
+      "artifact": "risk-estimates.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "final-lint",
+      "status": "done",
+      "gate": "plan-check.py lint out",
+      "artifact": "lint result (this revision round)",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-auditor",
+      "status": "skipped",
+      "gate": "independent auditor (out-of-band, writes audit.json)",
+      "artifact": "audit.json (round 1)",
+      "exit_code": 1,
+      "fallbacks": [
+        "round-1 audit ran against an empty plan directory (the round-1 run wrote no artifacts); per protocol the auditor is a fresh isolated subagent and is re-run for revision round 2 after this manifest is written"
+      ]
+    }
+  ],
+  "gates": [
+    { "name": "round1: plan-check.py lint out (against empty dir)", "exit_code": 1, "ts": "2026-09-09T21:40:00Z" },
+    { "name": "stage1: validate stage-contract.json", "exit_code": 0, "ts": "2026-09-09T22:20:00Z" },
+    { "name": "stage2: validate candidate-tasks.json", "exit_code": 0, "ts": "2026-09-09T22:22:00Z" },
+    { "name": "stage3: validate dag.json (leaves only)", "exit_code": 0, "ts": "2026-09-09T22:23:00Z" },
+    { "name": "stage4: validate integration-plan.json", "exit_code": 0, "ts": "2026-09-09T22:24:00Z" },
+    { "name": "stage4: validate dag.json (amended with gates)", "exit_code": 0, "ts": "2026-09-09T22:24:30Z" },
+    { "name": "stage5: validate tasks/T01.json", "exit_code": 0, "ts": "2026-09-09T22:26:00Z" },
+    { "name": "stage5: validate tasks/T02.json", "exit_code": 0, "ts": "2026-09-09T22:26:05Z" },
+    { "name": "stage5: validate tasks/T03.json", "exit_code": 0, "ts": "2026-09-09T22:26:10Z" },
+    { "name": "stage5: validate tasks/T04.json", "exit_code": 0, "ts": "2026-09-09T22:26:15Z" },
+    { "name": "stage6: validate risk-estimates.json", "exit_code": 0, "ts": "2026-09-09T22:27:00Z" },
+    { "name": "final: plan-check.py lint out (first pass, 15 MINOR)", "exit_code": 0, "ts": "2026-09-09T22:28:00Z" },
+    { "name": "final: plan-check.py lint out (after MINOR fixes, 0 findings)", "exit_code": 0, "ts": "2026-09-09T22:30:00Z" }
+  ],
+  "audit_verdict": "FAIL",
+  "audit_rounds": 1,
+  "notes": "Revision round 2 (planner). audit.json round 1 was FAIL with two BLOCKERs, both rooted in the round-1 run writing no artifacts at all: F01 (deterministic_lint) — 'stage-contract.json missing or invalid — nothing else can be checked' (lint exit 1); F02 (nondeterministic_acceptance) — the plan directory was completely empty, so no Stage acceptance text, frozen scope, shared contracts, or integration seams existed anywhere. RESOLVED (both): the full pipeline (stages 1-6) was re-run in place with the standard file names and schemas — input.md, stage-contract.json (4 frozen contracts C1-C4, seams S1-S2, deterministic acceptance A1-A5 each with positive/negative/failure cases and named-test evidence), candidate-tasks.json (leaves T01, T02 with disjoint owned paths), dag.json (5 typed edges; critical path T01 -> T03 -> T04; parallel group T01 || T02; fake serialization T01->T02 removed and recorded; integration gates G1-G5), integration-plan.json (T03 contract_consistency, T04 e2e_closure with owns_fixes_for [T01,T02], gates E1-E4 including a failure scenario per seam; final_acceptance merged into T04 as recorded), tasks/T01-T04.json (self-contained packages with deterministic acceptance tests), risk-estimates.json (final risk blocks; T04 carries SPLIT_RECHECK_REQUIRED because p80 exceeds leaf_p80_max — a warning, not a gate). REMAINING: none unresolved — final plan-check.py lint out exits 0 with 0 BLOCKER / 0 MAJOR / 0 MINOR findings. audit.json still carries the round-1 verdict (auditor is out-of-band per protocol) and awaits the revision-round-2 re-audit; per the revision prompt this run does not write audit.json or HANDOFF.md (the latter is written on re-audit PASS)."
+}

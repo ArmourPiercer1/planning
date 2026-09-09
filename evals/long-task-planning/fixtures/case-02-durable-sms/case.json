@@ -1,0 +1,47 @@
+{
+  "id": "case-02-durable-sms",
+  "type": "B",
+  "title": "Durable SMS: one module, three different contexts",
+  "description": "Type B (same module, different contexts). The work lives in one small package (notify/) but spans three distinct context closures: carrier-runtime dispatch (sender.py), durable persistence format (store.py), and command wiring (cli.py). The sender and the store are independent of each other (neither imports the other) and both are consumed by the wiring. Good plans keep the three closures separate (max 1 anchor per task), freeze the message-record shape as a shared contract, and run sender-side and store-side work in parallel. Anti-plans: one 'make SMS durable' blob touching all three files, or merging the queue format into the sender task.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["notify/sender.py"], "description": "carrier-facing dispatch (send_sms, rejection rules)", "layer": "runtime" },
+    { "id": "A2", "files": ["notify/store.py"], "description": "durable queue (JsonQueue) and the on-disk message format", "layer": "persistence" },
+    { "id": "A3", "files": ["notify/cli.py"], "description": "command wiring (send_command, dispatch_command)", "layer": "wiring" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A2", "A3"], "kind": "contract", "note": "the durable message record shape (id/phone/body/enqueued_at/status) and the queue file path are a shared contract between the enqueue side and the drain side; freeze before wiring" },
+      { "anchor_ids": ["A1"], "kind": "behavior", "note": "send_sms carrier-facing behavior (accept/reject rules, response shape) is frozen — the task says it must not change" }
+    ],
+    "must_not_expand_scope": ["notify/web.py", "notify/templates.py", "notify/retry_policy.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A3", "types": ["data"] },
+      { "from_anchor": "A2", "to_anchor": "A3", "types": ["data"] }
+    ],
+    "must_not_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "reason": "the sender and the store are mutually independent (neither imports the other); any ordering between them is invented serialization" }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A1", "A2"], "note": "carrier-side and persistence-side work are disjoint closures; the wiring (A3) is the only join point" }
+    ],
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 1,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2", "A3"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "crash recovery", "keywords": ["crash", "restart", "startup", "drain"] },
+          { "path": "duplicate dispatch", "keywords": ["duplicat", "idempot", "already", "exactly once"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A2", "A3"],
+    "notes": "Type B probe: does the plan respect that 'same package' does not mean 'same context'? Watch for a single task owning multiple anchors (cap is 1), for invented scope (web UI, templates, retry policies), and for missing freeze of the queue record shape."
+  }
+}

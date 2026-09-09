@@ -1,0 +1,97 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T03",
+  "objective": "Verify by executable diff that the final compute_pay and render_payslip implementations match the frozen C1 and C2 specs, and create tests/test_contract_shape.py asserting the exact interface shapes (return keys, tuple types, name-sorted list, 2-decimal summary pattern).",
+  "required_context": {
+    "files": [
+      "payroll/calc.py",
+      "payroll/payslip.py",
+      "payroll/employees.py",
+      "tests/test_contract_shape.py (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "C1 spec: compute_pay returns exactly {gross: float, deductions: list, net: float}; deductions is a list of (str, float) 2-tuples sorted by name ascending",
+      "C2 spec: render_payslip returns list[str] whose last element matches the 2-decimal summary pattern",
+      "contract_consistency kind: read-only diff of implementations against frozen specs; no behavior changes"
+    ]
+  },
+  "inputs": [
+    "frozen C1 and C2 specs (stage-contract.json)",
+    "T01's final payroll/calc.py",
+    "T02's final payroll/payslip.py",
+    "checkpoints/T01.json and checkpoints/T02.json (verified facts and changed paths)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["tests/test_contract_shape.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "the final compute_pay implementation to diff against C1" },
+    { "task_id": "T02", "what": "the final render_payslip implementation to diff against C2" }
+  ],
+  "non_goals": [
+    "Do not modify payroll/calc.py or payroll/payslip.py — this is a read-only diff; a mismatch is recorded, not patched",
+    "Do not change any production behavior or add a production code path",
+    "Do not modify the pre-existing tests in tests/test_payroll.py or any other task's test file"
+  ],
+  "implementation_constraints": [
+    "Read-only on all production code; the only deliverable is the shape test file",
+    "Shape checks must be exact: key-set equality, (str, float) tuple types, name-sorted assertion, and the summary regex '^Summary: net=\\d+\\.\\d{2} gross=\\d+\\.\\d{2} deductions=\\d+\\.\\d{2}$'",
+    "stdlib + unittest only"
+  ],
+  "deliverables": [
+    { "what": "contract-shape tests asserting C1/C2 conformance of the final implementations", "where": "tests/test_contract_shape.py (new)" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "The shape test asserts compute_pay returns exactly the keys {gross, deductions, net}, with deductions a list of (str, float) 2-tuples sorted by name ascending, and all tests pass",
+      "evidence": "the shape test runs via python -m unittest tests.test_contract_shape -v; the test asserts key-set and tuple-type conformance and exits 0"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "The shape test asserts render_payslip returns a list of str whose last element matches the 2-decimal summary regex, and the test passes",
+      "evidence": "the shape test runs via python -m unittest tests.test_contract_shape -v; the test asserts the last element matches the 2-decimal summary regex and exits 0"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "If C1 or C2 is violated (extra return key, non-tuple entry, unsorted list, 1-decimal summary line), the shape test fails with the assertion diff and this task records the mismatch instead of patching the module",
+      "evidence": "an intentionally broken variant (e.g. removing the sort) fails the shape test with the observed list diff; recorded in checkpoints/T03.json"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A mismatch between an implementation and its frozen spec is found",
+      "expected_behavior": "Stop out-of-scope implementation: emit a CONTRACT_CHANGE_REQUEST (wrong spec) or record the deviation in checkpoints/T03.json for the owning leaf's checkpoint; T04 (seam gate) holds the only integration-only fix rights"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T01's final payroll/calc.py", "T02's final payroll/payslip.py"],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T04"],
+    "notes": "T04's full-suite gate includes this file; the T03 -> T04 data edge exists so the suite content is complete before the final gate runs."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

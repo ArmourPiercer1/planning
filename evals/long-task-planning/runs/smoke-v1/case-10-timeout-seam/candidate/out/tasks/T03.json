@@ -1,0 +1,122 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T03",
+  "objective": "Integrate seams S1 (producer→consumer) and S2 (producer→engine) against frozen C1/C2: create tests/integration/test_timeout_seam.py (new, 3 tests: real-module round-trip, missing-timeout default + draft-key fallback, engine boundary) and docs/wire-contract-consistency.md (new, read-only diff of producer.py/engine.py/consumer.py against the C1/C2 specs), patch any seam defect found only inside T01/T02 owned paths (integration-only fix ownership), and record every patch in the checkpoint as a deviation.",
+  "required_context": {
+    "files": [
+      "pipeline/producer.py",
+      "pipeline/engine.py",
+      "pipeline/consumer.py",
+      "tests/test_pipeline_e2e.py",
+      "tests/test_wire_contract.py",
+      "tests/integration/test_timeout_seam.py (new)",
+      "tests/integration/__init__.py (new)",
+      "docs/wire-contract-consistency.md (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "seam round-trip through real modules (no mocks)",
+      "integration-only fix ownership (patch rights limited to T01/T02 owned paths)",
+      "failure-scenario gating: every seam needs a bad-input case, not just the happy path"
+    ]
+  },
+  "inputs": [
+    "T01 output: modified pipeline/consumer.py (S1 conformance to C1)",
+    "T02 output: tests/test_wire_contract.py (C1/C2 regression suite to run and cross-check)",
+    "frozen C1/C2 specs (stage-contract.json → shared_contracts)",
+    "seam definitions S1/S2 and E2E scenarios E1-E3 (integration-plan.json)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": [
+    "tests/integration/test_timeout_seam.py",
+    "tests/integration/__init__.py",
+    "docs/wire-contract-consistency.md"
+  ],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "modified pipeline/consumer.py — S1 conformance to C1 (read + run, patch-allowed as integration-only fix)" },
+    { "task_id": "T02", "what": "tests/test_wire_contract.py — C1/C2 regression suite to run and cross-check (read + run, patch-allowed as integration-only fix)" }
+  ],
+  "non_goals": [
+    "Do not restructure pipeline/ modules or move functions between them",
+    "Do not patch files outside T01/T02 owned paths (pipeline/consumer.py, tests/test_wire_contract.py)",
+    "Do not modify tests/test_producer.py, tests/test_consumer.py, or tests/test_pipeline_e2e.py",
+    "Do not change E2E gate commands or acceptance ids from stage-contract.json"
+  ],
+  "implementation_constraints": [
+    "Seam tests use only real modules (no mocks): producer.make_job → consumer.job_timeout and → engine.run_job",
+    "Patch rights: pipeline/consumer.py and tests/test_wire_contract.py only, minimal diff; each patch is recorded as a deviation in checkpoints/T03.json with file, diff summary, and reason",
+    "The consistency doc must state, per C1 field: producer value, engine read, consumer resolution, and a verdict (consistent / drifted)",
+    "Stdlib unittest only; module runs via python -m unittest tests.integration.test_timeout_seam from the repo root"
+  ],
+  "deliverables": [
+    { "what": "seam round-trip + failure-scenario suite, 3 tests", "where": "tests/integration/test_timeout_seam.py (new)" },
+    { "what": "package marker so unittest can import the module", "where": "tests/integration/__init__.py (new)" },
+    { "what": "read-only consistency diff of producer/engine/consumer against C1/C2 with per-field verdicts", "where": "docs/wire-contract-consistency.md (new)" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T03-AT1",
+      "case": "positive",
+      "description": "Round-trip: job = make_job('s1', {'cmd': 'x'}, timeout_ms=500); job_timeout(job) returns 500 and run_job(job, 400) returns status 'done'",
+      "evidence": "python -m unittest tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_round_trip -v → OK, exit code 0"
+    },
+    {
+      "id": "T03-AT2",
+      "case": "failure",
+      "description": "Bad input: job = {'id': 's2', 'payload': {}} (no timeout keys) → job_timeout returns 30000 without raising; run_job(job, 31000) returns status 'timeout' via the default path",
+      "evidence": "python -m unittest tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_missing_timeout_defaults -v → OK, exit code 0"
+    },
+    {
+      "id": "T03-AT3",
+      "case": "positive",
+      "description": "Draft-key fallback and engine boundary: job_timeout({'timeout': 123}) returns 123; run_job(make_job('s3', {}, timeout_ms=100), 100) returns status 'done' (work_ms == timeout_ms is not >)",
+      "evidence": "python -m unittest tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_fallback_and_boundary -v → OK, exit code 0"
+    },
+    {
+      "id": "T03-AT4",
+      "case": "positive",
+      "description": "docs/wire-contract-consistency.md exists and records a 'consistent' verdict per C1 field (timeout_ms emission, engine read, consumer resolution, default 30000)",
+      "evidence": "File exists at docs/wire-contract-consistency.md; grep for 'timeout_ms' and 'consistent' in docs/wire-contract-consistency.md"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "T01's consumer.py carries a seam defect the fixture e2e test cannot catch (e.g. fallback and timeout_ms branches swapped)",
+      "expected_behavior": "T03 patches pipeline/consumer.py (owned by T01, patch-allowed), records the deviation in checkpoints/T03.json, and re-runs T03-AT1 through T03-AT4 until green"
+    },
+    {
+      "scenario": "A defect belongs to a file outside T01/T02 owned paths (e.g. producer.py or engine.py)",
+      "expected_behavior": "T03 stops the branch and emits a CONTRACT_CHANGE_REQUEST or CORE_SEAM_BLOCKER in its checkpoint instead of patching the file"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [
+      "pipeline/consumer.py (T01)",
+      "tests/test_wire_contract.py (T02)"
+    ],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T04"],
+    "notes": "Checkpoint must list: patches applied (file, diff summary, reason), per-field consistency verdicts, and the red→green state of T02's consumer-resolution test if T01's fix landed within T03's window. A green T03 gate is the precondition for T04's final evidence."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["e2e", "service", "docs"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "45-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T02",
+  "objective": "Close the producer -> consumer e2e seam with regression tests: extend tests/test_pipeline_e2e.py with the committed cases test_pipeline_e2e_both_keys_timeout_ms_wins (timeout_ms=500 + timeout=123 -> 500) and test_pipeline_e2e_default_timeout_ms_reaches_consumer (make_job without an explicit timeout_ms argument -> job_timeout returns 30000), and verify the entire suite (producer, consumer, engine, e2e) passes with engine semantics unchanged and no existing test case modified.",
+  "required_context": {
+    "files": [
+      "tests/test_pipeline_e2e.py",
+      "pipeline/producer.py",
+      "pipeline/consumer.py",
+      "pipeline/engine.py",
+      "tests/test_consumer.py"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "producer -> consumer pass-through of the same job dict (no serializer); primary-path jobs must be built via producer.make_job for wire-path fidelity",
+      "the two pre-existing e2e test methods must stay byte-identical; new cases are additive inside the existing test file",
+      "engine status literals 'done'/'timeout' with the strict > comparison are frozen (C1); no new engine assertions beyond the existing engine e2e case",
+      "tests/test_consumer.py shows which resolution behaviors are already pinned at unit level (legacy fallback 123, default 30000), so the e2e layer must not duplicate them"
+    ]
+  },
+  "inputs": [
+    "T01 output: pipeline/consumer.py with job_timeout resolving timeout_ms first (consumed by the new e2e cases, never patched by them)",
+    "frozen contract C1 (job wire schema) and C2 (resolution order) from stage-contract.json"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "spec_ref": "stage-contract.json shared_contracts[C1] - job wire schema; producer/engine frozen as-is"
+    },
+    {
+      "contract_id": "C2",
+      "spec_ref": "stage-contract.json shared_contracts[C2] - resolution order timeout_ms -> 'timeout' -> DEFAULT_TIMEOUT_MS"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_pipeline_e2e.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "the fixed pipeline/consumer.py job_timeout behavior - the new e2e cases assert it; T02 consumes the behavior, it does not re-implement or patch it"
+    }
+  ],
+  "non_goals": [
+    "no change to any pipeline/ module - if the suite is red after T01, that is a T01 defect or a CONTRACT_CHANGE_REQUEST against C2, not T02 work",
+    "no modification, rename, or skip of the two pre-existing e2e test methods",
+    "no edits to tests/test_producer.py or tests/test_consumer.py (owned by T01 / untouched)",
+    "no e2e duplication of the legacy-fallback (123) and default (30000) unit-level cases beyond the committed default-reaches-consumer wire case",
+    "no new test files and no new dependencies"
+  ],
+  "implementation_constraints": [
+    "additive only: new test methods test_pipeline_e2e_both_keys_timeout_ms_wins and test_pipeline_e2e_default_timeout_ms_reaches_consumer inside the existing TestPipelineE2E class (or a new class in the same file); the two existing methods stay byte-identical",
+    "primary-path jobs are built via producer.make_job (wire path); hand-crafted dicts are allowed only where the seam boundary requires a job shape the producer does not emit (the both-keys case)",
+    "run the suite from the repo root: python -m pytest tests/",
+    "at task close, all pipeline/ modules and both unit test files must be byte-identical to the state left by T01"
+  ],
+  "deliverables": [
+    {
+      "what": "new e2e seam regression methods: test_pipeline_e2e_both_keys_timeout_ms_wins (job dict with timeout_ms=500 and timeout=123 -> job_timeout returns 500) and test_pipeline_e2e_default_timeout_ms_reaches_consumer (producer.make_job without an explicit timeout_ms argument -> job_timeout returns 30000 through the wire)",
+      "where": "tests/test_pipeline_e2e.py"
+    },
+    {
+      "what": "full-suite-green evidence: pytest tests/ exits 0 with 11 passed, 0 failed (baseline was 1 failed, 6 passed)",
+      "where": "checkpoints/T02.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "wire-path e2e: a job built via producer.make_job with timeout_ms=500 reaches consumer.job_timeout as 500 through the real producer function, and the two pre-existing e2e test methods are byte-identical to the baseline",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_effective_timeout -> passed; diff of the two pre-existing test methods is empty"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "both keys present at the seam: a job dict carrying timeout_ms=500 and timeout=123 makes consumer.job_timeout return 500 end-to-end (the producer's wire key wins per C2)",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_both_keys_timeout_ms_wins -> passed (new test method)"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "default path at the seam: a job built by producer.make_job without an explicit timeout_ms argument carries timeout_ms=30000, and consumer.job_timeout returns 30000 for it (the default propagates over the wire as the producer's value, not as an accident of a missing key)",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_default_timeout_ms_reaches_consumer -> passed (new test method)"
+    },
+    {
+      "id": "AT4",
+      "case": "failure",
+      "description": "full-suite closure: every producer, consumer, engine, and e2e test passes together with zero failures, including the baseline-failing case, while engine and producer remain frozen",
+      "evidence": "pytest tests/ -> exit code 0, 11 passed, 0 failed (baseline: 1 failed, 6 passed)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a new e2e case fails because the consumer still resolves the draft 'timeout' key first",
+      "expected_behavior": "T02 makes no pipeline/ code edit; the checkpoint records a T01 defect (failing case name plus assertion output) and the leaf stops for a T01 re-run"
+    },
+    {
+      "scenario": "the full-suite run exposes a newly failing pre-existing test",
+      "expected_behavior": "record the test name and the diff of any owned file; treat it as a T01-scope regression - T02 reports it in the checkpoint and makes no code edits"
+    },
+    {
+      "scenario": "the pre-existing engine e2e case starts failing",
+      "expected_behavior": "frozen C1 is violated (engine semantics must not change beyond the fix): raise a CONTRACT_CHANGE_REQUEST and stop the leaf rather than editing the engine or its test"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [
+      "pipeline/consumer.py (T01's fixed job_timeout)"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [],
+    "notes": "final leaf of this stage; its checkpoint's full-suite-green evidence is the stage-closure evidence for acceptance A2. No integration gate task exists in this ablated run (integration-planner removed); T02's AT4 full-suite case carries the e2e closure."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-60 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "ABLATION_NO_INTEGRATION_GATE",
+        "detail": "the integration-planner stage was removed in this run, so this leaf carries the e2e closure itself instead of a dedicated integration gate task",
+        "rationale": "per the run's stage override, T02 is a verification-typed leaf ordered after T01 and its AT4 full-suite case is the closure evidence for acceptance A2; a full non-ablated run should restore the integration gate and move e2e path ownership to an integration task"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

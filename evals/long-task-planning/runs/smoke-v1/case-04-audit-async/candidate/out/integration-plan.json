@@ -1,0 +1,60 @@
+{
+  "schema": "planning/integration-plan@1",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "Audit publish seam: handle_transfer -> bus.publish('audit', event) -> subscribers. Consistency risks: topic name drift, event key set/value drift against C1, and exception propagation at publish time (V1 bus propagates; isolation must stay in the handler).",
+      "contract_ids": ["C1", "C2", "C3"],
+      "covered_by": ["T03", "T04"]
+    },
+    {
+      "id": "S2",
+      "description": "Audit persistence seam: consume(event) -> Store 'audit' table with (ts, actor, action) dedup. Consistency risks: dedup key drift, record shape (row must equal the event fields), table name drift.",
+      "contract_ids": ["C1", "C4"],
+      "covered_by": ["T03", "T04"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "contract_consistency",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A5"
+    },
+    {
+      "task_id": "T04",
+      "kind": "e2e_closure",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A1"
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "happy path: subscribe make_audit_consumer(store) at AUDIT_TOPIC, call handle_transfer(store, bus, 'acct-a', 'acct-b', 10.0); assert the response {'ok': True}, exactly 1 transactions row, and exactly 1 audit row whose keys equal AUDIT_EVENT_FIELDS",
+      "covers": ["S1", "S2"],
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_transfer_audit_lands_via_bus -v -> OK"
+    },
+    {
+      "id": "E2",
+      "scenario": "failure: the audit subscriber raises RuntimeError on publish; assert handle_transfer returns {'ok': True}, no exception escapes, the transactions row is written, and 0 audit rows exist",
+      "covers": ["S1"],
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_handler_ok_when_audit_consumer_raises -v -> OK"
+    },
+    {
+      "id": "E3",
+      "scenario": "failure: publish the same well-formed event twice on 'audit' (redelivery); assert exactly 1 audit row and the second consume returns {'ok': True, 'deduped': True}",
+      "covers": ["S2"],
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_redelivery_yields_one_row -v -> OK"
+    },
+    {
+      "id": "E4",
+      "scenario": "negative: handle_transfer(store, bus, 'a', 'b', -1) with the consumer subscribed; assert {'ok': False, 'error': 'bad-amount'}, 0 events on the bus, 0 transactions rows, 0 audit rows",
+      "covers": ["S1"],
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_bad_amount_publishes_nothing -v -> OK"
+    }
+  ],
+  "notes": "final_acceptance is merged into T04 (small plan, single E2E file): T04 also runs the full unittest suite and records A1-A4 evidence in its checkpoint, per the V1 rule that merging is allowed when recorded. T03 is read-only: owns_fixes_for is empty by design — it diffs, it does not patch."
+}

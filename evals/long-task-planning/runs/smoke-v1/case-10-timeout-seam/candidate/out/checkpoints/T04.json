@@ -1,0 +1,42 @@
+{
+  "schema": "planning/checkpoint@1",
+  "task_id": "T04",
+  "status": "complete",
+  "revision": {
+    "sha": "e03ec3d0976d84967a05c64b28f1c4495ec33913",
+    "branch": "main",
+    "committed_at": "2026-09-09T22:36:25+08:00"
+  },
+  "completed": {
+    "task_id": "T04",
+    "summary": "Ran the E2E closure gates E1-E4 and full-suite gate A5 from the repo root against the integrated state (T01 d19950b + T02 99f97a2 + T03 a551b78). All gates green on first run: E1 and E2 pass on the unmodified fixture file tests/test_pipeline_e2e.py, E3 passes via the T02/T03 suites (8/8), E4/A5 discovery runs exactly 15 tests with 0 failures and 0 errors. A3 confirmed: the three existing test files are byte-identical to baseline (git diff 4667f0d..HEAD over them is empty) and their 5 tests are green. No gate failed, so no stop-report was needed and T04 modified no repo file (its commit is an --allow-empty evidence marker)."
+  },
+  "contracts_satisfied": ["C1", "C2"],
+  "changed_paths": [],
+  "tests": {
+    "passed": [
+      "tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout (E1)",
+      "tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_engine_timeout (E2)",
+      "tests.test_wire_contract.TestWireContract + tests.integration.test_timeout_seam.TestTimeoutSeam (E3, 8 tests)",
+      "full discovery over tests/ (E4/A5, 15 tests)",
+      "tests.test_producer + tests.test_consumer (A3, 5 tests)",
+      "tests.test_wire_contract alone (A4, 5 tests)"
+    ],
+    "failed": [],
+    "evidence": "Literal commands + literal outcomes (all from repo root via 'uv run --no-project python', all exit code 0): [A1/E1] python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v -> 'Ran 1 test in 0.000s / OK'. [A2/E2] python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_engine_timeout -v -> 'Ran 1 test in 0.000s / OK'. [A3] python -m unittest tests.test_producer tests.test_consumer -v -> 'Ran 5 tests in 0.000s / OK'; git diff 4667f0d..HEAD over tests/test_producer.py, tests/test_consumer.py, tests/test_pipeline_e2e.py -> empty (byte-identical to baseline). [A4] python -m unittest tests.test_wire_contract -v -> 'Ran 5 tests in 0.000s / OK'. [A5/E3] python -m unittest tests.test_wire_contract tests.integration.test_timeout_seam -v -> 'Ran 8 tests in 0.000s / OK'. [A5/E4] python -m unittest discover -s tests -v -> 'Ran 15 tests in 0.000s / OK' (producer 2 + consumer 3 + e2e 2 + wire_contract 5 + timeout_seam 3; 0 failures, 0 errors)."
+  },
+  "verified_facts": [
+    "A1 PASS: consumer sees the producer-set timeout end-to-end — job = make_job('j1', {'cmd': 'x'}, timeout_ms=500) gives consumer.job_timeout(job) == 500, asserted by the unmodified fixture test (E1 green).",
+    "A2 PASS: engine path per C2 — run_job(make_job('j2', {'cmd': 'y'}, timeout_ms=100), 50) == 'done', run_job(same job, 150) == 'timeout' (E2 green).",
+    "A3 PASS: tests/test_producer.py and tests/test_consumer.py (and tests/test_pipeline_e2e.py) are byte-identical to the baseline commit 4667f0d (git diff over the three files is empty); their combined 5 tests pass.",
+    "A4 PASS: the new C1 regression suite tests/test_wire_contract.py runs 5 tests, all green.",
+    "A5 PASS: 'python -m unittest discover -s tests -v' from the repo root ran exactly 15 tests (2+3+2+5+3), 0 failures, 0 errors — the Stage's acceptance closure.",
+    "T04 made zero repo file edits: 'git status --porcelain' was clean before its --allow-empty evidence commit e03ec3d; the only diff between the T03 state and the T04 state is the empty commit itself.",
+    "Gate sequence followed the integration-plan E1-E4 ordering; no patch was applied by T04 (patch rights belong to T03, which also applied none)."
+  ],
+  "deviations": [],
+  "newly_discovered_issues": [],
+  "blockers": [],
+  "remaining_dag": [],
+  "downstream_notes": "Stage closed green. Final repo state: e03ec3d on main (baseline 4667f0d -> T01 d19950b -> T02 99f97a2 -> T03 a551b78 -> T04 e03ec3d). Only production change in the entire Stage: pipeline/consumer.py job_timeout (C1 resolution chain per DA-1). New files: tests/test_wire_contract.py, tests/integration/__init__.py, tests/integration/test_timeout_seam.py, docs/wire-contract-consistency.md. Re-run the suite any time with: from repo root, uv run --no-project python -m unittest discover -s tests -t . (expect 'Ran 15 tests ... OK'). No open replan triggers: no unhealthy-run condition fired, no C-class blocker, no repeated gate failure."
+}

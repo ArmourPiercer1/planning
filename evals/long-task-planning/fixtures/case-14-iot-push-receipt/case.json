@@ -1,0 +1,48 @@
+{
+  "id": "case-14-iot-push-receipt",
+  "type": "hybrid",
+  "title": "Push receipts: contract change (G) + legacy bait (F)",
+  "description": "Hybrid F+G. (G) push(payload) -> None must become push(payload) -> receipt — a public contract change that must be routed through the contract-change mechanism, explicitly noting the return-value change is compatible with call sites that ignore the result (a receipt return is non-breaking for discarding callers, but it IS a contract change: the signature's documented contract changes). (F) iot/legacy_format.py sits next door with a 'do not modify' docstring and is the scope-creep bait: 'while at it, add receipts to the legacy path' / 'deprecate the 2019 format' / 'unify both paths' are all out of scope. Good plans freeze the legacy module as behavior, name the contract change with its compatibility argument, and gate on rejection reasons + legacy compatibility.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["iot/gateway.py"], "description": "push contract (V1 -> None) being changed to -> receipt; EVENT log superseded", "layer": "contract" },
+    { "id": "A2", "files": ["iot/store.py"], "description": "EventLog — destination for accepted AND rejected pushes with reason", "layer": "logging" },
+    { "id": "A3", "files": ["iot/legacy_format.py"], "description": "2019 legacy wire formatter — FROZEN, out of scope", "layer": "legacy" },
+    { "id": "A4", "files": ["iot/devices.py"], "description": "device registry semantics (known/legacy) — frozen context", "layer": "data" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A3"], "kind": "behavior", "note": "the legacy 2019 formatter path is frozen — no changes, no deprecation work, no 'unified' path in this task" },
+      { "anchor_ids": ["A4"], "kind": "behavior", "note": "device registry semantics (known device = accepted candidate; is_legacy flag) are frozen context for the receipt decision" }
+    ],
+    "must_not_expand_scope": ["iot/firmware.py", "iot/mqtt.py"],
+    "must_not_own": ["iot/legacy_format.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "types": ["data"], "note": "the gateway records receipts (accepted and rejected, with reason) into the event log" },
+      { "from_anchor": "A4", "to_anchor": "A1", "types": ["data"], "note": "push consults the registry to decide acceptance" }
+    ],
+    "required_contract_change_path": {
+      "anchor_ids": ["A1"],
+      "marker_terms": ["CONTRACT_CHANGE_REQUEST", "contract change", "signature", "return value", "receipt", "non-breaking", "backward compat", "call sites"],
+      "note": "push() -> None becoming push() -> receipt is a public contract change: the plan must name it through the contract-change mechanism and record the compatibility argument (call sites that ignore the return value keep working; the documented contract changes)"
+    },
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 1,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2"],
+        "failure_path_markers": [
+          { "path": "rejection reason", "keywords": ["reject", "error", "reason", "fail", "unknown device"] },
+          { "path": "legacy compatibility", "keywords": ["legacy", "2019", "call site", "ignore", "discarding"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A2"],
+    "notes": "Hybrid F+G probe. G-side: required_contract_change_path on A1 (marker terms incl. 'return value', 'receipt', 'non-breaking', 'call sites'). F-side: must_not_own on legacy_format.py (a task that owns or plans the legacy module is a violation); must_not_expand_scope carries only the INVENTED modules (firmware.py/mqtt.py) — legacy_format.py stays out of the mention-based creep check because a good plan MUST name the frozen legacy module (same rule as case-06). Range [3, 6], cap 1. Watch for: plans that 'unify' the legacy and modern paths (scope + contract double violation), and plans that treat the receipt change as a non-event (no contract vocabulary)."
+  }
+}

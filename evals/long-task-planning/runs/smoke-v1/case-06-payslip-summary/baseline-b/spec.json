@@ -1,0 +1,22 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-06-payslip-summary",
+  "variant": "baseline-b",
+  "ablation_remove": null,
+  "model": {
+    "name": "host-session-model",
+    "note": "all variants run on the same host model/subagent channel; per-run model config is not exposed by the host in V1"
+  },
+  "run_index": 0,
+  "created_at": "2026-09-09T13:24:42Z",
+  "skills_dir": "D:\\AI_Coworking\\skill-build\\planning\\.agents\\skills",
+  "protocol_version": "1",
+  "paths": {
+    "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b",
+    "work_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\work\\repo",
+    "task_prompt": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\task.md",
+    "prompt_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\prompt.md",
+    "plan_out": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\out",
+    "telemetry_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\telemetry.jsonl"
+  }
+}

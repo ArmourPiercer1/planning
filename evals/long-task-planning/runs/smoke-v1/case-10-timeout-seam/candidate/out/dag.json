@@ -1,0 +1,87 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03's seam gate runs the real producer→consumer round-trip against T01's modified consumer to verify S1 conformance to C1 before closure"
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 runs T02's C1/C2 regression suite and cross-checks the new seam tests against it before closure"
+    },
+    {
+      "from": "T01",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's E2E closure gates E1-E4 and full-suite gate A5 exist to verify T01's consumer fix end-to-end"
+    },
+    {
+      "from": "T02",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04 runs T02's regression file as part of gates E3/E4 (A4/A5 require the 5 wire-contract tests green)"
+    },
+    {
+      "from": "T03",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's final gates must run after T03 has applied any integration-only seam fixes, so acceptance evidence reflects the integrated state"
+    }
+  ],
+  "parallel_groups": [["T01", "T02"], ["T03"], ["T04"]],
+  "critical_path": ["T01", "T03", "T04"],
+  "integration_gates": [
+    {
+      "gate_id": "G1",
+      "task_id": "T03",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A1"
+    },
+    {
+      "gate_id": "G2",
+      "task_id": "T04",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A5"
+    }
+  ],
+  "unlock_contracts": [
+    {
+      "contract_id": "C1",
+      "unlocks": ["T01", "T02"]
+    },
+    {
+      "contract_id": "C2",
+      "unlocks": ["T01", "T02"]
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T01",
+        "to": "T02",
+        "why_not_real": "A naive 'fix first, then test the fix' reading would order T02 after T01, but T02 writes its tests against the frozen C1/C2 specs (and DA-1) and owns a disjoint path; it consumes no output, file, or path of T01 — the shared context is exactly the frozen contracts, which is what unlocks their parallel execution"
+      },
+      {
+        "from": "T02",
+        "to": "T01",
+        "why_not_real": "The reverse order ('test first') is equally unjustified: T01 does not consume T02's test file — it needs only C1/C2/DA-1 and the consumer module; no contract/data/ownership/verification reason exists in either direction"
+      },
+      {
+        "from": "T01",
+        "to": "T04",
+        "why_not_real": "Not removed — kept as a real verification edge: T04's gates exist to verify T01's output (unlike the T01/T02 pair, there is no frozen-spec substitute for running the actual fix through the e2e gates)"
+      }
+    ],
+    "collisions_handled": [
+      "none — T01 owns pipeline/consumer.py; T02 owns tests/test_wire_contract.py; T03 owns tests/integration/ + docs/wire-contract-consistency.md; T04 owns tests/test_pipeline_e2e.py; no prefix overlap between any pair of owned paths"
+    ],
+    "free_parallelism_trades": [
+      "T01 ∥ T02 parallelism is bought by freezing C1/C2/DA-1 in stage 1; consequence: T02's consumer-resolution test is red until T01 lands (expected TDD state, recorded in T02's package and checkpoint, closed by T04's A4/A5 gates) — an accepted trade, not a hidden dependency",
+      "T03 and T04 are serialized (T03 before T04) because T04's evidence must reflect the integrated state after any integration-only fixes; merging them would hide which fix made the gates green and kill local recoverability"
+    ]
+  }
+}

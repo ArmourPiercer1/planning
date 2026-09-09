@@ -1,0 +1,49 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Fresh subagent with no access to the planning conversation; inputs were the plan directory (all 12 artifacts), the plan-auditor skill, and the glossary only. Assumptions not verifiable inside the plan directory (per the skill's failure-escalation rule): the repo facts in input.md's bounded scan (exact pre-change test names, legacy_export byte format, absence of tests/__init__.py) are taken as given; the authoritative suite gate (A3) uses 'python -m unittest discover' and does not depend on the dotted-module invocations cited in T03's evidence."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MINOR",
+      "check": "hidden_dependency",
+      "task_id": "T03",
+      "evidence": "tasks/T03.json integration_dependency.seams = [\"S1\", \"S2\"], but required_context.files = [\"payroll/calc.py\", \"payroll/payslip.py\", \"payroll/employees.py\", \"tests/test_contract_shape.py (new)\"] and payroll/legacy_export.py (the S2 consumer named in stage-contract.json seam S2) is not declared; T03's declared work (C1/C2 shape tests over calc.py and payslip.py) does not actually require that read, so S2's coverage label on T03 is producer-side via C1 while S2's consumer-side verification sits in T04 (E2/E3).",
+      "suggested_fix": "Either add payroll/legacy_export.py to T03 required_context.files (read-only) so the S2 label is fully backed by declared context, or narrow T03 integration_dependency.seams to [\"S1\"] and note that S2 consumer-side verification is T04's."
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T04",
+      "evidence": "stage-contract.json acceptance A4 states 'byte-stable legacy XML with structure and values unchanged; only the deduction element order follows C1' and its negative_case adds 'no new tags, no new attributes, no whitespace change', but A4's positive_case asserts only substrings ('<gross>8000.00</gross>', '<net>6000.00</net>'), element order, and equality of two consecutive calls — a whitespace/attribute drift elsewhere in the document would pass the enumerated assertions.",
+      "suggested_fix": "Strengthen tests/test_payslip_integration.py::test_e2e_legacy_export_order to assert the full expected XML string (golden literal) for e1, or diff export_employee_xml('e1') against the pre-change output with only the deduction element order swapped, so 'no other byte change' is pinned, not just sampled."
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "scope_creep: in_scope items matched against input.md task text — only the two requested changes, their requested tests, and the pipeline-structural integration gates (contract-shape + E2E) are in scope; out_of_scope names all repo temptations (legacy_export code changes per HR-4411, summary line in the XML, rates/formula/rounding, fixture data, test-suite refactoring, legacy removal) — no finding",
+    "insufficient_non_goals: stage-contract out_of_scope entries and every task package's non_goals name specific files, specific refactors, and specific behaviors — no finding",
+    "late_contract_freeze: T02 runs parallel to C1 owner T01, but C1 is frozen=true with an unfreeze_rule in stage-contract.json and T02 consumes only the order-independent C1 shape (dag.json unlock_contracts); seam specs S1/S2 predate execution — no finding",
+    "hidden_dependency: cross-checked every package's reads against required_context/inputs/allowed_dependencies — T01, T02, T04 fully declared; T03 labels seam S2 without legacy_export.py in context (no undeclared read actually required, S2 consumer side is T04's) — MINOR F01",
+    "fake_serialization: all 5 dag edges pass the 4-type test (T01->T03 data, T02->T03 data, T01->T04 verification, T02->T04 verification, T03->T04 data); dag.json fake_serialization_removed documents the doc-order T01/T02 edge with a real reason — no finding",
+    "ownership_collision: owned paths T01 {payroll/calc.py, tests/test_payroll.py}, T02 {payroll/payslip.py, tests/test_payslip_summary.py}, T03 {tests/test_contract_shape.py}, T04 {tests/test_payslip_integration.py} are pairwise disjoint including parallel group [T01, T02]; T04 owns_fixes_for T01/T02 is sequential integration-only fix right, not a parallel overlap — no finding",
+    "oversized_leaf: all four leaves are footprint S, single layer, P50 30-60 min, objective is one closure each with no sub-deliverable enumeration; T02's FRAGMENTATION_CANDIDATE warning carries a keep-split rationale — no finding",
+    "broad_context_loading: T04's 8-file context is the full suite surface its E2E closure legitimately needs in a 5-module repo; T01-T03 contexts match their closures (T01 reads legacy_export.py to understand the inherited-order consumer, per its split_rationale) — no finding",
+    "hidden_integration_work: seams S1/S2 both have covered_by tasks; e2e_gates E1-E3 include a failure scenario (E3: unknown employee KeyError + full-suite exit 0); final_acceptance merged into T04 and seam_integration omitted are both explicitly justified in integration-plan.json notes; T03 is read-only with no fix rights — no finding",
+    "nondeterministic_acceptance: A1-A5 all give exact strings/tuples/regexes/exit codes a third party can judge; A4's 'byte-stable ... no other byte change' criterion is only partially pinned by substring+order+two-call equality assertions — MINOR F02",
+    "lack_of_local_recoverability: all four tasks checkpoint_required=true; a leaf failure invalidates only itself and its downstream subgraph (T01/T02 -> T03,T04; T03 -> T04); no task owns a path every other task needs; T04 running last is genuinely required by its full-suite gate — no finding",
+    "replan_only_by_append: allowed_replan includes merge, reduce_scope, change_dependency (shrink/reshape, not scope growth); open question Q1 routes its fallback to request_contract_revision — no finding",
+    "communication_overhead: HANDOFF.md states each task runs with a fresh agent reading only its package + required_context ('never the rest of the plan'); integration tasks consume upstream checkpoints + contracts + changed paths; checkpoint requirements are the handoff protocol, not duplicated information — no finding",
+    "deterministic lint: plan-check.py lint run first (per procedure), exit 0 with 0 findings; recorded in 'deterministic'"
+  ],
+  "revision_round": 1
+}

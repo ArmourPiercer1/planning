@@ -1,0 +1,208 @@
+{
+  "$id": "planning-evals/run-result@1",
+  "title": "Per-run structured result (E vector + per-metric scores). Nulls are explicit 'not measured / not applicable', never silently dropped.",
+  "type": "object",
+  "required": ["run_id", "case_id", "planner_variant", "model", "phase", "planning", "e_vector", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "case_id": { "type": "string" },
+    "planner_variant": { "type": "string" },
+    "model": { "type": "string" },
+    "seed_or_run_index": { "type": ["integer", "null"] },
+    "phase": { "type": "string", "enum": ["planning-only", "planning+execution"] },
+    "planning": {
+      "type": "object",
+      "required": ["produced"],
+      "additionalProperties": true,
+      "properties": {
+        "produced": { "type": "boolean" },
+        "structural_validity": {
+          "type": "object",
+          "required": ["lint_exit", "findings"],
+          "additionalProperties": false,
+          "properties": {
+            "lint_exit": { "type": ["integer", "null"] },
+            "findings": {
+              "type": "object",
+              "required": ["blocker", "major", "minor"],
+              "additionalProperties": false,
+              "properties": {
+                "blocker": { "type": "integer" },
+                "major": { "type": "integer" },
+                "minor": { "type": "integer" }
+              }
+            },
+            "audit_verdict": { "type": ["string", "null"] },
+            "audit_rounds": { "type": ["integer", "null"] },
+            "note": { "type": "string" }
+          }
+        },
+        "contract_completeness": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "acceptance_determinism": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "context_locality": {
+          "type": "object",
+          "required": ["amplification_proxy"],
+          "additionalProperties": true,
+          "properties": {
+            "amplification_proxy": { "type": ["number", "null"] },
+            "per_task": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+            "max_context_files": { "type": ["integer", "null"] },
+            "bare_directories": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ownership_collisions": {
+          "type": "object",
+          "required": ["benign", "serialized", "hazardous"],
+          "additionalProperties": false,
+          "properties": {
+            "benign": { "type": "integer" },
+            "serialized": { "type": "integer" },
+            "hazardous": { "type": "integer" },
+            "details": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          }
+        },
+        "dependency_precision": {
+          "type": "object",
+          "required": ["must_have", "must_not_have", "cycles"],
+          "additionalProperties": true,
+          "properties": {
+            "must_have": {
+              "type": "object",
+              "required": ["hit", "total"],
+              "additionalProperties": false,
+              "properties": { "hit": { "type": "integer" }, "total": { "type": "integer" }, "details": { "type": "array", "items": { "type": "object", "additionalProperties": true } } }
+            },
+            "must_not_have": {
+              "type": "object",
+              "required": ["violated", "total"],
+              "additionalProperties": false,
+              "properties": { "violated": { "type": "integer" }, "total": { "type": "integer" }, "details": { "type": "array", "items": { "type": "object", "additionalProperties": true } } }
+            },
+            "cycles": { "type": ["integer", "null"] },
+            "edges_without_reason": { "type": ["integer", "null"] },
+            "unknown_task_edges": { "type": ["integer", "null"] }
+          }
+        },
+        "integration_explicitness": {
+          "type": "object",
+          "required": ["score", "by_kind", "e2e_gates", "failure_gates"],
+          "additionalProperties": true,
+          "properties": {
+            "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "by_kind": {
+              "type": "object",
+              "additionalProperties": { "type": "integer" },
+              "properties": {
+                "contract_consistency": { "type": "integer" },
+                "seam_integration": { "type": "integer" },
+                "e2e_closure": { "type": "integer" },
+                "final_acceptance": { "type": "integer" }
+              }
+            },
+            "e2e_gates": { "type": "integer" },
+            "failure_gates": { "type": "integer" },
+            "fixes_owned": { "type": "integer" },
+            "case_requirements_met": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+          }
+        },
+        "leaf_boundedness": {
+          "type": "object",
+          "required": ["phase_shaped_leaves", "max_anchors_per_task_observed"],
+          "additionalProperties": true,
+          "properties": {
+            "phase_shaped_leaves": { "type": "array", "items": { "type": "string" } },
+            "max_anchors_per_task_observed": { "type": ["integer", "null"] },
+            "over_anchor_cap": { "type": "integer" }
+          }
+        },
+        "recoverability": {
+          "type": "object",
+          "required": ["score"],
+          "additionalProperties": true,
+          "properties": {
+            "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "per_anchor": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          }
+        },
+        "scope_discipline": {
+          "type": "object",
+          "required": ["creep_items_planned", "out_of_scope_named"],
+          "additionalProperties": true,
+          "properties": {
+            "creep_items_planned": { "type": "array", "items": { "type": "string" } },
+            "out_of_scope_named": { "type": "array", "items": { "type": "string" } },
+            "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+          }
+        },
+        "task_count": {
+          "type": "object",
+          "required": ["actual"],
+          "additionalProperties": true,
+          "properties": {
+            "actual": { "type": ["integer", "null"] },
+            "range": { "type": ["array", "null"], "items": { "type": "integer" } },
+            "in_range": { "type": ["boolean", "null"] }
+          }
+        },
+        "gaming_flags": { "type": "array", "items": { "type": "object", "required": ["code"], "additionalProperties": true } },
+        "judge_pending": { "type": "array", "items": { "type": "object", "required": ["dimension", "reason"], "additionalProperties": true } },
+        "metric_coverage": { "type": "object", "additionalProperties": { "type": "string", "enum": ["assessed", "partial", "not-measurable"] } }
+      }
+    },
+    "execution": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "success": { "type": ["boolean", "null"] },
+        "wall_time_seconds": { "type": ["number", "null"] },
+        "critical_path_seconds": { "type": ["number", "null"] },
+        "input_tokens": { "type": ["integer", "null"] },
+        "output_tokens": { "type": ["integer", "null"] },
+        "unique_files_read": { "type": ["integer", "null"] },
+        "files_read": { "type": ["integer", "null"] },
+        "files_changed": { "type": ["integer", "null"] },
+        "changed_paths": { "type": "array", "items": { "type": "string" } },
+        "rework_ratio": { "type": ["number", "null"] },
+        "integration_defects": { "type": ["integer", "null"] },
+        "scope_creep_items": { "type": ["integer", "null"] },
+        "replans": { "type": ["integer", "null"] },
+        "compactions": { "type": ["integer", "null"] },
+        "max_task_duration_seconds": { "type": ["number", "null"] },
+        "per_task": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "tests": { "type": "object", "additionalProperties": true },
+        "telemetry_note": { "type": "string" }
+      }
+    },
+    "e_vector": {
+      "type": "object",
+      "required": ["success", "wall_time", "tokens", "context_read", "rework", "integration_defects", "scope_creep", "replans", "compactions", "local_recoverability"],
+      "additionalProperties": false,
+      "properties": {
+        "success": { "type": ["boolean", "null"] },
+        "wall_time": { "type": ["number", "null"] },
+        "tokens": { "type": ["number", "null"] },
+        "context_read": { "type": ["number", "null"] },
+        "rework": { "type": ["number", "null"] },
+        "integration_defects": { "type": ["number", "null"] },
+        "scope_creep": { "type": ["number", "null"] },
+        "replans": { "type": ["number", "null"] },
+        "compactions": { "type": ["number", "null"] },
+        "local_recoverability": { "type": ["number", "null"] }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["plan_dir", "score_file"],
+      "additionalProperties": false,
+      "properties": {
+        "plan_dir": { "type": "string" },
+        "score_file": { "type": "string" },
+        "trace": { "type": ["string", "null"] },
+        "diff": { "type": ["string", "null"] },
+        "tests": { "type": ["string", "null"] }
+      }
+    },
+    "notes": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

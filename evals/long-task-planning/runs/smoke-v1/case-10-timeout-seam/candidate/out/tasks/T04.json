@@ -1,0 +1,121 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T04",
+  "objective": "Run the E2E closure gates E1-E4 and the full-suite gate A5 (kinds e2e_closure + final_acceptance merged for this small plan): execute tests/test_pipeline_e2e.py (unmodified fixture gates), tests/test_wire_contract.py, tests/integration/test_timeout_seam.py, and unittest discovery over tests/; record A1-A5 evidence in the checkpoint; on any gate failure, emit a structured stop-report instead of patching code.",
+  "required_context": {
+    "files": [
+      "tests/test_pipeline_e2e.py",
+      "tests/test_producer.py",
+      "tests/test_consumer.py",
+      "tests/test_wire_contract.py",
+      "tests/integration/test_timeout_seam.py",
+      "pipeline/consumer.py"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "gate sequencing: E1 happy path, E2 engine boundary, E3 failure scenarios, E4 final acceptance",
+      "evidence recording: literal command + literal outcome string per gate",
+      "stop-report format on gate failure (minimal reproducer, diagnosis, failed attempts, blocker, evidence)"
+    ]
+  },
+  "inputs": [
+    "T01 output: integrated consumer fix (pipeline/consumer.py)",
+    "T02 output: tests/test_wire_contract.py (5 regression tests)",
+    "T03 output: tests/integration/test_timeout_seam.py (3 seam tests), docs/wire-contract-consistency.md, any integration-only patches applied",
+    "gate definitions E1-E4 and acceptance A1-A5 (integration-plan.json, stage-contract.json)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["tests/test_pipeline_e2e.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "integrated consumer fix state (pipeline/consumer.py) — run, never patch here" },
+    { "task_id": "T02", "what": "tests/test_wire_contract.py — run under gates E3/E4" },
+    { "task_id": "T03", "what": "tests/integration/test_timeout_seam.py, docs/wire-contract-consistency.md, and any integration-only patches T03 applied — run and record" }
+  ],
+  "non_goals": [
+    "Do not patch pipeline/ files or other test files on gate failure — stop-report instead; patch rights belong to T03",
+    "Do not add or remove tests in tests/test_pipeline_e2e.py — it must remain the unmodified fixture file (A1/A2 run against it verbatim)",
+    "Do not change gate commands or acceptance ids from stage-contract.json / integration-plan.json"
+  ],
+  "implementation_constraints": [
+    "Run every command from the repo root",
+    "tests/test_pipeline_e2e.py stays byte-identical to baseline: the fixture e2e tests must pass unmodified after T01 (if a change seems necessary, that is a stop-report, not an edit)",
+    "Evidence strings must be the literal command + literal outcome ('Ran N tests ... OK' or the first FAIL/ERROR line)"
+  ],
+  "deliverables": [
+    { "what": "gate evidence for A1-A5 (literal commands + outcomes) as the Stage acceptance record", "where": "checkpoints/T04.json" },
+    { "what": "state check: tests/test_pipeline_e2e.py unmodified and passing (no diff expected)", "where": "tests/test_pipeline_e2e.py" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T04-AT1",
+      "case": "positive",
+      "description": "E1 gate: test_pipeline_e2e_effective_timeout passes unmodified (consumer.job_timeout returns 500, not the default 30000)",
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v → 'Ran 1 test ... OK'"
+    },
+    {
+      "id": "T04-AT2",
+      "case": "positive",
+      "description": "E2 gate: test_pipeline_e2e_engine_timeout passes unmodified (status 'done' at work 50, 'timeout' at work 150)",
+      "evidence": "python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_engine_timeout -v → 'Ran 1 test ... OK'"
+    },
+    {
+      "id": "T04-AT3",
+      "case": "failure",
+      "description": "E3 gate: missing-timeout and fallback scenarios pass via the T02/T03 suites — job without timeout keys returns 30000, draft-only key returns 123, engine default times out at work 31000",
+      "evidence": "python -m unittest tests.test_wire_contract tests.integration.test_timeout_seam -v → 'Ran 8 tests ... OK', exit code 0"
+    },
+    {
+      "id": "T04-AT4",
+      "case": "positive",
+      "description": "A5 full suite: unittest discovery over tests/ runs exactly 15 test cases (producer 2 + consumer 3 + e2e 2 + wire_contract 5 + timeout_seam 3) with 0 failures and 0 errors",
+      "evidence": "python -m unittest discover -s tests -v → 'Ran 15 tests ... OK', exit code 0"
+    },
+    {
+      "id": "T04-AT5",
+      "case": "failure",
+      "description": "If any gate fails, T04 emits a structured stop-report (minimal reproducer, current diagnosis, failed attempts, blocker, evidence) and modifies no repo files",
+      "evidence": "Stop-report present in checkpoints/T04.json with a minimal repro command; the working-tree diff shows zero repo file edits made by T04"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A5 discovery reports a count below 15 — e.g. 10 instead of 15 (tests/test_wire_contract.py not created by T02) or 12 instead of 15 (tests/integration/test_timeout_seam.py not created by T03)",
+      "expected_behavior": "Gate fails; the stop-report names the missing module; no silent re-run until the T02/T03 checkpoint explains the gap"
+    },
+    {
+      "scenario": "The E1 effective-timeout gate fails after T01 (fix regressed or incomplete)",
+      "expected_behavior": "Stop-report carries the literal FAIL line; the fix routes back through T03's patch rights, not an inline T04 edit"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [
+      "pipeline/consumer.py (T01)",
+      "tests/test_wire_contract.py (T02)",
+      "tests/integration/test_timeout_seam.py + docs/wire-contract-consistency.md (T03)"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": [],
+    "notes": "Final checkpoint carries the A1-A5 evidence table; it is the Stage's acceptance record. A green A5 (15/15 tests) closes the Stage. Any gate failure stops here with a structured stop-report — no silent continuation."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "15-30 min",
+    "p80": "30-45 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

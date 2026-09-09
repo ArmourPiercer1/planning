@@ -1,0 +1,273 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-10-timeout-seam",
+  "planner_variant": "candidate",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning+execution",
+  "planning": {
+    "produced": true,
+    "variant_kind": "structured",
+    "structural_validity": {
+      "lint_exit": 0,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": "PASS",
+      "audit_rounds": 2
+    },
+    "contract_completeness": 1.0,
+    "acceptance_determinism": 0.9412,
+    "context_locality": {
+      "amplification_proxy": 5.0,
+      "per_task": [
+        {
+          "task": "T01",
+          "context_files": 4,
+          "owned_files": 1,
+          "amplification_proxy": 4.0,
+          "cross_anchor_reads": 1,
+          "bare_directories": []
+        },
+        {
+          "task": "T02",
+          "context_files": 6,
+          "owned_files": 1,
+          "amplification_proxy": 6.0,
+          "cross_anchor_reads": 3,
+          "bare_directories": []
+        }
+      ],
+      "max_context_files": 6,
+      "bare_directories": []
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 2,
+        "total": 2,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A2",
+            "hit": true,
+            "via": "edge T03->T04"
+          },
+          {
+            "from": "A1",
+            "to": "A3",
+            "hit": true,
+            "via": "internalized in one task"
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 0,
+        "details": []
+      },
+      "cycles": 0,
+      "edges_without_reason": 0,
+      "unknown_task_edges": 0
+    },
+    "parallelizable_groups": [],
+    "forbidden_parallel_pairs": [],
+    "integration_explicitness": {
+      "score": 1.0,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 1,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 4,
+      "failure_gates": 4,
+      "fixes_owned": 2,
+      "case_requirements_met": 1.0,
+      "gate_details": [
+        {
+          "kind": "seam_integration",
+          "anchors": [
+            "A1",
+            "A2"
+          ],
+          "ok": true,
+          "missing_failure_markers": [],
+          "kind_present": true,
+          "anchors_covered": true
+        },
+        {
+          "kind": "e2e_closure",
+          "anchors": [
+            "A1",
+            "A2",
+            "A3"
+          ],
+          "ok": true,
+          "missing_failure_markers": [],
+          "kind_present": true,
+          "anchors_covered": true
+        }
+      ]
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "must_not_own_violations": [],
+    "task_count": {
+      "actual": 2,
+      "range": [
+        2,
+        5
+      ],
+      "in_range": true
+    },
+    "context_clusters": [],
+    "required_replan_actions": {
+      "required": [],
+      "allowed": [
+        "change_dependency",
+        "checkpoint_and_split",
+        "defer",
+        "merge",
+        "reduce_scope",
+        "reorder",
+        "replace_route",
+        "request_contract_revision",
+        "split"
+      ],
+      "missing": []
+    },
+    "contract_change_path": {
+      "ok": true,
+      "anchor_mentioned": true,
+      "marker_hit": [
+        "CONTRACT_CHANGE_REQUEST",
+        "wire contract",
+        "seam",
+        "adapts",
+        "which side"
+      ],
+      "note": "fixing the mismatch is a seam/contract decision that must be explicitly named and owned (ideally by an integration task), not a silent key rename buried in a leaf task"
+    },
+    "gaming_flags": [],
+    "judge_pending": [],
+    "metric_coverage": {
+      "contract_completeness": "assessed",
+      "acceptance_determinism": "assessed",
+      "context_locality": "assessed",
+      "ownership_collisions": "assessed",
+      "dependency_precision": "assessed",
+      "integration_explicitness": "assessed",
+      "leaf_boundedness": "assessed",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed",
+      "contract_change_path": "assessed"
+    }
+  },
+  "execution": {
+    "success": true,
+    "wall_time_seconds": 484.0,
+    "critical_path_seconds": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "unique_files_read": 36,
+    "files_read": 43,
+    "files_changed": 9,
+    "changed_paths": [
+      "docs/wire-contract-consistency.md",
+      "pipeline/__pycache__/consumer.cpython-314.pyc",
+      "pipeline/consumer.py",
+      "tests/__pycache__/test_wire_contract.cpython-314.pyc",
+      "tests/integration/__init__.py",
+      "tests/integration/__pycache__/__init__.cpython-314.pyc",
+      "tests/integration/__pycache__/test_timeout_seam.cpython-314.pyc",
+      "tests/integration/test_timeout_seam.py",
+      "tests/test_wire_contract.py"
+    ],
+    "rework_ratio": 0.0154,
+    "rework_definition": "churn-based: (total added+deleted across commits - net added) / churn; recorded per bootstrap §7",
+    "integration_defects": 0,
+    "scope_creep_items": 0,
+    "replans": 0,
+    "compactions": null,
+    "max_task_duration_seconds": 185.0,
+    "per_task": [
+      {
+        "task_id": "T01",
+        "start": 1788964144,
+        "end": 1788964329
+      },
+      {
+        "task_id": "T02",
+        "start": 1788964329,
+        "end": 1788964423
+      },
+      {
+        "task_id": "T03",
+        "start": 1788964423,
+        "end": 1788964541
+      },
+      {
+        "task_id": "T04",
+        "start": 1788964541,
+        "end": 1788964628
+      }
+    ],
+    "tests": {
+      "passed": null,
+      "failed": 0,
+      "failing_tests": [],
+      "exit_code": 0,
+      "tail": "...............\n----------------------------------------------------------------------\nRan 15 tests in 0.000s\n\nOK\n"
+    },
+    "checkpoints_written": [
+      "T01.json",
+      "T02.json",
+      "T03.json",
+      "T04.json"
+    ],
+    "telemetry_note": "file reads are self-reported by the executor per the protocol; token/compaction telemetry is not exposed by the host in V1"
+  },
+  "e_vector": {
+    "success": true,
+    "wall_time": 2716.4,
+    "tokens": null,
+    "context_read": 36,
+    "rework": 0.0154,
+    "integration_defects": 0,
+    "scope_creep": 0,
+    "replans": 0,
+    "compactions": null,
+    "local_recoverability": 1.0
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate\\telemetry.jsonl",
+    "diff": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate\\work\\repo\\.git",
+    "tests": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate\\out\\execution-report.json"
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

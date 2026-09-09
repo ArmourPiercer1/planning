@@ -1,0 +1,78 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["api", "e2e"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["runtime", "e2e"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "60-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "L",
+      "touched_layers": ["tooling"],
+      "cross_contracts": 4,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "60-90 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        {
+          "code": "CONTRACT_DENSITY",
+          "detail": "pins all four frozen contracts C1-C4",
+          "rationale": "each contract is a re-read point; the leaf stays single because all four pins live in one small read-only test module — splitting would re-read the same four modules in two agents"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T04",
+      "context_footprint": "L",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 4,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "45-75 min",
+      "p80": "90-120 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        {
+          "code": "CONTRACT_DENSITY",
+          "detail": "consumes all four frozen contracts C1-C4",
+          "rationale": "the E2E module drives every seam; kept as one leaf because the gates share one bus wiring — splitting would re-wire the bus per gate and re-load the same four modules"
+        },
+        {
+          "code": "SPLIT_RECHECK_REQUIRED",
+          "detail": "p80 (90-120 min) exceeds the Stage leaf_p80_max (90 min)",
+          "rationale": "four gates plus a full-suite run in one leaf; if execution exceeds p80, checkpoint_and_split around the failure-scenario gates (E2, E3)"
+        }
+      ],
+      "oversized_justification": null
+    }
+  ]
+}

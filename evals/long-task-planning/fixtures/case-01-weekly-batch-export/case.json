@@ -1,0 +1,51 @@
+{
+  "id": "case-01-weekly-batch-export",
+  "type": "A",
+  "title": "Weekly batch export: wiring existing parts, not a new feature",
+  "description": "Type A (fake feature boundary). The request reads like a new 'weekly export' feature/module, but it is actually a thin wiring of the four existing parts: metrics computation, date-range queries, the scheduler, and the CSV writer. Good plans are small (2-5 tasks), merge the metrics+queries closure (computing 7-day figures needs both files in one context), and keep scheduler registration and CSV layout as separate small pieces. Anti-plans: one giant 'implement weekly export' task, 8+ micro-tasks, or treating the four anchors as four independent features with fake serial ordering.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["analytics/metrics.py"], "description": "metric computations (daily_revenue, active_users)", "layer": "compute" },
+    { "id": "A2", "files": ["analytics/queries.py"], "description": "date-range query helpers (filter_range, last_n_days)", "layer": "compute" },
+    { "id": "A3", "files": ["analytics/scheduler.py"], "description": "scheduler job registration", "layer": "wiring" },
+    { "id": "A4", "files": ["analytics/csv_writer.py"], "description": "CSV export layout", "layer": "wiring" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1", "A2"], "kind": "behavior", "note": "the 7-day metric pipeline (range from queries + aggregation from metrics) is the core behavior and must be defined/frozen before wiring work starts" },
+      { "anchor_ids": ["A3", "A4"], "kind": "seam", "note": "the scheduler-job -> export-function -> CSV-file seam (names, path pattern, schedule string)" }
+    ],
+    "must_not_expand_scope": ["analytics/alerts.py", "analytics/dashboard.py"],
+    "must_have_edges": [
+      { "from_anchor": "A2", "to_anchor": "A1", "types": ["data"], "note": "metric computation consumes the date-range filter" },
+      { "from_anchor": "A1", "to_anchor": "A4", "types": ["data"], "note": "the CSV rows come from computed metrics" },
+      { "from_anchor": "A1", "to_anchor": "A3", "types": ["contract"], "note": "the scheduled job wires the export entry point that computes first" }
+    ],
+    "must_not_have_edges": [
+      { "from_anchor": "A3", "to_anchor": "A2", "reason": "scheduler registration has no direct data/contract dependency on query construction (only via the export entry point); a direct edge is fake serialization" },
+      { "from_anchor": "A4", "to_anchor": "A3", "reason": "the CSV writer is a passive helper consumed at runtime by the export function; it does not need to be built after the scheduler job is registered" }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A3", "A4"], "note": "once the compute closure (A1/A2) is defined, scheduler registration and CSV layout work can proceed in parallel" }
+    ],
+    "acceptable_task_count_range": [2, 5],
+    "max_anchors_per_task": 2,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2"], "mode": "merge" },
+      { "anchor_ids": ["A3", "A4"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A3", "A4"],
+        "failure_path_markers": [
+          { "path": "scheduler fires the job", "keywords": ["not run", "missed", "dry run", "dry-run", "fired"] },
+          { "path": "writer output", "keywords": ["empty", "missing", "truncat", "malformed"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A3"],
+    "notes": "Type A probe: is the 'feature boundary' real? The honest answer is no - this is wiring. Watch for invented modules (alerts, dashboard) as scope creep and for over-fragmentation of the compute closure."
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "id": "case-13-crm-exports",
+  "type": "hybrid",
+  "title": "V2 export: shared request layer (C) + byte-frozen v1 seam (E)",
+  "description": "Hybrid C+E. Two failure modes in one case: (C) the new V2 work and the V1 protection work both want to touch the shared request layer (crm/api.py) — parallel tasks both owning api.py collide, so they must be serialized or split ownership; (E) the V1/V2 shape seam: a lazy plan 'unifies' the two exports through a shared serializer in api.py and risks changing V1's pinned bytes. The byte-snapshot test in the fixture is the physical guard. Good plans: freeze V1 bytes as a behavior contract, define V2 as a NEW frozen contract (renames + always-present tagged_at), keep api.py ownership in a single task (or serialize), and gate on a V1 regression check (byte snapshot / diff) plus V2 shape consistency.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["crm/api.py"], "description": "shared request layer (V1 endpoints + new V2 endpoint) — the ownership collision point", "layer": "shared" },
+    { "id": "A2", "files": ["crm/storage.py"], "description": "contact store + contact shape (data source for both versions)", "layer": "data" },
+    { "id": "A3", "files": ["crm/export_v1.py"], "description": "V1 export — BYTE-FROZEN for third parties", "layer": "frozen" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A3"], "kind": "behavior", "note": "V1 export output is byte-frozen (sorted keys, compact separators, id order); any shared-code change must be proven not to change V1 bytes (the snapshot test is the guard)" },
+      { "anchor_ids": ["A1", "A2"], "kind": "contract", "note": "the V2 wire shape (version 2, full_name/contact_email/tagged_at always present incl. null) is a NEW frozen contract, deliberately distinct from V1 — not a refactor of V1" }
+    ],
+    "must_not_expand_scope": ["crm/emails.py", "crm/dashboard.py", "crm/imports.py"],
+    "must_have_edges": [
+      { "from_anchor": "A2", "to_anchor": "A1", "types": ["data"], "note": "the request layer reads the contact store" },
+      { "from_anchor": "A2", "to_anchor": "A3", "types": ["data"], "note": "the V1 export reads the contact store via the V1 endpoint shape" }
+    ],
+    "forbidden_parallel_pairs": [
+      { "anchor_ids": ["A1", "A3"], "shared_path": "crm/api.py", "note": "a V2-endpoint task and a V1-protection/refactor task that both own the shared request layer in parallel collide; serialize them or keep api.py owned by exactly one task" }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A1", "A3"], "note": "V2 work and V1 protection CAN run in parallel — but only if api.py ownership stays with one of them (the other works against the frozen V1 surface)" }
+    ],
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 2,
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A3"],
+        "failure_path_markers": [
+          { "path": "v1 regression", "keywords": ["byte", "identical", "regression", "snapshot", "diff"] }
+        ]
+      },
+      {
+        "kind": "contract_consistency",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "v2 shape", "keywords": ["full_name", "contact_email", "tagged_at", "version", "rename"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A1"],
+    "notes": "Hybrid C+E probe. The forbidden pair + parallelizable group on [A1, A3] encode 'parallel iff ownership is split'. The byte-snapshot test makes the V1 seam physically checkable. Watch for: a 'unified serializer' refactor of api.py (E trap), two parallel api.py owners (C trap), tagged_at emitted as absent instead of null (V2 contract detail), and invented scope (emails/dashboard/imports)."
+  }
+}

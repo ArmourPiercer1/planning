@@ -1,0 +1,45 @@
+{
+  "id": "case-05-statement-view",
+  "type": "E",
+  "title": "Statement view: hidden shape seam at the ledger API boundary",
+  "description": "Type E (hidden integration seam). The task looks like one small wiring job, but the repo ships an UNVERIFIED draft helper in bank/views.py that assumes the API returns {\"results\", \"cursor\"}, while the real Ledger API returns {\"items\", \"next_cursor\"}. Both sides pass their unit tests today, so a plan that treats 'implement the view' and 'verify the API' as independent leaf work with separate unit tests will produce an e2e failure. Good plans freeze the real wire shape as the canonical contract, explicitly flag/correct the draft assumption, and add an e2e/contract-consistency gate that exercises the view through the real API (including pagination).",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["bank/api.py"], "description": "Ledger.list_transactions and its canonical wire shape {items, next_cursor}", "layer": "api" },
+    { "id": "A2", "files": ["bank/views.py"], "description": "the consumer side, including the unverified draft helper assuming {results, cursor}", "layer": "view" },
+    { "id": "A3", "files": ["bank/models.py"], "description": "transaction dict shape shared by both sides", "layer": "model" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1"], "kind": "contract", "note": "the REAL wire shape {items, next_cursor} is the frozen canonical contract; the view must adapt to it. The draft helper's {results, cursor} assumption in views.py is wrong and must be corrected on the view side — the task forbids changing bank/api.py" },
+      { "anchor_ids": ["A3"], "kind": "contract", "note": "the transaction dict fields (id/user/date/amount/kind) are the shared model contract" }
+    ],
+    "must_not_expand_scope": ["bank/reports.py", "bank/emails.py", "bank/limits.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "types": ["data"], "note": "the view consumes the paginated API" },
+      { "from_anchor": "A3", "to_anchor": "A2", "types": ["data"], "note": "the view renders model fields" }
+    ],
+    "acceptable_task_count_range": [2, 5],
+    "max_anchors_per_task": 1,
+    "required_integration_gates": [
+      {
+        "kind": "contract_consistency",
+        "anchor_ids": ["A1", "A2"],
+        "failure_path_markers": [
+          { "path": "shape mismatch", "keywords": ["results", "items", "cursor", "keys", "shape", "draft"] }
+        ]
+      },
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "pagination", "keywords": ["pagination", "cursor", "infinite", "page"] },
+          { "path": "shape mismatch", "keywords": ["results", "items", "shape", "draft", "keys"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type E probe: the seam is invisible to per-side unit tests (both green today). The draft helper + its test are the physical trap. A plan that owns both api.py and views.py in one task (cap is 1) hides the seam instead of freezing it. The e2e gate must run the view against the REAL Ledger (not fixtures) and cover pagination exhaustion."
+  }
+}

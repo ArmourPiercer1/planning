@@ -1,0 +1,61 @@
+{
+  "run_id": "smoke-v1",
+  "created_at": "2026-09-09T13:24:49Z",
+  "skills_dir": "D:\\AI_Coworking\\skill-build\\planning\\.agents\\skills",
+  "model": {
+    "name": "host-session-model",
+    "note": "all variants run on the same host model/subagent channel; per-run model config is not exposed by the host in V1"
+  },
+  "specs": [
+    {
+      "case_id": "case-04-audit-async",
+      "variant": "candidate",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\candidate"
+    },
+    {
+      "case_id": "case-04-audit-async",
+      "variant": "baseline-a",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a"
+    },
+    {
+      "case_id": "case-04-audit-async",
+      "variant": "baseline-b",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-b"
+    },
+    {
+      "case_id": "case-06-payslip-summary",
+      "variant": "candidate",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\candidate"
+    },
+    {
+      "case_id": "case-06-payslip-summary",
+      "variant": "baseline-a",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-a"
+    },
+    {
+      "case_id": "case-06-payslip-summary",
+      "variant": "baseline-b",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b"
+    },
+    {
+      "case_id": "case-10-timeout-seam",
+      "variant": "candidate",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\candidate"
+    },
+    {
+      "case_id": "case-10-timeout-seam",
+      "variant": "baseline-a",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-a"
+    },
+    {
+      "case_id": "case-10-timeout-seam",
+      "variant": "baseline-b",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b"
+    },
+    {
+      "case_id": "case-10-timeout-seam",
+      "variant": "ablation-full-minus-integration",
+      "run_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\ablation-full-minus-integration"
+    }
+  ]
+}

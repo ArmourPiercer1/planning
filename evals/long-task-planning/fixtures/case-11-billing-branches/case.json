@@ -1,0 +1,46 @@
+{
+  "id": "case-11-billing-branches",
+  "type": "K",
+  "title": "Late fees + refunded section: two branches that must not couple",
+  "description": "Type K (local failure isolation). Two genuinely independent features (late fee in invoice.py; refunded section in reports.py) share only the invoice record format in store.py. The plan must keep the branches uncoupled — no edge between them — so a local failure in one branch (e.g. the fee math breaks) does not re-plan the other, and each branch's task must be locally recoverable (checkpoint handoff required). Anti-plans: a 'billing improvements' mega-task coupling both branches, a cross-branch edge (fake dependency), or restructuring the shared record format as part of one branch.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["billing/invoice.py"], "description": "late-fee branch (compute_due + record field)", "layer": "branch-1" },
+    { "id": "A2", "files": ["billing/reports.py"], "description": "refunded-section branch (daily_report)", "layer": "branch-2" },
+    { "id": "A3", "files": ["billing/store.py"], "description": "shared invoice record format (frozen contract both branches read/write)", "layer": "shared" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A3"], "kind": "contract", "note": "the invoice record format in the store is the shared frozen contract; neither branch may restructure it (additive optional fields only)" }
+    ],
+    "must_not_expand_scope": ["billing/pdf.py", "billing/email.py", "billing/batch.py"],
+    "must_have_edges": [
+      { "from_anchor": "A3", "to_anchor": "A1", "types": ["contract"], "note": "the late-fee branch extends the shared record format additively" },
+      { "from_anchor": "A3", "to_anchor": "A2", "types": ["data"], "note": "the report branch reads shared records (status field)" }
+    ],
+    "must_not_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "reason": "independent branches sharing only the store record format; no data, contract, or ownership flow between the late-fee and refunded-section work — a failure in one must not re-plan the other" }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A1", "A2"], "note": "the two branches are disjoint closures and run in parallel" }
+    ],
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 1,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "branch isolation", "keywords": ["independent", "isolat", "separat", "does not affect", "unaffected", "one branch"] },
+          { "path": "late fee", "keywords": ["late", "5%", "fee", "overdue"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A1", "A2"],
+    "notes": "Type K probe: local recoverability + branch isolation. Both branch tasks must declare checkpoint handoff (recoverable_tasks). A plan that serializes or cross-couples the branches (edge A1<->A2, or one task owning both files — cap is 1) fails the isolation constraints. Range [3, 6]: two branch tasks + shared-contract/e2e task(s)."
+  }
+}

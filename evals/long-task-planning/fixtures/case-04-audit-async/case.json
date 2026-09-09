@@ -1,0 +1,47 @@
+{
+  "id": "case-04-audit-async",
+  "type": "D",
+  "title": "Async audit logging: producer/consumer coupled only by the event contract",
+  "description": "Type D (fake serialization / doc order). The documentation and the story go 'API first, then worker', which tempts a plan into a serial API-task -> worker-task chain. The real dependency structure: both the API producer and the worker consumer depend on the frozen audit event contract (topic + field set in ledger/events.py + ledger/api.py constants); producer and consumer are otherwise decoupled and parallel. Good plans freeze the event schema first, then run the producer change and the consumer wiring in parallel. Anti-plans: a direct A1->A3 serial edge (fake), or one blob task doing both sides.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["ledger/api.py"], "description": "API handler: synchronous audit write to be replaced by a bus publish (producer side)", "layer": "producer" },
+    { "id": "A2", "files": ["ledger/events.py"], "description": "event bus + the audit event wire contract (topic 'audit', AUDIT_EVENT_FIELDS)", "layer": "contract" },
+    { "id": "A3", "files": ["ledger/worker.py"], "description": "worker consumer that persists audit events (idempotent)", "layer": "consumer" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A2"], "kind": "contract", "note": "the audit event wire contract (topic 'audit', fields {ts, actor, action, entity, amount}) is the frozen shared contract between producer and consumer; it must be frozen before either side is reworked" }
+    ],
+    "must_not_expand_scope": ["ledger/reports.py", "ledger/web.py", "ledger/archival.py"],
+    "must_have_edges": [
+      { "from_anchor": "A2", "to_anchor": "A1", "types": ["contract"], "note": "the producer publishes the frozen event shape" },
+      { "from_anchor": "A2", "to_anchor": "A3", "types": ["contract"], "note": "the consumer persists the frozen event shape" }
+    ],
+    "must_not_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A3", "reason": "the API producer and the worker consumer are decoupled by the bus; a direct producer->consumer edge is doc-order fake serialization (there is no data or contract flow between the two beyond the event contract)" }
+    ],
+    "parallelizable_groups": [
+      { "anchor_ids": ["A1", "A3"], "note": "once the event contract is frozen, producer rework and consumer wiring are disjoint closures" }
+    ],
+    "acceptable_task_count_range": [2, 6],
+    "max_anchors_per_task": 1,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2", "A3"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "event loss", "keywords": ["drop", "loss", "lost", "overflow", "backpressure", "back-pressure", "never persisted", "not persisted", "0 audit", "no audit"] },
+          { "path": "duplicate delivery", "keywords": ["duplicat", "redeliver", "dedup", "at-least-once", "idempot", "twice"] },
+          { "path": "worker crash", "keywords": ["crash", "retry", "poison", "raises", "exception", "runtimeerror"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": ["A3"],
+    "notes": "Type D probe: does the plan read the dependency graph from the code, not from the prose order? The only real edges run through the event contract. Watch for: direct A1->A3 edges, a merged producer+consumer blob (cap is 1 anchor/task), missing freeze of the event schema, and invented scope (reporting, web, archival)."
+  }
+}

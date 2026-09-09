@@ -1,0 +1,117 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "case-10-timeout-seam-ablation-full-minus-integration",
+  "stage_id": "fix-job-pipeline-timeout-seam",
+  "created_at": "2026-02-14T12:00:00Z",
+  "skill_versions": [
+    "long-task-planning (orchestrator, fixed pipeline)",
+    "stage-contract@1",
+    "context-decomposer@1",
+    "dependency-dag@1",
+    "integration-planner@1 (ablated - stage skipped by run override)",
+    "task-packager@1",
+    "plan-risk-estimator@1",
+    "plan-auditor@1 (not run - isolated external auditor per run protocol)"
+  ],
+  "pipeline": [
+    {
+      "stage": "1-stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate out/stage-contract.json",
+      "artifact": "stage-contract.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "baseline verified before freezing: pytest on the fixture reports exactly 1 failed, 6 passed (test_pipeline_e2e_effective_timeout, 30000 != 500) - recorded as frozen assumption A-4",
+        "blocking question Q1 (which side adapts to the wire contract) resolved in-contract as frozen decision DA-1: consumer side adapts"
+      ]
+    },
+    {
+      "stage": "2-context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate out/candidate-tasks.json",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "decomposed into 2 context closures: T01 (consumer fix + its unit tests, service layer) and T02 (e2e seam regression, e2e layer, cut at the unit/e2e test boundary); no producer/engine leaves exist because DA-1 leaves those modules byte-identical"
+      ]
+    },
+    {
+      "stage": "3-dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate out/dag.json",
+      "artifact": "dag.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "single real edge T01 -> T02 typed verification (T02 asserts T01's post-fix behavior); fake candidate (producer/engine work preceding T01) recorded in notes.fake_serialization_removed; integration_gates left empty for the ablated stage 4"
+      ]
+    },
+    {
+      "stage": "4-integration-planner",
+      "status": "skipped",
+      "gate": "n/a (stage removed by run ablation)",
+      "artifact": "integration-plan.json (intentionally absent - no stub created)",
+      "fallbacks": [
+        "run override: no seam census, no integration tasks, no E2E gate tasks, no owns_fixes_for",
+        "e2e closure rides on leaf T02 (verification-typed edge T01 -> T02); T02's AT4 full-suite case is the closure evidence for acceptance A2"
+      ]
+    },
+    {
+      "stage": "5-task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate out/tasks/T01.json; plan-check.py validate out/tasks/T02.json",
+      "artifact": "tasks/T01.json, tasks/T02.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "new e2e/unit test methods are named in the packages as commitments (test_job_timeout_timeout_ms_primary, test_job_timeout_timeout_ms_wins_over_legacy, test_pipeline_e2e_both_keys_timeout_ms_wins, test_pipeline_e2e_default_timeout_ms_reaches_consumer)"
+      ]
+    },
+    {
+      "stage": "6-plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate out/risk-estimates.json (+ re-validation of both packages)",
+      "artifact": "risk-estimates.json (final risk blocks; identical to the stage-5 prefills in tasks/T01.json and tasks/T02.json)",
+      "exit_code": 0,
+      "fallbacks": [
+        "both leaves S footprint, low statefulness/uncertainty, p80 within the 90 min budget; ABLATION_NO_INTEGRATION_GATE warning attached to both leaves with rationale (integration gate removed by ablation, e2e closure rides on T02)"
+      ]
+    },
+    {
+      "stage": "7-plan-auditor",
+      "status": "skipped",
+      "gate": "deferred to the isolated external auditor (run protocol item 5)",
+      "artifact": "audit.json (to be written by the isolated auditor after this run)",
+      "exit_code": 0,
+      "fallbacks": [
+        "no audit.json written in this run; audit_verdict is not_run, audit_rounds 0"
+      ]
+    },
+    {
+      "stage": "full-lint",
+      "status": "done",
+      "gate": "plan-check.py lint out (fail-on BLOCKER) and plan-check.py lint out --fail-on MINOR",
+      "artifact": "out/",
+      "exit_code": 1,
+      "fallbacks": [
+        "lint round 1: 2 BLOCKER (both MISSING_ARTIFACT integration-plan.json - the expected ablation artifact), 0 MAJOR, 1 MINOR (VAGUE_ACCEPTANCE in tasks/T02.json AT2 description, missing evidence marker) - MINOR fixed in T02 and re-validated",
+        "lint round 2: 2 BLOCKER (same single expected ablation artifact, reported by two lint checks), 0 MAJOR, 0 MINOR; exit code 1 is attributable solely to the deliberately absent integration-plan.json"
+      ]
+    }
+  ],
+  "gates": [
+    { "name": "validate stage-contract.json", "exit_code": 0, "ts": "2026-02-14T12:01:00Z" },
+    { "name": "validate candidate-tasks.json", "exit_code": 0, "ts": "2026-02-14T12:02:00Z" },
+    { "name": "validate dag.json", "exit_code": 0, "ts": "2026-02-14T12:03:00Z" },
+    { "name": "validate tasks/T01.json", "exit_code": 0, "ts": "2026-02-14T12:04:00Z" },
+    { "name": "validate tasks/T02.json", "exit_code": 0, "ts": "2026-02-14T12:04:00Z" },
+    { "name": "validate risk-estimates.json", "exit_code": 0, "ts": "2026-02-14T12:05:00Z" },
+    { "name": "validate tasks/T01.json (post-risk re-validation)", "exit_code": 0, "ts": "2026-02-14T12:05:00Z" },
+    { "name": "validate tasks/T02.json (post-risk re-validation)", "exit_code": 0, "ts": "2026-02-14T12:05:00Z" },
+    { "name": "lint out (fail-on BLOCKER, round 1)", "exit_code": 1, "ts": "2026-02-14T12:05:00Z" },
+    { "name": "validate tasks/T02.json (after MINOR fix)", "exit_code": 0, "ts": "2026-02-14T12:06:00Z" },
+    { "name": "lint out (fail-on BLOCKER, round 2)", "exit_code": 1, "ts": "2026-02-14T12:06:00Z" },
+    { "name": "lint out (fail-on MINOR, round 2)", "exit_code": 1, "ts": "2026-02-14T12:06:00Z" }
+  ],
+  "audit_verdict": "not_run",
+  "audit_rounds": 0,
+  "notes": "Ablation run: the integration-planner stage was removed by the run override, so integration-plan.json is intentionally absent (no stub) - the run prompt states the missing artifact is the expected ablation outcome. The full lint therefore reports exactly two BLOCKER lines, both MISSING_ARTIFACT for integration-plan.json (one artifact, two lint checks); this is the sole remaining BLOCKER and is expected, not a plan defect. All other findings were resolved: 1 MINOR (VAGUE_ACCEPTANCE, tasks/T02.json AT2) fixed and re-validated; final state 0 MAJOR, 0 MINOR. Baseline verified on the fixture before planning (pytest: 1 failed, 6 passed - exactly test_pipeline_e2e_effective_timeout). The mandatory decision (which side adapts to the wire contract) is frozen as DA-1: the consumer side adapts - timeout_ms is the authoritative wire key, the draft 'timeout' key is a deprecated lower-priority fallback; producer and engine stay byte-identical and all existing test cases remain unmodified. Stage 7 (independent audit) is intentionally not_run: an isolated external auditor reviews these artifacts after this run."
+}

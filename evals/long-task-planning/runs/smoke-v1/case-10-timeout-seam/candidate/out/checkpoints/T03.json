@@ -1,0 +1,51 @@
+{
+  "schema": "planning/checkpoint@1",
+  "task_id": "T03",
+  "status": "complete",
+  "revision": {
+    "sha": "a551b78ebd7288d1167fd5c7f2b28c19beca1e3a",
+    "branch": "main",
+    "committed_at": "2026-09-09T22:35:02+08:00"
+  },
+  "completed": {
+    "task_id": "T03",
+    "summary": "Integrated seams S1 (producer->consumer) and S2 (producer->engine) against frozen C1/C2: created tests/integration/test_timeout_seam.py (3 no-mock real-module tests: round-trip with producer-set timeout, missing-timeout default path on both consumer and engine, draft-key fallback plus the work_ms == timeout_ms engine boundary), tests/integration/__init__.py (package marker), and docs/wire-contract-consistency.md (per-field read-only consistency diff with verdicts). Ran T02's 5-test regression suite as cross-check. No seam defect was found: all gates passed on first run, so no integration-only patch was applied (patch-eligible files pipeline/consumer.py and tests/test_wire_contract.py are untouched)."
+  },
+  "contracts_satisfied": ["C1", "C2"],
+  "changed_paths": [
+    "tests/integration/test_timeout_seam.py",
+    "tests/integration/__init__.py",
+    "tests/integration/__pycache__/test_timeout_seam.cpython-314.pyc",
+    "tests/integration/__pycache__/__init__.cpython-314.pyc",
+    "docs/wire-contract-consistency.md"
+  ],
+  "tests": {
+    "passed": [
+      "tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_round_trip",
+      "tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_missing_timeout_defaults",
+      "tests.integration.test_timeout_seam.TestTimeoutSeam.test_seam_fallback_and_boundary",
+      "tests.test_wire_contract.TestWireContract (5 tests, T02 cross-check re-run)"
+    ],
+    "failed": [],
+    "evidence": "From repo root via 'uv run --no-project': (1) python -m unittest tests.integration.test_timeout_seam -v -> 'Ran 3 tests ... OK', exit 0 (T03-AT1/AT2/AT3). (2) python -m unittest tests.test_wire_contract -v -> 'Ran 5 tests ... OK', exit 0 (T02 cross-check). (3) python -m unittest tests.test_wire_contract tests.integration.test_timeout_seam -v -> 'Ran 8 tests ... OK', exit 0 (E3 gate scenario). (4) AT4: docs/wire-contract-consistency.md exists; Select-String found 8 'timeout_ms' matches and 6 'consistent' matches."
+  },
+  "verified_facts": [
+    "Patches applied: NONE. At T03 start (state a551b78~, i.e. T01+T02 applied), S1 and S2 were already C1/C2-consistent: every T03 gate passed on first run with zero integration-only fixes; pipeline/consumer.py and tests/test_wire_contract.py are byte-identical to their T01/T02 commits.",
+    "Per-field C1 verdicts (recorded in docs/wire-contract-consistency.md): timeout_ms emission by producer (line 9) = consistent; engine read job.get('timeout_ms', 30000) (line 10) = consistent; consumer resolution order timeout_ms -> timeout -> DEFAULT_TIMEOUT_MS (lines 13-17) = consistent; draft 'timeout' key emitted by producer = never (fallback-only per DA-1) = consistent; default 30000 equal on all three sides (producer line 4, engine line 10, consumer line 3) = consistent; id/payload wire keys = consistent.",
+    "C2 verdict: consistent — engine.py lines 10-12 match the frozen spec exactly, including boundary work_ms == timeout_ms -> 'done' (strict '>', asserted live by test_seam_fallback_and_boundary).",
+    "Live seam behaviors (no mocks, real modules): make_job('s1', {'cmd': 'x'}, timeout_ms=500) -> job_timeout == 500 and run_job(job, 400) == 'done'; {'id': 's2', 'payload': {}} -> job_timeout == 30000 (no exception) and run_job(job, 31000) == 'timeout' via default path; job_timeout({'timeout': 123}) == 123; run_job(make_job('s3', {}, timeout_ms=100), 100) == 'done'.",
+    "tests/integration/ is a proper unittest package (tests/integration/__init__.py exists); the module runs via 'python -m unittest tests.integration.test_timeout_seam' from the repo root and is discoverable by 'unittest discover -s tests' (A5's 15-test count includes these 3: 2+3+2+5+3).",
+    "Red->green state of T02's consumer-resolution test: T01's fix (d19950b) landed BEFORE T03 started, so no red state existed within T03's window; the test was green at T03 start (re-verified in the T02 suite cross-check)."
+  ],
+  "deviations": [
+    {
+      "planned": "T03 context per package: required_context files, C1/C2 specs, seam definitions and E2E scenarios E1-E3 from integration-plan.json (named under inputs).",
+      "actual": "Read out/integration-plan.json in addition to the required_context files to obtain the E1-E4 gate scenarios.",
+      "why": "The package's own 'inputs' section names integration-plan.json as the source of seam definitions S1/S2 and E2E scenarios E1-E3; loading a named input is package-directed context, not an ad-hoc expansion."
+    }
+  ],
+  "newly_discovered_issues": [],
+  "blockers": [],
+  "remaining_dag": ["T04"],
+  "downstream_notes": "For T04: the integrated state is green — G1 is satisfied. Final gates to run from repo root: E1 = python -m unittest tests.test_pipeline_e2e.TestPipelineE2E.test_pipeline_e2e_effective_timeout -v (unmodified fixture test); E2 = ...test_pipeline_e2e_engine_timeout -v; E3 = python -m unittest tests.test_wire_contract tests.integration.test_timeout_seam -v (already 8/8 green); E4/A5 = python -m unittest discover -s tests from repo root must run exactly 15 tests (producer 2 + consumer 3 + e2e 2 + wire_contract 5 + timeout_seam 3), 0 failures, 0 errors. A3's byte-identity claim for test_producer.py/test_consumer.py/test_pipeline_e2e.py still holds (only T01 touched consumer.py; T02/T03 added new files only). Sandbox quirk stands: os.mkdir/shutil.rmtree, never tempfile; regenerate .pyc artifacts are expected in git add -A."
+}

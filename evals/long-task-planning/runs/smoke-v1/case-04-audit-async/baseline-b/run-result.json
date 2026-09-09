@@ -1,0 +1,407 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-04-audit-async",
+  "planner_variant": "baseline-b",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "prose",
+    "structural_validity": {
+      "lint_exit": null,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": null,
+      "audit_rounds": null,
+      "note": "n/a for prose plans (no schema artifacts)"
+    },
+    "contract_completeness": 0.6667,
+    "contract_completeness_detail": [
+      "objective",
+      "out_of_scope",
+      "acceptance",
+      "integration_seams",
+      "constraints",
+      "allowed_replan"
+    ],
+    "acceptance_determinism": 1.0,
+    "context_locality": {
+      "amplification_proxy": 1.111,
+      "per_task": [
+        {
+          "task_text": "`handle_transfer(store, bus, from_id, to_id, amount)` validates the amount,",
+          "context_files": 0
+        },
+        {
+          "task_text": "`Bus` (`ledger/events.py`) is a synchronous in-memory pub/sub: `publish`",
+          "context_files": 1
+        },
+        {
+          "task_text": "`make_audit_consumer(store)` (`ledger/worker.py`) persists an audit event and",
+          "context_files": 1
+        },
+        {
+          "task_text": "`Store` (`ledger/db.py`) is a dict-based in-memory store with",
+          "context_files": 1
+        },
+        {
+          "task_text": "Wire format constants `AUDIT_EVENT_FIELDS = (\"ts\",\"actor\",\"action\",\"entity\",\"amo",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D1 — \"async\" means pub/sub decoupling, not new concurrency.** The existing",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D2 — Producer change.** In `handle_transfer`, replace the direct",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D3 — Guard the publish so the response cannot depend on audit persistence.**",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D4 — Wiring point.** Add a small helper in `ledger/worker.py`,",
+          "context_files": 1
+        },
+        {
+          "task_text": "**D5 — `transactions` write untouched.** Same table, same record fields",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D6 — Consumer internals untouched.** `make_audit_consumer` keeps its",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Run the existing suite from the repo root",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Note current observable behavior: bad-amount requests write neither a",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add `attach_audit_consumer(store, bus)` to `ledger/worker.py`",
+          "context_files": 1
+        },
+        {
+          "task_text": "[ ] Verify `make_audit_consumer` is otherwise byte-for-byte unchanged",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] In `handle_transfer`, delete the legacy `store.insert(\"audit\", …)` block.",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Build the audit event with exactly the `AUDIT_EVENT_FIELDS` keys",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Wrap the publish in `try/except` with logging, response unchanged (D3).",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Confirm the `transactions` insert is byte-for-byte the same as before,",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Adjust `TestApi.test_transfer_ok_and_audit_written`: wire the bus",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add `test_handler_publishes_audit_event_on_bus`: subscribe a spy on",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add end-to-end test: `attach_audit_consumer(store, bus)` +",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add bus-level dedupe test: with the consumer subscribed, publish the same",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add decoupling test: a subscriber that raises → `handle_transfer` still",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Keep `test_bad_amount_rejected` (no audit row) and `TestWorker`",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Run the full suite (old + new tests); all green.",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Backward-compat check: `AUDIT_TOPIC` and `AUDIT_EVENT_FIELDS` values",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Diff review: only `ledger/api.py`, `ledger/worker.py`,",
+          "context_files": 2
+        },
+        {
+          "task_text": "Run baseline test suite; record green.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Add `attach_audit_consumer(store, bus)` in `ledger/worker.py`.",
+          "context_files": 1
+        },
+        {
+          "task_text": "In `ledger/api.py`, replace the direct audit insert with a guarded",
+          "context_files": 1
+        },
+        {
+          "task_text": "Adjust `test_transfer_ok_and_audit_written` to wire the audit consumer onto",
+          "context_files": 0
+        },
+        {
+          "task_text": "Add the four new tests (publish format, end-to-end, bus-level dedupe,",
+          "context_files": 0
+        },
+        {
+          "task_text": "Run the full test suite; all green.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Backward-compat + diff review.",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 3 happens after step 2** because the `Bus` has no queue or",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 4 happens immediately after step 3** (and not earlier as a committed",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 5 happens after steps 3 and 4** because all four new tests exercise",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 6 happens after steps 1–5** because it is the gate that compares the",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 7 happens after step 6** because it is a review pass over the final",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Command:** from the repo root,",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Inventory:** 6 existing tests (1 `TestStore`, 2 `TestBus`, 2 `TestApi`,",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Invariants to verify:**",
+          "context_files": 0
+        },
+        {
+          "task_text": "Bad amount → `{\"ok\": False, \"error\": \"bad-amount\"}`, no `transactions`",
+          "context_files": 0
+        },
+        {
+          "task_text": "Valid transfer → `{\"ok\": True}`, exactly one `transactions` row with the",
+          "context_files": 0
+        },
+        {
+          "task_text": "Audit event on topic `\"audit\"` has exactly the keys",
+          "context_files": 0
+        },
+        {
+          "task_text": "Re-delivery of an event with the same `(ts, actor, action)` at the bus",
+          "context_files": 0
+        },
+        {
+          "task_text": "A consumer that raises does not change the `handle_transfer` response and",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Regression check:** the pre-existing `TestWorker` test (direct consumer",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Rollback:** revert the three-file diff (`ledger/api.py`,",
+          "context_files": 1
+        },
+        {
+          "task_text": "True asynchrony: threads, task queues, background processes, or any change",
+          "context_files": 0
+        },
+        {
+          "task_text": "Changing `Bus` semantics for other topics (isolation, ordering, retries,",
+          "context_files": 0
+        },
+        {
+          "task_text": "Retries, backoff, or dead-letter handling for lost audit events; in V1 a",
+          "context_files": 0
+        },
+        {
+          "task_text": "Any change to `Store` (persistence engine, real DB, durability).",
+          "context_files": 0
+        },
+        {
+          "task_text": "Audit events for actions other than `transfer`; no new topics or event",
+          "context_files": 0
+        },
+        {
+          "task_text": "Any change to the API response shapes (`{\"ok\": True}` /",
+          "context_files": 0
+        },
+        {
+          "task_text": "The existing dedupe-key collision window (two distinct transfers sharing",
+          "context_files": 0
+        },
+        {
+          "task_text": "Migration or backfill of existing `audit` rows.",
+          "context_files": 0
+        }
+      ],
+      "max_context_files": 2,
+      "bare_directories": [],
+      "note": "proxy = files mentioned per task (owned paths are not declared in prose plans)"
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 0,
+        "total": 2,
+        "details": [
+          {
+            "from": "A2",
+            "to": "A1",
+            "hit": false,
+            "via": null
+          },
+          {
+            "from": "A2",
+            "to": "A3",
+            "hit": false,
+            "via": null
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 1,
+        "total": 1,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A3",
+            "violated": true,
+            "reason": "the API producer and the worker consumer are decoupled by the bus; a direct producer->consumer edge is doc-order fake serialization (there is no data or contract flow between the two beyond the event contract)",
+            "evidence": "linear checklist order implies serialization (no parallel marker anywhere)"
+          }
+        ]
+      },
+      "cycles": 0,
+      "edges_without_reason": null,
+      "unknown_task_edges": 0
+    },
+    "integration_explicitness": {
+      "score": 0.5,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 0,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 1,
+      "failure_gates": 0,
+      "fixes_owned": 0,
+      "case_requirements_met": null,
+      "note": "keyword-level detection only; prose does not declare gate structure"
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 2,
+      "over_anchor_cap": 0,
+      "note": "anchor coverage per task from file mentions"
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "task_count": {
+      "actual": 58,
+      "range": [
+        2,
+        6
+      ],
+      "in_range": false
+    },
+    "gaming_flags": [
+      {
+        "code": "G1_OVER_FRAGMENTED",
+        "detail": "58 task lines > range max 6"
+      },
+      {
+        "code": "G2_ALL_SERIAL",
+        "detail": "no parallelism mentioned anywhere in the plan"
+      },
+      {
+        "code": "G3_CONTEXT_STARVATION",
+        "detail": "49/58 task lines mention no repo file"
+      }
+    ],
+    "judge_pending": [
+      {
+        "dimension": "recoverability",
+        "reason": "prose plans do not declare checkpoint/recovery structure"
+      }
+    ],
+    "metric_coverage": {
+      "contract_completeness": "partial",
+      "acceptance_determinism": "partial",
+      "context_locality": "partial",
+      "ownership_collisions": "not-measurable",
+      "dependency_precision": "partial",
+      "integration_explicitness": "partial",
+      "leaf_boundedness": "partial",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 290.7,
+    "tokens": null,
+    "context_read": 1.111,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": null,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-b\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-b\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-b\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

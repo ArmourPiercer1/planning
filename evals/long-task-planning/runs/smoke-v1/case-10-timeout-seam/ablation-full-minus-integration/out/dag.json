@@ -1,0 +1,34 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T02",
+      "type": "verification",
+      "reason": "T02's e2e regression cases assert the post-fix resolution behavior of job_timeout (contract C2); against the baseline consumer the primary e2e case fails with 30000 != 500, so T02 must run after T01's fixed consumer lands"
+    }
+  ],
+  "parallel_groups": [
+    ["T01"],
+    ["T02"]
+  ],
+  "critical_path": ["T01", "T02"],
+  "integration_gates": [],
+  "unlock_contracts": [],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "producer/engine work (no task exists - unchanged by DA-1)",
+        "to": "T01",
+        "why_not_real": "the task text lists 'producer -> engine AND producer -> consumer' and the repo layout lists producer.py and engine.py before consumer.py, which could suggest a producer-side or engine-side task that T01 (the consumer fix) waits on; DA-1 leaves producer.py and engine.py byte-identical, so no such tasks exist and T01 consumes only the frozen, user-provided contract C1 - there is nothing for T01 to be ordered after"
+      }
+    ],
+    "collisions_handled": [
+      "T01 owns pipeline/consumer.py + tests/test_consumer.py; T02 owns tests/test_pipeline_e2e.py - disjoint path sets, so no ownership-based ordering is needed; the single T01->T02 edge is typed verification (T02 asserts T01's fixed behavior), not ownership"
+    ],
+    "free_parallelism_trades": [
+      "the two leaves are fully sequential (T01 -> T02): T02 cannot start before T01 because its acceptance asserts T01's post-fix behavior, so no parallelism was traded away - the sequencing is semantic (verification), not fear"
+    ],
+    "ablation": "integration-planner stage removed by the run override: integration_gates is intentionally empty and no integration task ids exist; the e2e closure rides on leaf T02 (verification-typed edge, its AT4 full-suite case is the closure evidence for acceptance A2); integration-plan.json is intentionally absent"
+  }
+}

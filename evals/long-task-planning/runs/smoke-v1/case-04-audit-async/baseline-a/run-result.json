@@ -1,0 +1,287 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-04-audit-async",
+  "planner_variant": "baseline-a",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "prose",
+    "structural_validity": {
+      "lint_exit": null,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": null,
+      "audit_rounds": null,
+      "note": "n/a for prose plans (no schema artifacts)"
+    },
+    "contract_completeness": 0.6667,
+    "contract_completeness_detail": [
+      "objective",
+      "out_of_scope",
+      "frozen_contracts",
+      "acceptance",
+      "integration_seams",
+      "constraints"
+    ],
+    "acceptance_determinism": 1.0,
+    "context_locality": {
+      "amplification_proxy": 1.0,
+      "per_task": [
+        {
+          "task_text": "**R1** — `handle_transfer` must **publish** the audit event on the bus (topic `A",
+          "context_files": 0
+        },
+        {
+          "task_text": "**R2** — A worker must consume the `audit` topic and persist events to the `audi",
+          "context_files": 1
+        },
+        {
+          "task_text": "**R3** — The audit event format (fields, topic name) stays backward compatible: ",
+          "context_files": 0
+        },
+        {
+          "task_text": "**R4** — The `transactions` write in `handle_transfer` happens exactly as before",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Tests** — all existing tests keep passing, adjusted only where the flow explic",
+          "context_files": 0
+        },
+        {
+          "task_text": "**D4 — Nothing else changes.** `Store`, `Bus`, the event field set, the topic na",
+          "context_files": 0
+        },
+        {
+          "task_text": "Delete the legacy `store.insert(\"audit\", {...})` block.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Build the event dict with exactly the five fields (same values as today: `ts=_no",
+          "context_files": 0
+        },
+        {
+          "task_text": "`bus.publish(AUDIT_TOPIC, event)` inside `try/except Exception: pass` (documente",
+          "context_files": 0
+        },
+        {
+          "task_text": "Update the docstring: audit is now published on the bus and persisted by the aud",
+          "context_files": 0
+        },
+        {
+          "task_text": "*Adjust* (only the flow change the task names): `test_transfer_ok_and_audit_writ",
+          "context_files": 0
+        },
+        {
+          "task_text": "`test_transfer_publishes_audit_event_on_bus` — spy subscriber on `AUDIT_TOPIC`; ",
+          "context_files": 0
+        },
+        {
+          "task_text": "`test_transfer_ok_when_audit_persistence_fails` — subscribe a handler that raise",
+          "context_files": 0
+        },
+        {
+          "task_text": "`test_bus_level_dedupe_on_redelivery` — wire the real consumer; publish the same",
+          "context_files": 0
+        },
+        {
+          "task_text": "`test_bad_amount_publishes_nothing` — spy subscriber records zero publishes for ",
+          "context_files": 0
+        },
+        {
+          "task_text": "`test_transactions_write_unchanged` — assert the `transactions` row fields (`fro",
+          "context_files": 0
+        },
+        {
+          "task_text": "From the repo root: `python -m unittest discover -v` (stdlib `unittest`; no new ",
+          "context_files": 0
+        },
+        {
+          "task_text": "Expected: the 6 pre-existing tests (one adjusted as above, the rest unchanged — ",
+          "context_files": 0
+        },
+        {
+          "task_text": "Manual spot-check: with the consumer wired, a transfer yields exactly one `audit",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Dedupe-key collisions** — the preserved key is `(ts, actor, action)`, so two d",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Lost audit events on failure** — the `try/except` in the handler means an audi",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Subscriber-order sensitivity** — `Bus` runs subscribers in subscription order ",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Backward compatibility** — do not rename, reorder, or add event fields, and do",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Over-engineering trap** — adding threads/queues here would make tests nondeter",
+          "context_files": 0
+        },
+        {
+          "task_text": "`datetime.utcnow()` deprecation is pre-existing and out of scope (changing the `",
+          "context_files": 0
+        },
+        {
+          "task_text": "No changes to `Store` or `Bus` internals.",
+          "context_files": 0
+        },
+        {
+          "task_text": "No worker threads, queues, or retry/dead-letter infrastructure (future work).",
+          "context_files": 0
+        },
+        {
+          "task_text": "No new dependencies, no logging framework, no schema/migration changes.",
+          "context_files": 0
+        }
+      ],
+      "max_context_files": 1,
+      "bare_directories": [],
+      "note": "proxy = files mentioned per task (owned paths are not declared in prose plans)"
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 0,
+        "total": 2,
+        "details": [
+          {
+            "from": "A2",
+            "to": "A1",
+            "hit": false,
+            "via": null
+          },
+          {
+            "from": "A2",
+            "to": "A3",
+            "hit": false,
+            "via": null
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 1,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A3",
+            "violated": false,
+            "reason": "the API producer and the worker consumer are decoupled by the bus; a direct producer->consumer edge is doc-order fake serialization (there is no data or contract flow between the two beyond the event contract)",
+            "evidence": null
+          }
+        ]
+      },
+      "cycles": 0,
+      "edges_without_reason": null,
+      "unknown_task_edges": 0
+    },
+    "integration_explicitness": {
+      "score": 0.0,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 0,
+        "e2e_closure": 0,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 0,
+      "failure_gates": 0,
+      "fixes_owned": 0,
+      "case_requirements_met": null,
+      "note": "keyword-level detection only; prose does not declare gate structure"
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0,
+      "note": "anchor coverage per task from file mentions"
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "task_count": {
+      "actual": 28,
+      "range": [
+        2,
+        6
+      ],
+      "in_range": false
+    },
+    "gaming_flags": [
+      {
+        "code": "G1_OVER_FRAGMENTED",
+        "detail": "28 task lines > range max 6"
+      },
+      {
+        "code": "G2_ALL_SERIAL",
+        "detail": "no parallelism mentioned anywhere in the plan"
+      },
+      {
+        "code": "G3_CONTEXT_STARVATION",
+        "detail": "27/28 task lines mention no repo file"
+      }
+    ],
+    "judge_pending": [
+      {
+        "dimension": "recoverability",
+        "reason": "prose plans do not declare checkpoint/recovery structure"
+      }
+    ],
+    "metric_coverage": {
+      "contract_completeness": "partial",
+      "acceptance_determinism": "partial",
+      "context_locality": "partial",
+      "ownership_collisions": "not-measurable",
+      "dependency_precision": "partial",
+      "integration_explicitness": "partial",
+      "leaf_boundedness": "partial",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 310.9,
+    "tokens": null,
+    "context_read": 1.0,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": null,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\baseline-a\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

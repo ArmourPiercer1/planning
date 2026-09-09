@@ -1,0 +1,45 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["service"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "ABLATION_NO_INTEGRATION_GATE",
+          "detail": "the integration-planner stage was removed in this run, so seam S1 (producer -> consumer) has no dedicated integration gate task; this leaf's fix is verified by leaf T02 instead",
+          "rationale": "per the run's stage override, the e2e closure rides on T02 (verification-typed edge, ordered after T01); a full non-ablated run should restore the integration gate and move e2e path ownership to an integration task"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "45-60 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "ABLATION_NO_INTEGRATION_GATE",
+          "detail": "the integration-planner stage was removed in this run, so this leaf carries the e2e closure itself instead of a dedicated integration gate task",
+          "rationale": "per the run's stage override, T02 is a verification-typed leaf ordered after T01 and its AT4 full-suite case is the closure evidence for acceptance A2; a full non-ablated run should restore the integration gate and move e2e path ownership to an integration task"
+        }
+      ],
+      "oversized_justification": null
+    }
+  ]
+}

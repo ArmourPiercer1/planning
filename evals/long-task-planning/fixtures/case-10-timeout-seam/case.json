@@ -1,0 +1,49 @@
+{
+  "id": "case-10-timeout-seam",
+  "type": "J",
+  "title": "Integration-only bug: unit-green, e2e-red timeout key mismatch",
+  "description": "Type J (integration-only bug). The producer emits 'timeout_ms', the engine reads 'timeout_ms', but the consumer reads a draft key 'timeout' and silently falls back to the 30000ms default. Every per-side unit test is green; only the e2e test (shipped red in the fixture) exposes the seam. Good plans treat this as a seam/contract decision explicitly owned by an integration task: name which side adapts, freeze the canonical wire key, and gate on the real e2e test. Anti-plans: a leaf task 'fix the consumer' that renames the key without a contract decision; a plan that 'fixes' the e2e test to match the default; a plan that never names the e2e test as acceptance evidence. This is also the execution-smoke case and the ablation case (full-minus-integration).",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "repo_tests_expected_failures": ["test_pipeline_e2e_effective_timeout"],
+  "anchors": [
+    { "id": "A1", "files": ["pipeline/producer.py"], "description": "job emission; producer contract key 'timeout_ms'", "layer": "producer" },
+    { "id": "A2", "files": ["pipeline/consumer.py"], "description": "job parsing; draft contract key 'timeout' + silent default fallback", "layer": "consumer" },
+    { "id": "A3", "files": ["pipeline/engine.py"], "description": "execution; already consistent with the producer", "layer": "engine" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1", "A2"], "kind": "contract", "note": "the job dict wire contract (the canonical timeout key) must be explicitly decided and frozen in the plan — name which side adapts; the e2e test is the acceptance evidence" }
+    ],
+    "must_not_expand_scope": ["pipeline/scheduler.py", "pipeline/metrics.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "types": ["data"], "note": "the consumer parses jobs emitted by the producer" },
+      { "from_anchor": "A1", "to_anchor": "A3", "types": ["data"], "note": "the engine runs jobs emitted by the producer" }
+    ],
+    "required_contract_change_path": {
+      "anchor_ids": ["A2"],
+      "marker_terms": ["CONTRACT_CHANGE_REQUEST", "contract change", "wire contract", "seam", "integration fix", "adapts", "canonical", "which side"],
+      "note": "fixing the mismatch is a seam/contract decision that must be explicitly named and owned (ideally by an integration task), not a silent key rename buried in a leaf task"
+    },
+    "acceptable_task_count_range": [2, 5],
+    "max_anchors_per_task": 2,
+    "required_integration_gates": [
+      {
+        "kind": "seam_integration",
+        "anchor_ids": ["A1", "A2"],
+        "failure_path_markers": [
+          { "path": "unit green e2e red", "keywords": ["e2e", "end-to-end", "wire", "shape", "integration", "key", "mismatch"] }
+        ]
+      },
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "effective timeout", "keywords": ["effective", "timeout", "default", "30000", "fallback"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type J probe + execution smoke + ablation. The fixture ships a DESIGNED failing e2e test (repo_tests_expected_failures) — the fixture validator asserts exactly that set fails. The scorer checks: contract freeze naming the canonical key, an integration task owning the seam fix (required_contract_change_path markers), and an e2e gate referencing the real test / effective-timeout semantics. Ablation full-minus-integration on this case measures what happens when the seam gets no owner."
+  }
+}

@@ -1,0 +1,370 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-06-payslip-summary",
+  "planner_variant": "baseline-b",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "prose",
+    "structural_validity": {
+      "lint_exit": null,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": null,
+      "audit_rounds": null,
+      "note": "n/a for prose plans (no schema artifacts)"
+    },
+    "contract_completeness": 0.5556,
+    "contract_completeness_detail": [
+      "objective",
+      "out_of_scope",
+      "frozen_assumptions",
+      "frozen_contracts",
+      "acceptance"
+    ],
+    "acceptance_determinism": 1.0,
+    "context_locality": {
+      "amplification_proxy": 1.0,
+      "per_task": [
+        {
+          "task_text": "`payroll/employees.py` — two fixture employees (`e1` Ada L.: 50.0 × 160.0;",
+          "context_files": 1
+        },
+        {
+          "task_text": "`payroll/calc.py` — `compute_pay(employee)` returns",
+          "context_files": 1
+        },
+        {
+          "task_text": "`payroll/payslip.py` — `render_payslip(employee_id)` returns text lines:",
+          "context_files": 1
+        },
+        {
+          "task_text": "`payroll/legacy_export.py` — legacy XML export, marked **LEGACY, HR-4411:",
+          "context_files": 1
+        },
+        {
+          "task_text": "`tests/test_payroll.py` — unittest suite; \"all must keep passing\".",
+          "context_files": 1
+        },
+        {
+          "task_text": "[ ] Run `python -m unittest discover -s tests -v` and record a green baseline.",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Snapshot the exact current output of `render_payslip(\"e1\")` (list of lines) ",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Snapshot the exact current output of `export_employee_xml(\"e1\")` (string) in",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Freeze the contract: summary line format `Total deductions: <N.NN>` (2 decim",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] In `payroll/payslip.py`, compute `total_deductions = round(sum(a for _, a in",
+          "context_files": 1
+        },
+        {
+          "task_text": "[ ] Insert `lines.append(f\"Total deductions: {total_deductions:.2f}\")` after the",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Update the stale docstring (\"no summary line yet\") to describe the new line.",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add a test asserting `render_payslip(\"e1\")` contains `Total deductions: 2000",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add a test asserting position: the line immediately before `Net: 6000.00` in",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add a test for the second employee: `render_payslip(\"e2\")` contains `Total d",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Add a byte-level regression test: `export_employee_xml(\"e1\")` equals the exa",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Run the full suite: `python -m unittest discover -s tests -v` — all tests pa",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Cross-check arithmetic: for e1 the summary (2000.00) equals the sum of the i",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Diff the new `render_payslip(\"e1\")` output against the Phase 1 snapshot: the",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Diff the legacy XML output against the Phase 1 snapshot: byte-identical.",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Commit with a message such as \"Add total-deductions summary line to payslip\"",
+          "context_files": 0
+        },
+        {
+          "task_text": "Run the existing suite; record the green baseline.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Snapshot current `render_payslip(\"e1\")` lines and `export_employee_xml(\"e1\")` st",
+          "context_files": 0
+        },
+        {
+          "task_text": "Edit `payroll/payslip.py`: add the summary line between the deduction lines and ",
+          "context_files": 1
+        },
+        {
+          "task_text": "Edit `tests/test_payroll.py`: add the new tests (format for e1, position, e2 val",
+          "context_files": 1
+        },
+        {
+          "task_text": "Run the full suite.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Diff the new payslip output against the step 2 snapshot; confirm only the summar",
+          "context_files": 0
+        },
+        {
+          "task_text": "Diff the legacy XML output against the step 2 snapshot; confirm byte-identical.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Step 3 happens after step 1 because the baseline must be green before any",
+          "context_files": 0
+        },
+        {
+          "task_text": "Step 3 happens after step 2 because the snapshot is the diff target for",
+          "context_files": 0
+        },
+        {
+          "task_text": "Step 4 happens after step 3 because the tests assert against the concrete",
+          "context_files": 0
+        },
+        {
+          "task_text": "Step 5 happens after steps 3 and 4 because the suite must exercise the",
+          "context_files": 0
+        },
+        {
+          "task_text": "Steps 6 and 7 happen after step 5 because a green suite plus an explicit",
+          "context_files": 0
+        },
+        {
+          "task_text": "Step 8 happens last because committing before steps 5–7 would record an",
+          "context_files": 0
+        },
+        {
+          "task_text": "Full suite: `python -m unittest discover -s tests -v` — every test must",
+          "context_files": 0
+        },
+        {
+          "task_text": "New-behavior tests (Phase 3):",
+          "context_files": 0
+        },
+        {
+          "task_text": "`render_payslip(\"e1\")` contains `Total deductions: 2000.00`.",
+          "context_files": 0
+        },
+        {
+          "task_text": "The line immediately before `Net: 6000.00` is the summary line.",
+          "context_files": 0
+        },
+        {
+          "task_text": "`render_payslip(\"e2\")` contains `Total deductions: 900.00` and `Net: 2700.00`.",
+          "context_files": 0
+        },
+        {
+          "task_text": "`export_employee_xml(\"e1\")` is byte-equal to the Phase 1 snapshot.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Regression checks:",
+          "context_files": 0
+        },
+        {
+          "task_text": "`TestLegacyExport.test_export_shape` passes unmodified.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Gross/net values for both employees are unchanged (8000.00 / 6000.00 for",
+          "context_files": 0
+        },
+        {
+          "task_text": "Deduction order on the rendered slip remains tax, then insurance",
+          "context_files": 0
+        },
+        {
+          "task_text": "Manual sanity: print the rendered e1 slip; visually confirm the layout:",
+          "context_files": 0
+        },
+        {
+          "task_text": "Any change to `payroll/legacy_export.py` — byte format is frozen until the",
+          "context_files": 1
+        },
+        {
+          "task_text": "Changes to `payroll/calc.py` values or deduction order — computation and",
+          "context_files": 1
+        },
+        {
+          "task_text": "A payroll-wide / all-employees aggregate report — this case is the",
+          "context_files": 0
+        },
+        {
+          "task_text": "New employees, tax/insurance rate changes, or new deduction types.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Refactoring `payroll/employees.py` or replacing the in-memory fixtures.",
+          "context_files": 1
+        },
+        {
+          "task_text": "Modifying any existing test assertion — the test file gets additions only.",
+          "context_files": 0
+        },
+        {
+          "task_text": "CI configuration, packaging, or dependency changes.",
+          "context_files": 0
+        }
+      ],
+      "max_context_files": 1,
+      "bare_directories": [],
+      "note": "proxy = files mentioned per task (owned paths are not declared in prose plans)"
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 0,
+        "total": 2,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A2",
+            "hit": false,
+            "via": null
+          },
+          {
+            "from": "A4",
+            "to": "A1",
+            "hit": false,
+            "via": null
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 0,
+        "details": []
+      },
+      "cycles": 0,
+      "edges_without_reason": null,
+      "unknown_task_edges": 0
+    },
+    "integration_explicitness": {
+      "score": 0.0,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 0,
+        "e2e_closure": 0,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 0,
+      "failure_gates": 0,
+      "fixes_owned": 0,
+      "case_requirements_met": null,
+      "note": "keyword-level detection only; prose does not declare gate structure"
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0,
+      "note": "anchor coverage per task from file mentions"
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "task_count": {
+      "actual": 52,
+      "range": [
+        2,
+        4
+      ],
+      "in_range": false
+    },
+    "gaming_flags": [
+      {
+        "code": "G1_OVER_FRAGMENTED",
+        "detail": "52 task lines > range max 4"
+      },
+      {
+        "code": "G3_CONTEXT_STARVATION",
+        "detail": "41/52 task lines mention no repo file"
+      }
+    ],
+    "judge_pending": [
+      {
+        "dimension": "recoverability",
+        "reason": "prose plans do not declare checkpoint/recovery structure"
+      }
+    ],
+    "metric_coverage": {
+      "contract_completeness": "partial",
+      "acceptance_determinism": "partial",
+      "context_locality": "partial",
+      "ownership_collisions": "not-measurable",
+      "dependency_precision": "partial",
+      "integration_explicitness": "partial",
+      "leaf_boundedness": "partial",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 229.5,
+    "tokens": null,
+    "context_read": 1.0,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": null,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\baseline-b\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

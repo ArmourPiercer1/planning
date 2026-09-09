@@ -1,0 +1,47 @@
+{
+  "id": "case-07-reliable-delivery",
+  "type": "G",
+  "title": "Retry + dead-letter: the deliver() contract cannot carry a reason",
+  "description": "Type G (wrong contract). The requirement 'dead-letter with the failure reason' is unsatisfiable against Publisher.deliver(msg) -> bool: a bare bool carries no reason, and the signature is frozen for external call sites. The correct plan explicitly routes a NON-BREAKING contract extension (e.g. an additive receipt API like deliver_with_receipt, or a last-failure accessor) through the contract-change mechanism, then builds the retry loop + dead-letter on top. Anti-plans: (a) silently hack the retry in the worker and record a generic reason — the reason requirement is quietly dropped; (b) change deliver's return type to a dict/receipt — breaks the frozen signature for existing call sites; (c) treat 'publisher work' and 'worker work' as independent parallel leaves without the contract join.",
+  "task_prompt_file": "task.md",
+  "repo_fixture": "repo",
+  "anchors": [
+    { "id": "A1", "files": ["mailout/publisher.py"], "description": "delivery contract (deliver -> bool, simulated carrier rules) — the wrong contract", "layer": "contract" },
+    { "id": "A2", "files": ["mailout/worker.py"], "description": "retry loop, backoff, dead-letter routing, attempt log", "layer": "worker" },
+    { "id": "A3", "files": ["mailout/queue.py"], "description": "queue semantics (FIFO, requeue for retry)", "layer": "flow" }
+  ],
+  "expected": {
+    "must_freeze": [
+      { "anchor_ids": ["A1"], "kind": "contract", "note": "the existing deliver(msg) -> bool signature and acceptance behavior are frozen for existing call sites; any contract extension must be explicitly non-breaking (additive) and named as a contract change" },
+      { "anchor_ids": ["A2", "A3"], "kind": "behavior", "note": "queue FIFO order and the single-attempt semantics for successful messages are preserved; retries apply only to failures (max 3 attempts total)" }
+    ],
+    "must_not_expand_scope": ["mailout/templates.py", "mailout/webhook.py", "mailout/rate_limit.py"],
+    "must_have_edges": [
+      { "from_anchor": "A1", "to_anchor": "A2", "types": ["contract"], "note": "the retry loop consumes the (extended) delivery contract to get the failure reason" },
+      { "from_anchor": "A3", "to_anchor": "A2", "types": ["data"], "note": "the worker drives the queue (and any requeue path)" }
+    ],
+    "required_contract_change_path": {
+      "anchor_ids": ["A1"],
+      "marker_terms": ["CONTRACT_CHANGE_REQUEST", "contract change", "change request", "CORE_SEAM_BLOCKER", "signature", "receipt", "non-breaking", "backward compat"],
+      "note": "the plan must explicitly name that deliver() -> bool cannot carry a failure reason and route the fix through a formal contract-change mechanism (additive receipt API or equivalent), keeping the old signature working"
+    },
+    "acceptable_task_count_range": [3, 6],
+    "max_anchors_per_task": 1,
+    "context_clusters": [
+      { "anchor_ids": ["A1", "A2", "A3"], "mode": "separate" }
+    ],
+    "required_integration_gates": [
+      {
+        "kind": "e2e_closure",
+        "anchor_ids": ["A1", "A2", "A3"],
+        "failure_path_markers": [
+          { "path": "retry exhaustion", "keywords": ["dead", "exhaust", "final failure", "gave up", "3 attempts"] },
+          { "path": "backoff", "keywords": ["backoff", "delay", "wait", "interval", "sleep"] },
+          { "path": "legacy call sites", "keywords": ["backward compat", "non-breaking", "signature", "existing call"] }
+        ]
+      }
+    ],
+    "recoverable_tasks": [],
+    "notes": "Type G probe: is the wrong contract noticed at planning time? The flag is required_contract_change_path — the scorer checks that the plan text names the publisher contract AND uses contract-change vocabulary (receipt / non-breaking / signature / CONTRACT_CHANGE_REQUEST / ...). A plan that only says 'retry in the worker' drops the reason requirement (judge-pending escalation if anchor mentioned but no marker)."
+  }
+}

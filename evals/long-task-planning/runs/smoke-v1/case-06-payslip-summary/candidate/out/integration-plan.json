@@ -1,0 +1,54 @@
+{
+  "schema": "planning/integration-plan@1",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "payslip.py consumes the compute_pay result to render payslip lines including the new summary line; silent-divergence risks: deduction-line order, summary total, 2-decimal formatting of the three values",
+      "contract_ids": ["C1", "C2"],
+      "covered_by": ["T03", "T04"]
+    },
+    {
+      "id": "S2",
+      "description": "legacy_export.py iterates compute_pay deductions to render the legacy XML; silent-divergence risks: deduction-element order (byte stability vs deterministic sort per A-2), amount formatting, accidental structural drift in the legacy bytes",
+      "contract_ids": ["C1"],
+      "covered_by": ["T03", "T04"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "contract_consistency",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A5"
+    },
+    {
+      "task_id": "T04",
+      "kind": "e2e_closure",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A3"
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Happy path S1: render_payslip('e1') returns exactly the 7-line C2 list ending with 'Summary: net=6000.00 gross=8000.00 deductions=2000.00'; render_payslip('e2') ends with 'Summary: net=2700.00 gross=3600.00 deductions=900.00'",
+      "covers": ["S1"],
+      "evidence": "tests/test_payslip_integration.py::test_e2e_payslip_full_text asserts lines == the expected exact list"
+    },
+    {
+      "id": "E2",
+      "scenario": "Determinism S1+S2: two consecutive render_payslip('e1') calls return identical lists and two export_employee_xml('e1') calls return identical strings, with the insurance deduction before tax in both renderers",
+      "covers": ["S1", "S2"],
+      "evidence": "tests/test_payslip_integration.py::test_e2e_deterministic_renders asserts equality of consecutive calls for both renderers"
+    },
+    {
+      "id": "E3",
+      "scenario": "Failure / bad input S1+S2: unknown employee id 'e999' makes render_payslip and export_employee_xml raise KeyError (preserved behavior), and the full test suite exits 0 with every test (pre-existing and new) passing",
+      "covers": ["S1", "S2"],
+      "evidence": "tests/test_payslip_integration.py::test_e2e_unknown_employee_raises (assertRaises KeyError) plus `python -m unittest discover -s tests -p 'test_*.py'` → 'OK', exit code 0"
+    }
+  ],
+  "notes": "final_acceptance kind is merged into T04 (e2e_closure) per the integration-planner rule for small plans: T04 executes acceptance A1-A5 end-to-end and records evidence in checkpoints/T04.json. The seam_integration kind is not created: S1 and S2 are existing call sites that the leaves keep structurally unchanged (DA-2); no new wiring is introduced, so there is no seam to wire. T03 is strictly read-only on production code and owns no fix rights (mismatches are recorded, not patched)."
+}

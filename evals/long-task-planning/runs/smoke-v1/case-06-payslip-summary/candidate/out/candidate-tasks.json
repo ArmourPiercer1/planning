@@ -1,0 +1,80 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Make the deduction list returned by compute_pay deterministic by sorting it by name in payroll/calc.py, and add a unit test in tests/test_payroll.py that asserts the exact sorted tuple list for employees e1 and e2, so every consumer of compute_pay gets a stable order.",
+      "required_context": {
+        "files": [
+          "payroll/calc.py",
+          "payroll/employees.py",
+          "payroll/legacy_export.py",
+          "tests/test_payroll.py"
+        ],
+        "contracts": ["C1"],
+        "concepts": [
+          "compute_pay return shape: {gross: float, deductions: [(name, amount)], net: float}",
+          "name-sorted order replaces insertion order: 'insurance' precedes 'tax'",
+          "existing values are pinned by tests: e1 gross 8000.0, tax 1600.0, insurance 400.0, net 6000.0"
+        ]
+      },
+      "owned_paths": ["payroll/calc.py", "tests/test_payroll.py"],
+      "forbidden_scope": [
+        "payroll/payslip.py (owned by T02)",
+        "payroll/legacy_export.py (read-only; HR-4411 byte format, do not extend or refactor)",
+        "payroll/employees.py (fixture data)",
+        "tests/test_payslip_summary.py, tests/test_contract_shape.py, tests/test_payslip_integration.py (owned by other tasks)"
+      ],
+      "touched_layers": ["service"],
+      "inputs": [
+        "frozen contract C1 spec (stage-contract.json)",
+        "employee fixture records e1/e2 in payroll/employees.py"
+      ],
+      "outputs": [
+        "payroll/calc.py with the name-sorted deductions list",
+        "tests/test_payroll.py with new test TestCalc::test_deductions_sorted_by_name"
+      ],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "The deterministic-order closure is calc.py plus its test file plus the two read-only downstream readers (payslip.py, legacy_export.py); the change and its test stay one leaf because splitting them would make two agents re-learn the same 19-line module (shared-context benefit, one layer, one contract)."
+    },
+    {
+      "id": "T02",
+      "objective": "Add the final summary line to render_payslip's output in the exact format 'Summary: net=<net> gross=<gross> deductions=<total>' with 2-decimal values, and create tests/test_payslip_summary.py that asserts the exact line for employees e1 and e2.",
+      "required_context": {
+        "files": [
+          "payroll/payslip.py",
+          "payroll/calc.py",
+          "payroll/employees.py",
+          "tests/test_payroll.py",
+          "tests/test_payslip_summary.py (new)"
+        ],
+        "contracts": ["C1", "C2"],
+        "concepts": [
+          "render_payslip returns list[str]; the summary line is appended as the last element after the 'Net:' line",
+          "f-string 2-decimal formatting :.2f for net, gross, and the deductions total",
+          "total = sum of all deduction amounts; order-independent"
+        ]
+      },
+      "owned_paths": ["payroll/payslip.py", "tests/test_payslip_summary.py"],
+      "forbidden_scope": [
+        "payroll/calc.py (owned by T01; the summary line must not change the calculation)",
+        "payroll/legacy_export.py (no summary line in the XML; HR-4411 byte format)",
+        "payroll/employees.py (fixture data)",
+        "tests/test_payroll.py (owned by T01)",
+        "tests/test_contract_shape.py, tests/test_payslip_integration.py (owned by other tasks)"
+      ],
+      "touched_layers": ["service"],
+      "inputs": [
+        "frozen contract C2 spec (the exact summary-line format, stage-contract.json)",
+        "frozen contract C1 spec (the pay shape the summary is computed from)",
+        "employee fixture records e1/e2 in payroll/employees.py"
+      ],
+      "outputs": [
+        "payroll/payslip.py rendering the exact summary line as the final list element",
+        "tests/test_payslip_summary.py (new) with exact-format tests for e1 and e2"
+      ],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "The summary line is a presentation closure inside payslip.py with its own new test file; it consumes only the frozen C1 shape (the total is order-independent), so it can run in parallel with T01 on disjoint owned paths instead of serializing behind the calc change."
+    }
+  ]
+}

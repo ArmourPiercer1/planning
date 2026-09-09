@@ -1,0 +1,75 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Modify pipeline/consumer.py job_timeout to resolve the frozen C1 timeout chain (job['timeout_ms'] → job['timeout'] draft-key fallback → DEFAULT_TIMEOUT_MS 30000) so the consumer sees the producer-set timeout; make tests/test_pipeline_e2e.py::test_pipeline_e2e_effective_timeout pass without changing producer.py, engine.py, or any existing test file.",
+      "required_context": {
+        "files": [
+          "pipeline/consumer.py",
+          "pipeline/producer.py",
+          "tests/test_consumer.py",
+          "tests/test_pipeline_e2e.py"
+        ],
+        "contracts": ["C1", "C2"],
+        "concepts": [
+          "job wire format: dict with keys id, payload, timeout_ms",
+          "C1 fallback precedence: timeout_ms > timeout > DEFAULT_TIMEOUT_MS (DA-1)",
+          "unittest invocation from repo root (python -m unittest)"
+        ]
+      },
+      "owned_paths": ["pipeline/consumer.py"],
+      "forbidden_scope": [
+        "pipeline/producer.py — must not rename or drop 'timeout_ms'",
+        "pipeline/engine.py — no semantic changes (C2 frozen)",
+        "tests/test_producer.py, tests/test_consumer.py, tests/test_pipeline_e2e.py — existing test files must stay byte-identical",
+        "pipeline/__init__.py and validate_job behavior — outside the closure"
+      ],
+      "touched_layers": ["service"],
+      "inputs": [
+        "frozen C1 spec (stage-contract.json → shared_contracts[C1])",
+        "frozen C2 spec (stage-contract.json → shared_contracts[C2])",
+        "DA-1 decision (stage-contract.json → frozen_architecture[DA-1])"
+      ],
+      "outputs": ["pipeline/consumer.py (modified job_timeout implementing the C1 chain)"],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "The consumer adaptation is one service-layer module change plus three read-only files; producer and engine form a separate unchanged closure consumed via frozen C1/C2, so the boundary is exactly the producer→consumer seam S1 itself — cutting any coarser would force the fixer to also own the e2e gate, cutting finer (e.g. per-branch) would split one function."
+    },
+    {
+      "id": "T02",
+      "objective": "Create tests/test_wire_contract.py (new) with 5 stdlib-unittest tests pinning frozen C1 and C2 at unit level — producer emits 'timeout_ms' and never 'timeout'; engine.run_job decides 'done'/'timeout' from 'timeout_ms' per C2; consumer.job_timeout resolves 'timeout_ms' first, then the 'timeout' fallback, then the 30000 default — so any future drift on seams S1/S2 fails the suite.",
+      "required_context": {
+        "files": [
+          "pipeline/producer.py",
+          "pipeline/engine.py",
+          "pipeline/consumer.py",
+          "tests/test_producer.py",
+          "tests/test_consumer.py",
+          "tests/test_wire_contract.py (new)"
+        ],
+        "contracts": ["C1", "C2"],
+        "concepts": [
+          "job wire format and C1 key precedence (DA-1)",
+          "C2 engine comparison semantics (work_ms > timeout_ms)",
+          "existing unittest module style (TestX(unittest.TestCase) + main guard)"
+        ]
+      },
+      "owned_paths": ["tests/test_wire_contract.py"],
+      "forbidden_scope": [
+        "pipeline/ — production code is read-only for this task",
+        "tests/test_producer.py, tests/test_consumer.py, tests/test_pipeline_e2e.py — existing test files must stay byte-identical",
+        "tests/integration/ — owned by T03"
+      ],
+      "touched_layers": ["e2e"],
+      "inputs": [
+        "frozen C1 spec (stage-contract.json → shared_contracts[C1])",
+        "frozen C2 spec (stage-contract.json → shared_contracts[C2])",
+        "DA-1 decision (defines the fallback behavior the tests pin)",
+        "tests/test_producer.py and tests/test_consumer.py as style references (read-only)"
+      ],
+      "outputs": ["tests/test_wire_contract.py (new, 5 stdlib-unittest tests)"],
+      "downstream_consumers": ["T03", "T04"],
+      "split_rationale": "Test authoring against frozen C1/C2 is a distinct closure from T01's production change: disjoint owned path (tests/ vs pipeline/consumer.py), a different layer, and it additionally reads engine.py which T01 does not need; the only shared context is the frozen contracts, which is precisely what freezing them is for — merging the two would make the fixer own both code and its regression test and serialize the pair."
+    }
+  ]
+}

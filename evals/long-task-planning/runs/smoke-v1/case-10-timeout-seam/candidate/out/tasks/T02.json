@@ -1,0 +1,107 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T02",
+  "objective": "Create tests/test_wire_contract.py (new) with 5 stdlib-unittest tests pinning frozen C1 and C2 at unit level — producer emits 'timeout_ms' and never 'timeout'; engine.run_job decides 'done'/'timeout' from 'timeout_ms' per C2; consumer.job_timeout resolves 'timeout_ms' first, then the 'timeout' fallback, then the 30000 default — so any future drift on seams S1/S2 fails the suite.",
+  "required_context": {
+    "files": [
+      "pipeline/producer.py",
+      "pipeline/engine.py",
+      "pipeline/consumer.py",
+      "tests/test_producer.py",
+      "tests/test_consumer.py",
+      "tests/test_wire_contract.py (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "job wire format and C1 key precedence (DA-1)",
+      "C2 engine comparison semantics (work_ms > timeout_ms; boundary work_ms == timeout_ms → 'done')",
+      "existing unittest module style (TestX(unittest.TestCase) + module-level main guard)"
+    ]
+  },
+  "inputs": [
+    "frozen C1 spec (stage-contract.json → shared_contracts[C1])",
+    "frozen C2 spec (stage-contract.json → shared_contracts[C2])",
+    "DA-1 decision (defines the fallback behavior the tests pin)",
+    "tests/test_producer.py and tests/test_consumer.py as style references (read-only)"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["tests/test_wire_contract.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not modify any pipeline/ file — production code is read-only for this task",
+    "Do not edit tests/test_producer.py, tests/test_consumer.py, or tests/test_pipeline_e2e.py",
+    "Do not create files outside owned_paths (no tests/integration/ — that is T03)"
+  ],
+  "implementation_constraints": [
+    "Stdlib unittest only; the module must run via python -m unittest tests.test_wire_contract from the repo root",
+    "Exactly 5 test methods: (1) producer emits 'timeout_ms' with the passed value and no 'timeout' key; (2) engine.run_job returns 'done' at work 50 and 'timeout' at work 150 for timeout_ms=100; (3) consumer.job_timeout(make_job(..., timeout_ms=500)) returns 500; (4) consumer.job_timeout({'timeout': 123}) returns 123 (draft-key fallback per DA-1); (5) consumer.job_timeout({}) returns 30000 (default)",
+    "Write the consumer-resolution assertions against the frozen C1 spec, not against T01's in-progress code",
+    "No new dependencies; follow the existing test-module docstring and naming style"
+  ],
+  "deliverables": [
+    { "what": "wire-contract regression suite, 5 tests pinning C1/C2", "where": "tests/test_wire_contract.py (new)" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T02-AT1",
+      "case": "positive",
+      "description": "The module collects and runs exactly 5 tests; the required green set (producer-key, engine, fallback, default tests) reports OK in every state. State-conditional on T01: if T01 has not yet landed, the consumer-resolution test may be red (exactly 1 failure expected per T02-AT4); 'Ran 5 tests ... OK' with exit code 0 is required only when T01 is present; red/green state recorded in checkpoints/T02.json",
+      "evidence": "python -m unittest tests.test_wire_contract -v → 5 tests collected; producer-key, engine, fallback, default tests OK; if T01 not yet landed: exactly 1 failure on the consumer-resolution test (per T02-AT4), otherwise 'Ran 5 tests ... OK', exit code 0; state recorded in checkpoints/T02.json"
+    },
+    {
+      "id": "T02-AT2",
+      "case": "positive",
+      "description": "The producer-key test pins make_job output: assertEqual(job['timeout_ms'], 500) and assertNotIn('timeout', job) both pass",
+      "evidence": "python -m unittest tests.test_wire_contract -v → the producer-key test reports OK"
+    },
+    {
+      "id": "T02-AT3",
+      "case": "negative",
+      "description": "If the consumer-resolution test were written against the draft key only (e.g. asserting job_timeout({'timeout_ms': 500}) returns 30000), the suite fails — the test must encode the C1 chain, not the old draft behavior",
+      "evidence": "python -m unittest tests.test_wire_contract -v → FAIL on the consumer-resolution test when the C1 chain is not encoded"
+    },
+    {
+      "id": "T02-AT4",
+      "case": "failure",
+      "description": "While T01 has not yet landed in the working tree, the consumer-resolution test (job_timeout(make_job(..., timeout_ms=500)) returns 500) is red — the expected TDD state for a test written in parallel against a frozen spec; it must be green once T01 is complete (asserted by T04 in A4)",
+      "evidence": "Run before T01 lands: exactly 1 failure, on the consumer-resolution test. Run after T01 lands: 'Ran 5 tests ... OK'. Both states are recorded in the T02 checkpoint."
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "T01 lands after T02 in the same working tree (parallel group, order not guaranteed)",
+      "expected_behavior": "T02's consumer-resolution test turns green without any test edit; T02 records the red→green state change in its checkpoint"
+    },
+    {
+      "scenario": "A future change makes the producer emit 'timeout' alongside or instead of 'timeout_ms'",
+      "expected_behavior": "The producer-key test fails (assertNotIn / assertEqual), flagging the C1 drift immediately"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "Checkpoint must record: the module's red/green state at completion (which of the 5 tests were red and why — expected: only the consumer-resolution test, red only if T01 had not landed); T03 cross-checks the suite against the C1/C2 spec; T04 asserts all 5 green under A4/A5."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-60 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

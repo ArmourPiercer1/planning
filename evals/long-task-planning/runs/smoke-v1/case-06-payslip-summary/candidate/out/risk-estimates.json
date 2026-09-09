@@ -1,0 +1,67 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["service"],
+      "cross_contracts": 1,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["service"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "FRAGMENTATION_CANDIDATE",
+          "detail": "T01 and T02 share the small compute_pay contract and both run the pre-existing test suite",
+          "rationale": "Kept split: owned paths are disjoint, frozen C1 unlocks true parallelism, and the shared model is a 3-key dict (not a complex state model); merging would serialize two independent changes without meaningful context saving"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "S",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T04",
+      "context_footprint": "S",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    }
+  ]
+}

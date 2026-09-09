@@ -1,0 +1,221 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-04-audit-async",
+  "planner_variant": "candidate",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "structured",
+    "structural_validity": {
+      "lint_exit": 0,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": "PASS",
+      "audit_rounds": 2
+    },
+    "contract_completeness": 1.0,
+    "acceptance_determinism": 0.881,
+    "context_locality": {
+      "amplification_proxy": 2.25,
+      "per_task": [
+        {
+          "task": "T01",
+          "context_files": 5,
+          "owned_files": 2,
+          "amplification_proxy": 2.5,
+          "cross_anchor_reads": 2,
+          "bare_directories": []
+        },
+        {
+          "task": "T02",
+          "context_files": 4,
+          "owned_files": 2,
+          "amplification_proxy": 2.0,
+          "cross_anchor_reads": 1,
+          "bare_directories": []
+        }
+      ],
+      "max_context_files": 5,
+      "bare_directories": []
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 2,
+        "total": 2,
+        "details": [
+          {
+            "from": "A2",
+            "to": "A1",
+            "hit": true,
+            "via": "edge T03->T04"
+          },
+          {
+            "from": "A2",
+            "to": "A3",
+            "hit": true,
+            "via": "edge T03->T04"
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 1,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A3",
+            "violated": false,
+            "reason": "the API producer and the worker consumer are decoupled by the bus; a direct producer->consumer edge is doc-order fake serialization (there is no data or contract flow between the two beyond the event contract)",
+            "via": "edge T01->T03"
+          }
+        ]
+      },
+      "cycles": 0,
+      "edges_without_reason": 0,
+      "unknown_task_edges": 0
+    },
+    "parallelizable_groups": [
+      {
+        "anchors": [
+          "A1",
+          "A3"
+        ],
+        "tasks": [
+          "T01",
+          "T02"
+        ],
+        "ok": true,
+        "violated_by": null
+      }
+    ],
+    "forbidden_parallel_pairs": [],
+    "integration_explicitness": {
+      "score": 1.0,
+      "by_kind": {
+        "contract_consistency": 1,
+        "seam_integration": 0,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 4,
+      "failure_gates": 3,
+      "fixes_owned": 2,
+      "case_requirements_met": 1.0,
+      "gate_details": [
+        {
+          "kind": "e2e_closure",
+          "anchors": [
+            "A1",
+            "A2",
+            "A3"
+          ],
+          "ok": true,
+          "missing_failure_markers": [],
+          "kind_present": true,
+          "anchors_covered": true
+        }
+      ]
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0
+    },
+    "recoverability": {
+      "score": 1.0,
+      "per_anchor": [
+        {
+          "anchor": "A3",
+          "ok": true,
+          "why": "T02 checkpoint_required"
+        }
+      ]
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "must_not_own_violations": [],
+    "task_count": {
+      "actual": 2,
+      "range": [
+        2,
+        6
+      ],
+      "in_range": true
+    },
+    "context_clusters": [
+      {
+        "anchors": [
+          "A1",
+          "A2",
+          "A3"
+        ],
+        "mode": "separate",
+        "ok": false
+      }
+    ],
+    "required_replan_actions": {
+      "required": [],
+      "allowed": [
+        "change_dependency",
+        "checkpoint_and_split",
+        "merge",
+        "reduce_scope",
+        "reorder",
+        "request_contract_revision",
+        "split"
+      ],
+      "missing": []
+    },
+    "gaming_flags": [],
+    "judge_pending": [],
+    "metric_coverage": {
+      "contract_completeness": "assessed",
+      "acceptance_determinism": "assessed",
+      "context_locality": "assessed",
+      "ownership_collisions": "assessed",
+      "dependency_precision": "assessed",
+      "integration_explicitness": "assessed",
+      "leaf_boundedness": "assessed",
+      "recoverability": "assessed",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 1942.8,
+    "tokens": null,
+    "context_read": 2.25,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": 1,
+    "compactions": null,
+    "local_recoverability": 1.0
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\candidate\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\candidate\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-04-audit-async\\candidate\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

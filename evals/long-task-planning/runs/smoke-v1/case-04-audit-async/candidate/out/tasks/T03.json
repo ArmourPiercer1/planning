@@ -1,0 +1,101 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T03",
+  "objective": "Write tests/test_contract_consistency.py that diff the frozen surface against the code and pin it as runnable assertions: AUDIT_EVENT_FIELDS == ('ts','actor','action','entity','amount'), AUDIT_TOPIC == 'audit', the parameter names of handle_transfer and make_audit_consumer, the public method signatures of Bus and Store, and the (ts, actor, action) dedup key — read-only, with a match/mismatch report per contract.",
+  "required_context": {
+    "files": [
+      "ledger/api.py",
+      "ledger/worker.py",
+      "ledger/events.py",
+      "ledger/db.py"
+    ],
+    "contracts": ["C1", "C2", "C3", "C4"],
+    "concepts": [
+      "contract pinning via constant equality and inspect.signature",
+      "read-only diff: assertions only, no code edits",
+      "dedup key behavior verified by calling the consumer twice on one Store"
+    ]
+  },
+  "inputs": [
+    "checkpoint outputs of T01 and T02 (changed file lists)",
+    "frozen specs C1-C4 in out/stage-contract.json"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "out/stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "out/stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "out/stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "out/stage-contract.json#shared_contracts[C4]" }
+  ],
+  "owned_paths": ["tests/test_contract_consistency.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "changed ledger/api.py (read for the diff)" },
+    { "task_id": "T02", "what": "changed ledger/worker.py (read for the diff)" }
+  ],
+  "non_goals": [
+    "no production code edits — this task is a read-only diff",
+    "no changes to any other test file",
+    "no behavior changes to any ledger module"
+  ],
+  "implementation_constraints": [
+    "stdlib only (unittest, inspect)",
+    "assertions only: the test file must not mutate any ledger/ module or Store table outside its own test fixtures",
+    "pin values, not prose: every frozen surface gets an equality or signature assertion"
+  ],
+  "deliverables": [
+    { "what": "pinned-surface consistency test module", "where": "tests/test_contract_consistency.py" },
+    { "what": "consistency report (each contract vs implementation, match/mismatch)", "where": "checkpoints/T03.json" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T03-A1",
+      "case": "positive",
+      "description": "the pinned-surface module runs green: it asserts AUDIT_EVENT_FIELDS == ('ts','actor','action','entity','amount'), AUDIT_TOPIC == 'audit', unchanged parameter names for handle_transfer and make_audit_consumer, Bus/Store public method signatures, and the (ts, actor, action) dedup behavior on a fresh Store",
+      "evidence": "python -m unittest tests.test_contract_consistency -v -> OK (all pin tests pass; test suite green)"
+    },
+    {
+      "id": "T03-A2",
+      "case": "negative",
+      "description": "any drift in a pinned surface makes the module fail: for example, changing AUDIT_TOPIC to 'x' in a scratch copy makes the topic pin assert and the run exit non-zero",
+      "evidence": "scratch-copy mutation of AUDIT_TOPIC -> python -m unittest tests.test_contract_consistency -v -> FAIL with the topic assertion named"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a T01/T02 edit changed a frozen signature, constant, or dedup key",
+      "expected_behavior": "the pin assertion fails and names the drifted surface; the task records the mismatch in the report and flags the owner task in the checkpoint — it does not edit the module itself"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [
+      "T01: ledger/api.py + tests/test_ledger.py",
+      "T02: ledger/worker.py + tests/test_audit_bus.py"
+    ],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T04"],
+    "notes": "T04 reads the consistency report before running the E2E gates; any mismatch here is a seam-defect candidate for T04's integration-only fix rights."
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": ["tooling"],
+    "cross_contracts": 4,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-90 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      {
+        "code": "CONTRACT_DENSITY",
+        "detail": "pins all four frozen contracts C1-C4",
+        "rationale": "each contract is a re-read point; the leaf stays single because all four pins live in one small read-only test module — splitting would re-read the same four modules in two agents"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

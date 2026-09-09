@@ -1,0 +1,115 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T02",
+  "objective": "Add the final summary line to render_payslip's output in the exact format 'Summary: net=<net> gross=<gross> deductions=<total>' with 2-decimal values, and create tests/test_payslip_summary.py that asserts the exact line for employees e1 and e2.",
+  "required_context": {
+    "files": [
+      "payroll/payslip.py",
+      "payroll/calc.py",
+      "payroll/employees.py",
+      "tests/test_payroll.py",
+      "tests/test_payslip_summary.py (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "render_payslip returns list[str]; the summary line is appended as the last element after the 'Net:' line",
+      "f-string 2-decimal formatting :.2f for net, gross, and the deductions total",
+      "total = sum of all deduction amounts; order-independent"
+    ]
+  },
+  "inputs": [
+    "frozen contract C2 spec (the exact summary-line format, stage-contract.json#shared_contracts C2)",
+    "frozen contract C1 spec (the pay shape the summary is computed from)",
+    "employee fixture records e1/e2 in payroll/employees.py"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["payroll/payslip.py", "tests/test_payslip_summary.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not modify payroll/calc.py (owned by T01; the summary line must not change the calculation)",
+    "Do not touch payroll/legacy_export.py — no summary line in the XML (HR-4411 byte format)",
+    "Do not modify payroll/employees.py",
+    "Do not modify the existing tests in tests/test_payroll.py (owned by T01)",
+    "Do not change the existing payslip lines (header, blank line, Gross, deduction lines, Net) — only append the final summary line",
+    "Do not add any dependency, including a new test framework"
+  ],
+  "implementation_constraints": [
+    "The summary line is computed from the compute_pay result: pay['net'], pay['gross'], and the sum of all deduction amounts",
+    "Exact format: 'Summary: net=' + f\"{net:.2f}\" + ' gross=' + f\"{gross:.2f}\" + ' deductions=' + f\"{total:.2f}\" — no spaces around '=', no thousands separators",
+    "Append the line as the last element of the returned list; no trailing newline, no extra blank line",
+    "stdlib only; unittest style matching tests/test_payroll.py"
+  ],
+  "deliverables": [
+    { "what": "render_payslip ending with the exact 2-decimal summary line", "where": "payroll/payslip.py" },
+    { "what": "exact-format summary tests for e1 and e2", "where": "tests/test_payslip_summary.py (new)" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "render_payslip('e1') returns a list whose last element is exactly 'Summary: net=6000.00 gross=8000.00 deductions=2000.00' and the element before it is 'Net: 6000.00'",
+      "evidence": "run test test_summary_line_exact_format via python -m unittest tests.test_payslip_summary; the test asserts lines[-1] equals the exact summary string and exits 0"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "render_payslip('e2') returns a list whose last element is exactly 'Summary: net=2700.00 gross=3600.00 deductions=900.00'",
+      "evidence": "the same test test_summary_line_exact_format covers e1 and e2 in one run; python -m unittest tests.test_payslip_summary exits 0"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "A summary line written as 'Summary: net=6000 gross=8000 deductions=2000' (no 2 decimals) or missing entirely fails the exact-equality test",
+      "evidence": "the exact-equality assertEqual fails with the observed-vs-expected diff when the formatting is wrong"
+    },
+    {
+      "id": "AT4",
+      "case": "failure",
+      "description": "render_payslip('e999') raises KeyError from employees.get_employee exactly as before; no summary line is rendered and no new exception type is introduced",
+      "evidence": "the unit test asserts render_payslip('e999') raises KeyError (assertRaises) in tests/test_payslip_summary.py; python -m unittest exits 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A future deduction set with more than two entries",
+      "expected_behavior": "the summary line prints deductions=<total> where total is the sum of all entries; the line format is unchanged"
+    },
+    {
+      "scenario": "The deductions list is empty",
+      "expected_behavior": "The summary prints deductions=0.00 (sum over an empty list is 0); no crash"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "The summary line is the last list element of render_payslip; T03 shape-checks the format against C2 and T04 verifies it end-to-end. Do not add the line to legacy_export.py."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "FRAGMENTATION_CANDIDATE",
+        "detail": "T01 and T02 share the small compute_pay contract and both run the pre-existing test suite",
+        "rationale": "Kept split: owned paths are disjoint, frozen C1 unlocks true parallelism, and the shared model is a 3-key dict (not a complex state model); merging would serialize two independent changes without meaningful context saving"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

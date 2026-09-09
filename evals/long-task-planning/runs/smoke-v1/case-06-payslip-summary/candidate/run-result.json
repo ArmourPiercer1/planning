@@ -1,0 +1,184 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-06-payslip-summary",
+  "planner_variant": "candidate",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "structured",
+    "structural_validity": {
+      "lint_exit": 0,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": "PASS",
+      "audit_rounds": 1
+    },
+    "contract_completeness": 1.0,
+    "acceptance_determinism": 0.913,
+    "context_locality": {
+      "amplification_proxy": 2.25,
+      "per_task": [
+        {
+          "task": "T01",
+          "context_files": 4,
+          "owned_files": 2,
+          "amplification_proxy": 2.0,
+          "cross_anchor_reads": 2,
+          "bare_directories": []
+        },
+        {
+          "task": "T02",
+          "context_files": 5,
+          "owned_files": 2,
+          "amplification_proxy": 2.5,
+          "cross_anchor_reads": 2,
+          "bare_directories": []
+        }
+      ],
+      "max_context_files": 5,
+      "bare_directories": []
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 2,
+        "total": 2,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A2",
+            "hit": true,
+            "via": "edge T01->T03"
+          },
+          {
+            "from": "A4",
+            "to": "A1",
+            "hit": true,
+            "via": "edge T03->T04"
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 0,
+        "details": []
+      },
+      "cycles": 0,
+      "edges_without_reason": 0,
+      "unknown_task_edges": 0
+    },
+    "parallelizable_groups": [],
+    "forbidden_parallel_pairs": [],
+    "integration_explicitness": {
+      "score": 0.0,
+      "by_kind": {
+        "contract_consistency": 1,
+        "seam_integration": 0,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 3,
+      "failure_gates": 1,
+      "fixes_owned": 2,
+      "case_requirements_met": 0.0,
+      "gate_details": [
+        {
+          "kind": "final_acceptance",
+          "anchors": [
+            "A1",
+            "A2"
+          ],
+          "ok": false,
+          "missing_failure_markers": [
+            "deduction order"
+          ],
+          "kind_present": false,
+          "anchors_covered": true
+        }
+      ]
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [],
+      "max_anchors_per_task_observed": 1,
+      "over_anchor_cap": 0
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "must_not_own_violations": [],
+    "task_count": {
+      "actual": 2,
+      "range": [
+        2,
+        4
+      ],
+      "in_range": true
+    },
+    "context_clusters": [],
+    "required_replan_actions": {
+      "required": [],
+      "allowed": [
+        "change_dependency",
+        "checkpoint_and_split",
+        "merge",
+        "reduce_scope",
+        "request_contract_revision",
+        "split"
+      ],
+      "missing": []
+    },
+    "gaming_flags": [],
+    "judge_pending": [],
+    "metric_coverage": {
+      "contract_completeness": "assessed",
+      "acceptance_determinism": "assessed",
+      "context_locality": "assessed",
+      "ownership_collisions": "assessed",
+      "dependency_precision": "assessed",
+      "integration_explicitness": "assessed",
+      "leaf_boundedness": "assessed",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 1546.6,
+    "tokens": null,
+    "context_read": 2.25,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": 0,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\candidate\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\candidate\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-06-payslip-summary\\candidate\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

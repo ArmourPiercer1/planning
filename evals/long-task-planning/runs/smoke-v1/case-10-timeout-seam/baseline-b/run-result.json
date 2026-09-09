@@ -1,0 +1,362 @@
+{
+  "run_id": "smoke-v1",
+  "case_id": "case-10-timeout-seam",
+  "planner_variant": "baseline-b",
+  "model": "host-session-model",
+  "seed_or_run_index": 0,
+  "phase": "planning-only",
+  "planning": {
+    "produced": true,
+    "variant_kind": "prose",
+    "structural_validity": {
+      "lint_exit": null,
+      "findings": {
+        "blocker": 0,
+        "major": 0,
+        "minor": 0
+      },
+      "audit_verdict": null,
+      "audit_rounds": null,
+      "note": "n/a for prose plans (no schema artifacts)"
+    },
+    "contract_completeness": 0.7778,
+    "contract_completeness_detail": [
+      "objective",
+      "out_of_scope",
+      "frozen_contracts",
+      "acceptance",
+      "integration_seams",
+      "constraints",
+      "allowed_replan"
+    ],
+    "acceptance_determinism": 1.0,
+    "context_locality": {
+      "amplification_proxy": 1.818,
+      "per_task": [
+        {
+          "task_text": "`consumer.job_timeout` resolves the effective timeout as: **`timeout_ms` (canoni",
+          "context_files": 0
+        },
+        {
+          "task_text": "**No key rename on either side.** The producer keeps emitting exactly `{\"id\", \"p",
+          "context_files": 0
+        },
+        {
+          "task_text": "When both keys are present, `timeout_ms` wins (documented in the consumer docstr",
+          "context_files": 0
+        },
+        {
+          "task_text": "`DEFAULT_TIMEOUT_MS` stays 30000; `validate_job` is untouched.",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Producer adapts (add or rename to `timeout`):** `test_producer.py::test_make_j",
+          "context_files": 3
+        },
+        {
+          "task_text": "**Both sides rename:** forbidden by the task without this decision, and it would",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Consumer reads only `timeout_ms`:** breaks `test_consumer.py::test_job_timeout",
+          "context_files": 2
+        },
+        {
+          "task_text": "The consumer-side dual-key read is the only option that keeps the producer/engin",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Run the full suite from the repo root (`python -m unittest discover -s tests",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Record the expected baseline: 7 tests — producer 2/2 green, consumer 3/3 gre",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Snapshot (hash or copy) `pipeline/producer.py` and `pipeline/engine.py` so P",
+          "context_files": 2
+        },
+        {
+          "task_text": "[ ] Edit `pipeline/consumer.py::job_timeout` to the dual-key resolution `timeout",
+          "context_files": 1
+        },
+        {
+          "task_text": "[ ] Do not touch `DEFAULT_TIMEOUT_MS`, `validate_job`, `pipeline/producer.py`, o",
+          "context_files": 2
+        },
+        {
+          "task_text": "[ ] Add a **new** test file `tests/test_timeout_contract.py` (do not modify exis",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Optionally add one producer-mirror case: `consumer.job_timeout(producer.make",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Run the full suite; expect all green (7 existing + 4 new = 11).",
+          "context_files": 0
+        },
+        {
+          "task_text": "[ ] Confirm `pipeline/producer.py` and `pipeline/engine.py` are byte-identical t",
+          "context_files": 2
+        },
+        {
+          "task_text": "[ ] Re-run the full suite one final time as the closing gate; record results.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Run the full baseline test suite from the repo root; record results (expect 6 gr",
+          "context_files": 0
+        },
+        {
+          "task_text": "Re-confirm the seam analysis (producer emits `timeout_ms`, consumer reads `timeo",
+          "context_files": 0
+        },
+        {
+          "task_text": "Snapshot the current content of `pipeline/producer.py` and `pipeline/engine.py` ",
+          "context_files": 2
+        },
+        {
+          "task_text": "Edit `pipeline/consumer.py::job_timeout` to the dual-key resolution (`timeout_ms",
+          "context_files": 1
+        },
+        {
+          "task_text": "Run the consumer unit tests alone — must stay 3/3 green.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Add `tests/test_timeout_contract.py` with the four precedence/fallback cases (+ ",
+          "context_files": 0
+        },
+        {
+          "task_text": "Run the full suite — expect 11/11 green.",
+          "context_files": 0
+        },
+        {
+          "task_text": "Verify `pipeline/producer.py` and `pipeline/engine.py` are unchanged against the",
+          "context_files": 2
+        },
+        {
+          "task_text": "Final full-suite re-run as the closing gate; record results.",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 2 happens after step 1** because the baseline run confirms the only failu",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 3 happens before step 4** because the snapshot must be captured before an",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 4 happens after step 2** because the exact resolution order and precedenc",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 5 happens after step 4** because it is the first verification of the chan",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 6 happens after step 5** because the new contract is pinned only after th",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 7 happens after step 6** because the full-suite gate must include the new",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 8 happens after step 4** (and is repeated at closing) because it checks t",
+          "context_files": 0
+        },
+        {
+          "task_text": "**Step 9 happens last** because it is the final acceptance gate after all prior ",
+          "context_files": 0
+        },
+        {
+          "task_text": "Full suite: `python -m unittest discover -s tests -v`",
+          "context_files": 0
+        },
+        {
+          "task_text": "Or, if pytest is installed: `python -m pytest tests/ -v` (collects the unittest ",
+          "context_files": 0
+        },
+        {
+          "task_text": "Full suite green: 11/11.",
+          "context_files": 0
+        },
+        {
+          "task_text": "`pipeline/producer.py` and `pipeline/engine.py` byte-identical to the pre-fix sn",
+          "context_files": 2
+        },
+        {
+          "task_text": "The `pipeline/consumer.py` diff is confined to `job_timeout` (body + docstring);",
+          "context_files": 1
+        },
+        {
+          "task_text": "The production symptom is resolved: for any `job = make_job(id, payload, timeout",
+          "context_files": 0
+        },
+        {
+          "task_text": "Renaming or adding keys on the producer side; changing `make_job`'s signature or",
+          "context_files": 0
+        },
+        {
+          "task_text": "Any change to `engine.run_job` (comparison semantics, status strings, default lo",
+          "context_files": 0
+        },
+        {
+          "task_text": "Removing the consumer's draft `timeout` key (it stays as a documented fallback u",
+          "context_files": 0
+        },
+        {
+          "task_text": "Changing `DEFAULT_TIMEOUT_MS`, adding `None`/type validation for the timeout fie",
+          "context_files": 0
+        },
+        {
+          "task_text": "Modifying any existing test file (new coverage goes in a new file only).",
+          "context_files": 0
+        },
+        {
+          "task_text": "Concurrency, retries, persistence, logging, configuration files, new dependencie",
+          "context_files": 0
+        },
+        {
+          "task_text": "Routing producer→consumer through the engine: the e2e test calls producer and co",
+          "context_files": 0
+        },
+        {
+          "task_text": "Documentation beyond the `job_timeout` docstring update.",
+          "context_files": 0
+        }
+      ],
+      "max_context_files": 3,
+      "bare_directories": [],
+      "note": "proxy = files mentioned per task (owned paths are not declared in prose plans)"
+    },
+    "ownership_collisions": {
+      "benign": 0,
+      "serialized": 0,
+      "hazardous": 0,
+      "details": []
+    },
+    "dependency_precision": {
+      "must_have": {
+        "hit": 1,
+        "total": 2,
+        "details": [
+          {
+            "from": "A1",
+            "to": "A2",
+            "hit": false,
+            "via": null
+          },
+          {
+            "from": "A1",
+            "to": "A3",
+            "hit": true,
+            "via": "single task mentions both anchors"
+          }
+        ]
+      },
+      "must_not_have": {
+        "violated": 0,
+        "total": 0,
+        "details": []
+      },
+      "cycles": 0,
+      "edges_without_reason": null,
+      "unknown_task_edges": 0
+    },
+    "integration_explicitness": {
+      "score": 0.5,
+      "by_kind": {
+        "contract_consistency": 0,
+        "seam_integration": 0,
+        "e2e_closure": 1,
+        "final_acceptance": 0
+      },
+      "e2e_gates": 1,
+      "failure_gates": 0,
+      "fixes_owned": 0,
+      "case_requirements_met": null,
+      "note": "keyword-level detection only; prose does not declare gate structure"
+    },
+    "leaf_boundedness": {
+      "phase_shaped_leaves": [
+        "**Producer adapts (add or rename to `timeout`):** `test_prod"
+      ],
+      "max_anchors_per_task_observed": 2,
+      "over_anchor_cap": 1,
+      "note": "anchor coverage per task from file mentions"
+    },
+    "recoverability": {
+      "score": null,
+      "per_anchor": []
+    },
+    "scope_discipline": {
+      "creep_items_planned": [],
+      "out_of_scope_named": [],
+      "score": 1.0
+    },
+    "task_count": {
+      "actual": 49,
+      "range": [
+        2,
+        5
+      ],
+      "in_range": false
+    },
+    "gaming_flags": [
+      {
+        "code": "G1_OVER_FRAGMENTED",
+        "detail": "49 task lines > range max 5"
+      },
+      {
+        "code": "G3_CONTEXT_STARVATION",
+        "detail": "38/49 task lines mention no repo file"
+      }
+    ],
+    "judge_pending": [
+      {
+        "dimension": "recoverability",
+        "reason": "prose plans do not declare checkpoint/recovery structure"
+      }
+    ],
+    "metric_coverage": {
+      "contract_completeness": "partial",
+      "acceptance_determinism": "partial",
+      "context_locality": "partial",
+      "ownership_collisions": "not-measurable",
+      "dependency_precision": "partial",
+      "integration_explicitness": "partial",
+      "leaf_boundedness": "partial",
+      "recoverability": "not-measurable",
+      "scope_discipline": "assessed"
+    }
+  },
+  "execution": null,
+  "e_vector": {
+    "success": true,
+    "wall_time": 311.1,
+    "tokens": null,
+    "context_read": 1.818,
+    "rework": null,
+    "integration_defects": null,
+    "scope_creep": 0,
+    "replans": null,
+    "compactions": null,
+    "local_recoverability": null
+  },
+  "artifacts": {
+    "plan_dir": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\out",
+    "score_file": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\run-result.json",
+    "trace": "D:\\AI_Coworking\\skill-build\\planning\\evals\\long-task-planning\\runs\\smoke-v1\\case-10-timeout-seam\\baseline-b\\telemetry.jsonl",
+    "diff": null,
+    "tests": null
+  },
+  "notes": {
+    "tokens": "not observable from the host per-subagent in V1 (schema reserved)",
+    "compactions": "not observable from the host in V1 (schema reserved)"
+  }
+}

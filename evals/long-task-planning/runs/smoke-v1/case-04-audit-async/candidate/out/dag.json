@@ -1,0 +1,89 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 exists to verify T01: it diffs the changed ledger/api.py against the frozen C1/C2 specs (constants, signature, event key set)"
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 exists to verify T02: it diffs the changed ledger/worker.py against frozen C4 (consumer signature, dedup key, record shape)"
+    },
+    {
+      "from": "T01",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's E2E gates E1-E4 exercise T01's publish path and isolation behavior end-to-end on the real bus"
+    },
+    {
+      "from": "T02",
+      "to": "T04",
+      "type": "verification",
+      "reason": "T04's gates E1/E3 exercise T02's consumer (persist + redelivery dedup) end-to-end, including the integration-only fix rights over T02's module"
+    },
+    {
+      "from": "T03",
+      "to": "T04",
+      "type": "ownership",
+      "reason": "T04 may patch T01/T02 modules under its integration-only fix rights while T03 diffs those same modules read-only; ordering T03 before T04 removes the read-while-write skew on shared paths"
+    }
+  ],
+  "parallel_groups": [
+    ["T01", "T02"],
+    ["T03"],
+    ["T04"]
+  ],
+  "critical_path": ["T01", "T03", "T04"],
+  "integration_gates": [
+    {
+      "gate_id": "G1",
+      "task_id": "T04",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A1"
+    },
+    {
+      "gate_id": "G2",
+      "task_id": "T04",
+      "seams": ["S1"],
+      "acceptance_ref": "A2"
+    },
+    {
+      "gate_id": "G3",
+      "task_id": "T04",
+      "seams": ["S2"],
+      "acceptance_ref": "A3"
+    },
+    {
+      "gate_id": "G4",
+      "task_id": "T04",
+      "seams": ["S1"],
+      "acceptance_ref": "A4"
+    },
+    {
+      "gate_id": "G5",
+      "task_id": "T03",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A5"
+    }
+  ],
+  "unlock_contracts": [],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T01",
+        "to": "T02",
+        "why_not_real": "task.md lists the API change (item 1) before the worker (item 2), but T02's tests hand-build C1 events and drive the frozen C3 Bus directly; T02 consumes neither T01's code nor T01's output, so doc order 1->2 is not an edge"
+      }
+    ],
+    "collisions_handled": [
+      "none: T01 owns ledger/api.py + tests/test_ledger.py, T02 owns ledger/worker.py + tests/test_audit_bus.py, T03 owns tests/test_contract_consistency.py, T04 owns tests/test_audit_e2e.py — all four owned path sets disjoint; ledger/events.py and ledger/db.py are read by all and owned by none (DA-2)"
+    ],
+    "free_parallelism_trades": [
+      "T03 and T04 are ordered (T03 -> T04) instead of parallel: T04's integration-only fix rights let it patch T01/T02 modules, and T03 diffs those same modules read-only; accepting one serialized verification step avoids a read-while-write skew at the cost of zero extra tasks"
+    ]
+  }
+}

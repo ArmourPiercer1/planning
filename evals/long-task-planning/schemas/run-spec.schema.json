@@ -1,0 +1,39 @@
+{
+  "$id": "planning-evals/run-spec@1",
+  "title": "One (case x variant x run-index) execution specification written by the runner",
+  "type": "object",
+  "required": ["run_id", "case_id", "variant", "created_at", "paths"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "case_id": { "type": "string" },
+    "variant": { "type": "string", "enum": ["candidate", "baseline-a", "baseline-b", "ablation-full-minus-decomposer", "ablation-full-minus-auditor", "ablation-full-minus-integration", "ablation-full-minus-risk"] },
+    "ablation_remove": { "type": ["string", "null"] },
+    "model": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "run_index": { "type": "integer", "minimum": 0 },
+    "created_at": { "type": "string" },
+    "skills_dir": { "type": "string" },
+    "protocol_version": { "type": "string" },
+    "paths": {
+      "type": "object",
+      "required": ["run_dir", "work_dir", "task_prompt", "prompt_file", "plan_out", "telemetry_file"],
+      "additionalProperties": false,
+      "properties": {
+        "run_dir": { "type": "string" },
+        "work_dir": { "type": "string" },
+        "task_prompt": { "type": "string" },
+        "prompt_file": { "type": "string" },
+        "plan_out": { "type": "string" },
+        "telemetry_file": { "type": "string" }
+      }
+    }
+  }
+}

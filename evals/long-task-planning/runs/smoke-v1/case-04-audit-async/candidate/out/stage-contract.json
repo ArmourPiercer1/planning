@@ -1,0 +1,208 @@
+{
+  "schema": "planning/stage-contract@1",
+  "stage_id": "audit-async-decoupling",
+  "objective": "Decouple audit persistence from the transfer request path: handle_transfer publishes the audit event on the existing in-process bus (topic 'audit', frozen 5-field format) and the bus consumer (make_audit_consumer) persists it with the existing (ts, actor, action) dedup, while the transactions write stays exactly as before and the handler's response no longer depends on audit persistence.",
+  "in_scope": [
+    "ledger/api.py: handle_transfer publishes one audit event on Bus topic 'audit' in the frozen format and stops inserting directly into the 'audit' table; the response for a valid transfer stays {\"ok\": true} even when an audit subscriber raises",
+    "ledger/worker.py: make_audit_consumer consumes the 'audit' topic and persists events to the 'audit' table with the (ts, actor, action) dedup preserved; changed only if a new test fails against the current implementation",
+    "tests/test_ledger.py: TestApi.test_transfer_ok_and_audit_written adjusted (the only existing test asserting the old synchronous audit row) to assert the new publish flow; every other existing test passes unmodified",
+    "tests/test_audit_bus.py (new): bus-level publish/consume tests, including dedupe on redelivery",
+    "tests/test_contract_consistency.py (new): runnable assertions pinning the frozen wire format, topic, signatures, and dedup key",
+    "tests/test_audit_e2e.py (new): E2E gates wiring the consumer to the bus, including failure scenarios (raising subscriber, redelivery, bad amount)"
+  ],
+  "out_of_scope": [
+    {
+      "item": "Changing Bus.publish to isolate subscriber exceptions (built-in try/except inside ledger/events.py)",
+      "reason": "V1 Bus documents that subscriber exceptions propagate; isolation belongs in the handler (DA-1); a bus change alters behavior for every other topic"
+    },
+    {
+      "item": "Real async infrastructure: background threads, queues, or an external message broker",
+      "reason": "The task's 'async' means the request path no longer writes the audit table — the consumer does; no broker or queue exists in the repo and adding one is a new runtime dependency"
+    },
+    {
+      "item": "Any change to ledger/db.py (Store)",
+      "reason": "The Store interface is frozen read-only (C3); no in-scope item requires a store change"
+    },
+    {
+      "item": "Adding, renaming, or reordering audit event fields, or changing AUDIT_TOPIC / AUDIT_EVENT_FIELDS values",
+      "reason": "Backward compatibility is an explicit task requirement: downstream consumers read exactly {ts, actor, action, entity, amount}"
+    },
+    {
+      "item": "Observability for lost audits (metrics, counters, or log lines for swallowed publish failures)",
+      "reason": "The task only requires the response not to depend on audit persistence; a metric or log surface is a later-Stage decision (see OQ-1)"
+    },
+    {
+      "item": "Refactoring the transactions write path or the Store/Bus internals",
+      "reason": "The task requires the transactions write to happen exactly as before"
+    }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-1",
+      "statement": "Delivery in this Stage is the existing in-process synchronous Bus (ledger/events.py); 'async' means the request path no longer writes the audit table — the consumer does — not cross-process delivery.",
+      "rationale": "The task directs use of the existing bus and consumer; the repo has no broker or queue infrastructure. Invalidation: the user later requires delivery across processes (would be a replace_route replan)."
+    },
+    {
+      "id": "A-2",
+      "statement": "V1 Bus exception semantics are preserved: a subscriber that raises propagates to the caller of bus.publish; isolation of audit persistence failures is implemented in the handler (try/except around the publish).",
+      "rationale": "ledger/events.py is frozen read-only (DA-2) and the task requires the response not to depend on audit persistence. Invalidation: the bus contract is revised to swallow exceptions itself."
+    },
+    {
+      "id": "A-3",
+      "statement": "The audit event dict carries exactly the AUDIT_EVENT_FIELDS keys — no extra keys — because downstream consumers read exactly that field set.",
+      "rationale": "Task backward-compatibility clause; adding a key is a contract change (CONTRACT_CHANGE_REQUEST), not an inline edit."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-1",
+      "decision": "Decouple via publish/subscribe: handle_transfer publishes on topic 'audit'; make_audit_consumer persists; the handler isolates publish failures with try/except and still returns {'ok': True}.",
+      "rationale": "Uses exactly the two existing modules the task names; keeps the bus and store untouched.",
+      "seams_affected": ["S1", "S2"]
+    },
+    {
+      "id": "DA-2",
+      "decision": "ledger/events.py (Bus) and ledger/db.py (Store) are read-only in this Stage — no behavior or signature changes.",
+      "rationale": "Shared infrastructure for other topics/tables; a change to them is outside the task's named surface.",
+      "seams_affected": ["S1", "S2"]
+    },
+    {
+      "id": "DA-3",
+      "decision": "Integration wiring is the consumer subscription (bus.subscribe(AUDIT_TOPIC, make_audit_consumer(store))); the fixture has no app entrypoint, so the wiring lives in the E2E test, not in a new lifecycle module.",
+      "rationale": "Adding a lifespan/entry module would invent app structure the fixture does not have.",
+      "seams_affected": ["S1"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "data",
+      "spec": "Audit event wire format. Topic: AUDIT_TOPIC == 'audit' (value unchanged). Event dict keys exactly ('ts','actor','action','entity','amount'), the tuple AUDIT_EVENT_FIELDS, unchanged; ts = ISO-8601 UTC string ending in 'Z' (existing _now() helper); actor = from_id; action = 'transfer'; entity = to_id; amount = the numeric transfer amount. No extra keys. Constants AUDIT_EVENT_FIELDS and AUDIT_TOPIC in ledger/api.py keep their current values.",
+      "owned_by": "user-provided",
+      "frozen": true,
+      "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with downstream-consumer sign-off; execution treats it as read-only."
+    },
+    {
+      "id": "C2",
+      "kind": "api",
+      "spec": "handle_transfer(store, bus, from_id, to_id, amount) — signature unchanged. amount <= 0: returns {'ok': False, 'error': 'bad-amount'}; writes no transactions row; publishes no event. amount > 0: writes exactly one transactions row {'from': from_id, 'to': to_id, 'amount': amount, 'ts': <now>} exactly as before, then publishes one C1 event on topic 'audit' via bus.publish; if the publish raises, the handler still returns {'ok': True} (exception swallowed, response shape unchanged).",
+      "owned_by": "T01",
+      "frozen": true,
+      "unfreeze_rule": "Owned by T01; any change after T01 checkpoints is a CONTRACT_CHANGE_REQUEST."
+    },
+    {
+      "id": "C3",
+      "kind": "service",
+      "spec": "Bus (ledger/events.py, read-only): subscribe(topic, fn); publish(topic, event) returns the event; handlers run in subscription order; V1: a subscriber that raises propagates to the publisher. Store (ledger/db.py, read-only): insert(table, record) appends a copy and returns the record; find(table, **fields) returns matching records; all(table) returns a copy of the table.",
+      "owned_by": "user-provided",
+      "frozen": true,
+      "unfreeze_rule": "Frozen read-only for this Stage (DA-2); changes require a CONTRACT_CHANGE_REQUEST."
+    },
+    {
+      "id": "C4",
+      "kind": "data",
+      "spec": "Audit table + dedup. Table name 'audit'. make_audit_consumer(store) returns consume(event): consume first calls store.find('audit', ts=event['ts'], actor=event['actor'], action=event['action']); on a hit it returns {'ok': True, 'deduped': True} and inserts nothing; otherwise it calls store.insert('audit', dict(event)) and returns {'ok': True, 'deduped': False}. Dedup key (ts, actor, action) unchanged.",
+      "owned_by": "T02",
+      "frozen": true,
+      "unfreeze_rule": "Owned by T02; any change after T02 checkpoints is a CONTRACT_CHANGE_REQUEST."
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "Audit publish seam: handle_transfer -> bus.publish('audit', event) -> subscribers. Silent-drift risks: topic name, event key set or values, and exception propagation at publish time.",
+      "participants": ["T01", "T04", "frozen downstream audit consumers (C1)"],
+      "contract_ids": ["C1", "C2", "C3"]
+    },
+    {
+      "id": "S2",
+      "description": "Audit persistence seam: consume(event) -> Store 'audit' table with (ts, actor, action) dedup. Silent-drift risks: dedup key, record shape (the row must equal the event fields), table name.",
+      "participants": ["T02", "T04"],
+      "contract_ids": ["C1", "C4"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "A successful transfer emits exactly one 'audit' event on the bus and writes no audit row in the request path",
+      "positive_case": "handle_transfer returns {'ok': True}; a spy subscriber on topic 'audit' captures exactly 1 event whose key set equals {'ts','actor','action','entity','amount'} and whose values match the transfer arguments; with no subscriber the 'audit' table stays empty and the 'transactions' table holds exactly 1 row",
+      "negative_case": "a transfer with amount <= 0 returns {'ok': False, 'error': 'bad-amount'}; the spy captures 0 events and no transactions row is written",
+      "failure_behavior": "if bus.publish raises (a subscriber raises), handle_transfer still returns {'ok': True} and the transactions row is still written — the exception does not escape the handler",
+      "evidence": "python -m unittest tests.test_ledger.TestApi -v -> OK (publish spy tests) and tests.test_audit_e2e.TestAuditE2E.test_transfer_audit_lands_via_bus -v -> OK"
+    },
+    {
+      "id": "A2",
+      "description": "handle_transfer returns {'ok': True} for a valid transfer regardless of whether audit persistence succeeds",
+      "positive_case": "with an audit subscriber that raises RuntimeError, handle_transfer returns {'ok': True}; the store contains the transactions row and 0 audit rows",
+      "negative_case": "with no subscribers at all, handle_transfer returns {'ok': True} — an empty bus never changes the response shape",
+      "failure_behavior": "the swallowed exception does not escape, print, or mutate the response; the response is exactly {'ok': True} for a valid transfer",
+      "evidence": "python -m unittest tests.test_audit_e2e.TestAuditE2E.test_handler_ok_when_audit_consumer_raises -v -> OK"
+    },
+    {
+      "id": "A3",
+      "description": "The audit consumer writes a published event to the 'audit' table exactly once per (ts, actor, action)",
+      "positive_case": "publishing a well-formed event on 'audit' via the bus creates exactly 1 audit row whose fields equal the event fields; the consume result is {'ok': True, 'deduped': False}",
+      "negative_case": "publishing a copy of the same event (same ts, actor, action) via the bus creates no second row; the consume result is {'ok': True, 'deduped': True}",
+      "failure_behavior": "a second row for the same (ts, actor, action) key is a gate failure — the dedup lookup must hit before any insert on redelivery",
+      "evidence": "python -m unittest tests.test_audit_bus.TestBusLevelAudit -v -> OK (2 tests)"
+    },
+    {
+      "id": "A4",
+      "description": "The transactions write is exactly as before",
+      "positive_case": "a successful transfer writes exactly 1 'transactions' row with exactly the keys {'from','to','amount','ts'} and the same values the pre-change code wrote",
+      "negative_case": "a rejected amount (<= 0) writes 0 transactions rows, as before",
+      "failure_behavior": "the transactions insert happens before the bus publish; if the publish raises, the transactions row is already in the store",
+      "evidence": "python -m unittest tests.test_ledger.TestApi.test_transfer_still_writes_transactions -v -> OK; existing tests.test_ledger.TestApi.test_bad_amount_rejected -> OK"
+    },
+    {
+      "id": "A5",
+      "description": "The frozen surface stays unchanged: the consistency test asserts constants, signatures, and the dedup key are unaltered",
+      "positive_case": "the consistency test asserts AUDIT_EVENT_FIELDS == ('ts','actor','action','entity','amount'); it asserts AUDIT_TOPIC == 'audit', that the parameter names of handle_transfer and make_audit_consumer are unchanged, and that the public method signatures of Bus and Store are unchanged",
+      "negative_case": "any change to a pinned constant, signature, or the dedup key makes the consistency test fail",
+      "failure_behavior": "the consistency test fails with an assertion error that names the drifted surface",
+      "evidence": "python -m unittest tests.test_contract_consistency -v -> OK (all pin tests pass)"
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "dependency",
+      "rule": "No new third-party dependencies: stdlib plus the existing ledger modules and unittest only."
+    },
+    {
+      "kind": "style",
+      "rule": "Tests follow the repo's existing unittest style (per-module test classes, unittest.TestCase, no pytest fixtures)."
+    },
+    {
+      "kind": "process",
+      "rule": "ledger/events.py and ledger/db.py are read-only; any change requires a CONTRACT_CHANGE_REQUEST (DA-2)."
+    },
+    {
+      "kind": "performance",
+      "rule": "No timing guarantees: the V1 bus delivers synchronously in-process; this Stage adds no background execution."
+    }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 3,
+    "stage_estimate": "4-6 dev-hours wall-clock under the planned schedule (T01 parallel T02, then T03, then T04; critical path T01 -> T03 -> T04)"
+  },
+  "allowed_replan": [
+    "split",
+    "merge",
+    "reorder",
+    "change_dependency",
+    "reduce_scope",
+    "checkpoint_and_split",
+    "request_contract_revision"
+  ],
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "question": "Should the handler record swallowed publish exceptions anywhere (log line, counter) in this Stage?",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "Frozen: no — V1 has no logging surface and the task only requires response independence from audit persistence. Revisit as a later Stage if audit-loss observability becomes a requirement."
+    }
+  ]
+}

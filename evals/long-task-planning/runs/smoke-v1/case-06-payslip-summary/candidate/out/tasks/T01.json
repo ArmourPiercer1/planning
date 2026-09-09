@@ -1,0 +1,100 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Make the deduction list returned by compute_pay deterministic by sorting it by name in payroll/calc.py, and add a unit test in tests/test_payroll.py that asserts the exact sorted tuple list for employees e1 and e2.",
+  "required_context": {
+    "files": [
+      "payroll/calc.py",
+      "payroll/employees.py",
+      "payroll/legacy_export.py",
+      "tests/test_payroll.py"
+    ],
+    "contracts": ["C1"],
+    "concepts": [
+      "compute_pay return shape: {gross: float, deductions: [(name, amount)], net: float}",
+      "name-sorted order replaces insertion order: 'insurance' precedes 'tax'",
+      "existing values are pinned by tests: e1 gross 8000.0, tax 1600.0, insurance 400.0, net 6000.0; e2 gross 3600.0, tax 720.0, insurance 180.0, net 2700.0"
+    ]
+  },
+  "inputs": [
+    "frozen contract C1 spec (stage-contract.json#shared_contracts C1)",
+    "employee fixture records e1/e2 in payroll/employees.py"
+  ],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" }
+  ],
+  "owned_paths": ["payroll/calc.py", "tests/test_payroll.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not modify payroll/payslip.py (owned by T02)",
+    "Do not modify payroll/legacy_export.py or payroll/employees.py (read-only for this task)",
+    "Do not change deduction rates, the gross/net formula, or rounding",
+    "Do not modify the bodies of the four pre-existing test methods in tests/test_payroll.py; only add new test code",
+    "Do not add the summary line (that is T02)",
+    "Do not add any dependency, including a new test framework"
+  ],
+  "implementation_constraints": [
+    "stdlib only; keep the unittest style of tests/test_payroll.py",
+    "Sort by name only, e.g. return sorted(deductions, key=lambda d: d[0]) (stable); do not hardcode the two-entry order",
+    "compute_pay's signature and its return keys {gross, deductions, net} stay unchanged",
+    "Modify only owned_paths files"
+  ],
+  "deliverables": [
+    { "what": "compute_pay returning the name-sorted deductions list", "where": "payroll/calc.py" },
+    { "what": "new test TestCalc::test_deductions_sorted_by_name asserting the exact sorted list for e1 and e2", "where": "tests/test_payroll.py" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "compute_pay(get_employee('e1')) returns deductions exactly equal to [('insurance', 400.0), ('tax', 1600.0)] and compute_pay(get_employee('e2')) returns [('insurance', 180.0), ('tax', 720.0)]",
+      "evidence": "run test test_deductions_sorted_by_name via python -m unittest tests.test_payroll.TestCalc.test_deductions_sorted_by_name; the test asserts the exact tuple lists and exits 0"
+    },
+    {
+      "id": "AT2",
+      "case": "negative",
+      "description": "The old insertion-order list [('tax', 1600.0), ('insurance', 400.0)] fails the new test with an assertEqual order mismatch, proving the test pins order not just content",
+      "evidence": "temporarily reverting the sort makes test_deductions_sorted_by_name fail (FAIL, 1 failure); the suite then runs with the sort restored"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "The pre-existing test test_compute_pay_values still asserts gross == 8000.0, tax == 1600.0, insurance == 400.0, net == 6000.0 and the full suite exits 0 with 0 errors",
+      "evidence": "python -m unittest discover -s tests -p 'test_*.py' from the repo root → 'OK', exit code 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A future deduction set with more than two entries or a new name",
+      "expected_behavior": "The sort is by name, not a hardcoded two-entry order: compute_pay returns the entries in name order for any future set; the current test still passes because it pins only the present two-entry set"
+    },
+    {
+      "scenario": "Two deductions share the same name",
+      "expected_behavior": "Python's stable sorted() keeps insertion order among equal names; the returned list contains all entries in name order, with no crash and no dropped entry"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "T03 will diff this module against C1; T04 gates both consumers (payslip lines, legacy XML). The legacy XML deduction-element order becomes insurance, tax — accepted by assumption A-2; do not 'fix' it back to insertion order in later tasks."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

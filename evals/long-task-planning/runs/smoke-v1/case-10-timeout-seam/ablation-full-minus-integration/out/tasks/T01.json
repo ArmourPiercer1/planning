@@ -1,0 +1,147 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Fix the consumer side of the timeout seam: implement job_timeout in pipeline/consumer.py so it resolves the frozen wire key timeout_ms first, then the deprecated draft 'timeout' key as fallback, then DEFAULT_TIMEOUT_MS (30000); add unit tests in tests/test_consumer.py covering timeout_ms primary and both-keys priority while leaving every existing test case in the repo unmodified and green.",
+  "required_context": {
+    "files": [
+      "pipeline/consumer.py",
+      "pipeline/producer.py",
+      "pipeline/engine.py",
+      "tests/test_consumer.py",
+      "tests/test_producer.py",
+      "tests/test_pipeline_e2e.py"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": [
+      "job wire dict shape {id, payload, timeout_ms} passed by reference between producer, engine, consumer (no serializer)",
+      "the draft 'timeout' key is consumer-side only and has no in-repo emitter, so the fallback is migration tolerance, not a live dual contract",
+      "engine uses the strict comparison work_ms > timeout_ms with status literals 'done'/'timeout' - frozen, must stay untouched",
+      "unittest-style tests executed with pytest from the repo root; new tests are additive only"
+    ]
+  },
+  "inputs": [
+    "frozen contract C1 (job wire schema) from stage-contract.json",
+    "frozen contract C2 (consumer timeout resolution order, owned by this task) from stage-contract.json",
+    "baseline defect: pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_effective_timeout fails with 30000 != 500"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "spec_ref": "stage-contract.json shared_contracts[C1] - job wire schema; producer/engine frozen as-is"
+    },
+    {
+      "contract_id": "C2",
+      "spec_ref": "stage-contract.json shared_contracts[C2] - resolution order timeout_ms -> 'timeout' -> DEFAULT_TIMEOUT_MS; validate_job unchanged"
+    }
+  ],
+  "owned_paths": [
+    "pipeline/consumer.py",
+    "tests/test_consumer.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no change to pipeline/producer.py (key rename, signature, or default) - the wire-contract reference side is frozen (C1)",
+    "no change to pipeline/engine.py (comparison, status literals, default)",
+    "no removal of the deprecated 'timeout' fallback - removal is explicitly out of scope for this stage",
+    "no change to validate_job behavior and no new validation rules (e.g. no type-checking of timeout_ms)",
+    "no edits to existing test methods in tests/test_consumer.py, tests/test_producer.py, or tests/test_pipeline_e2e.py - additions only",
+    "no new files, modules, or dependencies"
+  ],
+  "implementation_constraints": [
+    "resolve by key presence, never by value: 'timeout_ms' present -> use its value (even 0); else 'timeout' present -> use its value; else return DEFAULT_TIMEOUT_MS",
+    "keep DEFAULT_TIMEOUT_MS defined in pipeline/consumer.py with value 30000",
+    "add the new test methods test_job_timeout_timeout_ms_primary and test_job_timeout_timeout_ms_wins_over_legacy to the existing TestConsumer class in tests/test_consumer.py (or a new class in the same file); do not create a new test file",
+    "run the suite from the repo root: python -m pytest tests/",
+    "at task close, pipeline/producer.py and pipeline/engine.py must be byte-identical to the baseline"
+  ],
+  "deliverables": [
+    {
+      "what": "job_timeout in pipeline/consumer.py resolving timeout_ms -> 'timeout' -> DEFAULT_TIMEOUT_MS (presence-based); validate_job and DEFAULT_TIMEOUT_MS unchanged in behavior",
+      "where": "pipeline/consumer.py"
+    },
+    {
+      "what": "new unit test methods test_job_timeout_timeout_ms_primary (job {'timeout_ms': 500} -> 500) and test_job_timeout_timeout_ms_wins_over_legacy (job {'timeout_ms': 500, 'timeout': 123} -> 500)",
+      "where": "tests/test_consumer.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "consumer returns the producer-set timeout at the seam: producer.make_job('j1', {'cmd': 'x'}, timeout_ms=500) yields consumer.job_timeout(job) == 500 (the baseline returned 30000)",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_effective_timeout -> passed (baseline: failed with 30000 != 500)"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "timeout_ms wins over the legacy 'timeout' key: job_timeout({'timeout_ms': 500, 'timeout': 123}) returns 500 and the 'timeout' value is ignored",
+      "evidence": "pytest tests/test_consumer.py::TestConsumer::test_job_timeout_timeout_ms_wins_over_legacy -> passed (new test method)"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "fallback and default paths stay intact: a job with no timeout_ms but timeout=123 resolves to 123 (deprecated draft key still honored), and a job with neither timeout key returns DEFAULT_TIMEOUT_MS (30000)",
+      "evidence": "pytest tests/test_consumer.py -> all TestConsumer tests passed, including the unmodified test_job_timeout_reads_consumer_key (123) and test_job_timeout_default (30000)"
+    },
+    {
+      "id": "AT4",
+      "case": "failure",
+      "description": "engine semantics remain frozen under the fix: run_job(job with timeout_ms=100, work_ms=50) returns status 'done' and run_job(job with timeout_ms=100, work_ms=150) returns status 'timeout'",
+      "evidence": "pytest tests/test_pipeline_e2e.py::TestPipelineE2E::test_pipeline_e2e_engine_timeout -> passed; diff shows pipeline/engine.py and pipeline/producer.py unmodified"
+    },
+    {
+      "id": "AT5",
+      "case": "positive",
+      "description": "all pre-existing unit tests remain green with zero test-case edits: producer and consumer suites pass unmodified, with the 2 new consumer test methods added",
+      "evidence": "pytest tests/test_producer.py tests/test_consumer.py -> exit code 0, 7 passed, 0 failed (2 producer + 5 consumer, of which 2 are new)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "job dict has neither timeout_ms nor 'timeout'",
+      "expected_behavior": "job_timeout returns DEFAULT_TIMEOUT_MS (30000); no exception is raised, matching the baseline behavior for an empty job"
+    },
+    {
+      "scenario": "job dict has both timeout_ms and 'timeout' with different values",
+      "expected_behavior": "job_timeout returns the timeout_ms value; the 'timeout' value is ignored per the frozen C2 priority order"
+    },
+    {
+      "scenario": "job_timeout receives a timeout_ms value of 0",
+      "expected_behavior": "job_timeout returns 0 (key-presence resolution, not value truthiness) - a 0 ms timeout is a valid, if aggressive, producer choice"
+    },
+    {
+      "scenario": "a job is missing the 'id' or 'payload' key",
+      "expected_behavior": "validate_job raises ValueError as before; the fix does not change validation, so the existing test_validate_job case passes unmodified"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T02"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T02"],
+    "notes": "T02 must start from the fixed consumer. If T02's new e2e cases fail against the fixed consumer, that is a T01 defect (report it in the T02 checkpoint) or a CONTRACT_CHANGE_REQUEST against C2 - T02 must not patch pipeline/ code itself."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "ABLATION_NO_INTEGRATION_GATE",
+        "detail": "the integration-planner stage was removed in this run, so seam S1 (producer -> consumer) has no dedicated integration gate task; this leaf's fix is verified by leaf T02 instead",
+        "rationale": "per the run's stage override, the e2e closure rides on T02 (verification-typed edge, ordered after T01); a full non-ablated run should restore the integration gate and move e2e path ownership to an integration task"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,178 @@
+{
+  "$id": "planning-evals/case@1",
+  "title": "Planning challenge case definition (machine-readable expected constraints)",
+  "type": "object",
+  "required": ["id", "type", "title", "description", "task_prompt_file", "repo_fixture", "anchors", "expected"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^case-[0-9]{2}-[a-z0-9-]+$" },
+    "type": { "type": "string", "enum": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "hybrid"] },
+    "title": { "type": "string", "minLength": 3 },
+    "description": { "type": "string", "minLength": 20 },
+    "task_prompt_file": { "type": "string" },
+    "repo_fixture": { "type": "string" },
+    "repo_tests_expected_failures": {
+      "type": "array", "items": { "type": "string" },
+      "description": "repo unittest ids that are DESIGNED to fail in the baseline fixture (demonstrate the trap); every other test must pass"
+    },
+    "anchors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "files", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^A[0-9]+$" },
+          "files": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "description": { "type": "string" },
+          "layer": { "type": "string" }
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["must_freeze", "must_not_expand_scope"],
+      "properties": {
+        "must_freeze": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["anchor_ids", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "anchor_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "kind": { "type": "string", "enum": ["contract", "seam", "assumption", "behavior"] },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "must_not_expand_scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "repo paths the plan must NOT absorb (planning them = scope creep)"
+        },
+        "must_not_own": { "type": "array", "items": { "type": "string" } },
+        "must_have_edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from_anchor", "to_anchor"],
+            "additionalProperties": false,
+            "properties": {
+              "from_anchor": { "type": "string" },
+              "to_anchor": { "type": "string" },
+              "types": { "type": "array", "items": { "type": "string" } },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "must_not_have_edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from_anchor", "to_anchor", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "from_anchor": { "type": "string" },
+              "to_anchor": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "parallelizable_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["anchor_ids"],
+            "additionalProperties": false,
+            "properties": {
+              "anchor_ids": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "forbidden_parallel_pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["anchor_ids", "shared_path"],
+            "additionalProperties": false,
+            "properties": {
+              "anchor_ids": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 },
+              "shared_path": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "required_integration_gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "anchor_ids"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "string", "enum": ["contract_consistency", "seam_integration", "e2e_closure", "final_acceptance"] },
+              "anchor_ids": { "type": "array", "items": { "type": "string" } },
+              "failure_path_markers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path", "keywords"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": { "type": "string" },
+                    "keywords": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "acceptable_task_count_range": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "max_anchors_per_task": { "type": "integer", "minimum": 1 },
+        "context_clusters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["anchor_ids", "mode"],
+            "additionalProperties": false,
+            "properties": {
+              "anchor_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "mode": { "type": "string", "enum": ["merge", "separate"] },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "required_replan_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["split", "merge", "reorder", "change_dependency", "defer", "reduce_scope", "replace_route", "checkpoint_and_split", "request_contract_revision"]
+          }
+        },
+        "recoverable_tasks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "required_contract_change_path": {
+          "type": "object",
+          "required": ["anchor_ids", "marker_terms"],
+          "additionalProperties": false,
+          "properties": {
+            "anchor_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "marker_terms": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "note": { "type": "string" }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

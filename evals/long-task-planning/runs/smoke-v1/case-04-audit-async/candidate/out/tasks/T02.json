@@ -1,0 +1,85 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T02",
+  "objective": "Write tests/test_audit_bus.py that drive make_audit_consumer through a real Bus — publish on 'audit' creates exactly one audit row and a redelivered copy of the same event (same ts, actor, action) creates no second row — and extend ledger/worker.py only if a new test fails against the current consumer, preserving the (ts, actor, action) dedup key.",
+  "required_context": {
+    "files": [
+      "ledger/worker.py",
+      "ledger/events.py",
+      "ledger/db.py",
+      "tests/test_ledger.py"
+    ],
+    "contracts": ["C1", "C3", "C4"],
+    "concepts": [
+      "at-least-once delivery and idempotent consumption",
+      "dedup via store.find before insert on (ts, actor, action)",
+      "bus-level redelivery as a test scenario (publish the same event twice)"
+    ]
+  },
+  "inputs": ["frozen specs C1/C3/C4 in out/stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "out/stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C3", "spec_ref": "out/stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "out/stage-contract.json#shared_contracts[C4]" }
+  ],
+  "owned_paths": ["ledger/worker.py", "tests/test_audit_bus.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "changes to ledger/api.py, ledger/events.py, ledger/db.py",
+    "tests/test_ledger.py (owned by T01 — read as a style reference only)",
+    "changing the dedup key or the make_audit_consumer(store) signature (C4)"
+  ],
+  "implementation_constraints": [
+    "stdlib only; unittest style matching tests/test_ledger.py",
+    "test events are hand-built from the C1 spec (exact key set) — do not import or call handle_transfer in this module",
+    "ledger/worker.py changes are allowed only to make a failing new test pass, and must preserve C4 exactly (signature, dedup key, return shapes)"
+  ],
+  "deliverables": [
+    { "what": "bus-level publish/consume tests (persist + redelivery dedup)", "where": "tests/test_audit_bus.py" },
+    { "what": "worker.py unchanged, or a minimal C4-preserving extension", "where": "ledger/worker.py" }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "T02-A1",
+      "case": "positive",
+      "description": "publishing a well-formed C1 event on 'audit' via the bus creates exactly 1 audit row whose fields equal the event fields; the consume result is {'ok': True, 'deduped': False}",
+      "evidence": "python -m unittest tests.test_audit_bus.TestBusLevelAudit.test_publish_persists_one_row -v -> OK (test passes)"
+    },
+    {
+      "id": "T02-A2",
+      "case": "failure",
+      "description": "publishing a copy of the same event (same ts, actor, action) via the bus creates no second row; the consume result is {'ok': True, 'deduped': True} and the table length stays 1",
+      "evidence": "python -m unittest tests.test_audit_bus.TestBusLevelAudit.test_redelivery_dedupes -v -> OK (test passes)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a redelivered event arrives after the first insert (simulated by a second bus.publish of the same dict)",
+      "expected_behavior": "consume's find() hits the existing row, the insert is skipped, and the table holds exactly 1 row for that (ts, actor, action)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S2"],
+    "upstream_outputs": [],
+    "consumers": ["T03", "T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T03", "T04"],
+    "notes": "T04 re-runs the redelivery scenario as gate E3 end-to-end with the real publisher. If worker.py needed a change, the checkpoint records it with the failing test that forced it."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["runtime", "e2e"],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}
