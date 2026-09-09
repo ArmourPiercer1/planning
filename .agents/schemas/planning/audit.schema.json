@@ -2,7 +2,7 @@
   "$id": "planning/audit@2",
   "title": "Plan audit verdict (v2: independent path + deterministic layer + repo-grounded semantic layer)",
   "type": "object",
-  "required": ["schema", "verdict", "auditor", "findings", "deterministic", "checks_performed"],
+  "required": ["schema", "verdict", "auditor", "findings", "deterministic", "checks_performed", "grounding"],
   "properties": {
     "schema": { "const": "planning/audit@2" },
     "verdict": { "enum": ["PASS", "FAIL"] },

@@ -7,6 +7,9 @@ one-hop dependency picture of the in-scope repo files, enough for the
 planner to decompose against reality and for the independent auditor to
 verify plan claims WITHOUT re-scanning the whole repo.
 
+V1 supports **Python repositories only** (stdlib AST). Non-Python repos
+are not supported — see `SNAPSHOT_UNSUPPORTED_OR_EMPTY`.
+
 Zero-dependency (stdlib only), deterministic for a given repo revision.
 Usage:
     uv run --no-project python repo-snapshot.py --repo <repo-dir> --out <file>
@@ -15,6 +18,15 @@ Usage:
 Scope prefixes are repo-relative posix paths (e.g. "app", "profiles").
 Without --scope the whole repo is the scan boundary. Unscanned top-level
 areas are recorded in `unknown_areas` — never silently absent.
+
+One-hop expansion: seed files are collected from explicit --scope prefixes,
+then their repo-local Python imports are resolved and included even if the
+target lies outside the scope. The second hop is NOT followed. Expansion
+entries are recorded in `dependency_expansions`.
+
+Fail-fast: if the total file count (seed + expansion) exceeds --max-files,
+the script exits non-zero with `SNAPSHOT_SCOPE_TOO_LARGE` — it never
+produces a silently truncated snapshot.
 """
 
 from __future__ import annotations
@@ -99,12 +111,12 @@ def _layer_of(rel: str) -> str:
     return "service"
 
 
-def _extract(src: Path) -> tuple[list[str], list[str], str]:
-    """Return (imports_raw_modules, exports, role) for one file."""
+def _extract_imports(src: Path) -> list[str]:
+    """Return raw module names imported by one .py file."""
     try:
         tree = ast.parse(src.read_text(encoding="utf-8", errors="replace"))
     except (SyntaxError, ValueError, OSError):
-        return [], [], f"module (unparseable): {src.stem}"
+        return []
     modules: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -112,7 +124,6 @@ def _extract(src: Path) -> tuple[list[str], list[str], str]:
                 modules.append(a.name)
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.level > 0:
-                # relative import: anchor on the file's package
                 pkg = src.parent.as_posix()
                 up = node.level - 1
                 parts = pkg.split("/")
@@ -124,13 +135,23 @@ def _extract(src: Path) -> tuple[list[str], list[str], str]:
                 mod = node.module or ""
             if mod:
                 modules.append(mod)
+    return sorted(set(modules))
+
+
+def _extract_full(src: Path) -> tuple[list[str], list[str], str]:
+    """Return (imports_raw_modules, exports, role) for one file."""
+    modules = _extract_imports(src)
+    try:
+        tree = ast.parse(src.read_text(encoding="utf-8", errors="replace"))
+    except (SyntaxError, ValueError, OSError):
+        return modules, [], f"module (unparseable): {src.stem}"
     exports = sorted(
         n.name for n in tree.body
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
     )
     doc = ast.get_docstring(tree)
     role = (doc.strip().splitlines()[0][:120]) if doc else f"module: {src.stem}"
-    return sorted(set(modules)), exports, role
+    return modules, exports, role
 
 
 def _resolve_module(mod: str, bases: list[Path], known: set[str]) -> str | None:
@@ -147,6 +168,16 @@ def _resolve_module(mod: str, bases: list[Path], known: set[str]) -> str | None:
 
 
 repo_root_global: Path = Path(".")
+
+
+def _has_any_py(repo: Path) -> bool:
+    """Check if repo contains any .py files at all (bounded walk)."""
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            if fn.endswith(".py"):
+                return True
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,7 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     repo_root_global = repo
     scopes = [_norm(s) for s in args.scope if _norm(s)]
 
-    collected: list[Path] = []
+    # P1-1: Python-only check
+    if not _has_any_py(repo):
+        err = {"error": "SNAPSHOT_UNSUPPORTED_OR_EMPTY",
+               "detail": "No Python files found in the repository. V1 supports Python-only."}
+        print(json.dumps(err, indent=2))
+        return 3
+
+    # Step 1: collect seed files from explicit scope
+    seed_files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(repo):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
         for fn in sorted(filenames):
@@ -176,9 +215,45 @@ def main(argv: list[str] | None = None) -> int:
             rel = p.relative_to(repo).as_posix()
             if not _in_scope(rel, scopes):
                 continue
-            collected.append(p)
-    collected = collected[: args.max_files]
-    known = {p.relative_to(repo).as_posix() for p in collected}
+            seed_files.append(p)
+
+    # Step 2: P0-2 — one-hop expansion: resolve imports of seed files
+    # Build initial known set from seed, then expand to one-hop targets
+    known = {p.relative_to(repo).as_posix() for p in seed_files}
+    expanded: set[str] = set()
+    bases = [repo] + [repo / s for s in scopes if s]
+    for p in seed_files:
+        rel = p.relative_to(repo).as_posix()
+        for mod in _extract_imports(p):
+            # Try to resolve this module to an existing file
+            rel_path = Path(mod.replace(".", "/"))
+            for cand in (repo / rel_path.with_suffix(".py"), repo / rel_path / "__init__.py"):
+                try:
+                    r = cand.relative_to(repo).as_posix()
+                except ValueError:
+                    continue
+                if r != rel and r not in expanded and r not in known and cand.is_file():
+                    expanded.add(r)
+                    known.add(r)
+                    break  # one match is enough for this module
+
+    # Build final collected list: seed + expansions
+    collected = list(seed_files)
+    for exp_rel in sorted(expanded):
+        exp_path = repo / exp_rel
+        if exp_path.is_file():
+            collected.append(exp_path)
+
+    # P0-1: fail-fast if total exceeds cap
+    if len(collected) > args.max_files:
+        err = {
+            "error": "SNAPSHOT_SCOPE_TOO_LARGE",
+            "matched_files": len(collected),
+            "max_files": args.max_files,
+            "detail": "Widen --max-files or narrow --scope. Snapshot not produced."
+        }
+        print(json.dumps(err, indent=2), file=sys.stderr)
+        return 1
 
     revision = _git_head(repo) or _nogit_revision(repo, collected)
 
@@ -187,8 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     todos: list[str] = []
     for p in sorted(collected):
         rel = p.relative_to(repo).as_posix()
-        modules, exports, role = _extract(p)
-        bases = [repo] + [repo / s for s in scopes if s]
+        modules, exports, role = _extract_full(p)
         resolved = []
         for m in modules:
             r = _resolve_module(m, bases, known)
@@ -250,6 +324,7 @@ def main(argv: list[str] | None = None) -> int:
         "known_tech_debt": debt,
         "known_seams": seams,
         "scan_boundary": scopes or ["."],
+        "dependency_expansions": sorted(expanded),
         "unknown_areas": unknown,
     }
     out = Path(args.out)
@@ -257,7 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({
         "out": str(out), "repo_revision": revision, "files": len(file_entries),
-        "shared": len(shared), "todos": len(todos), "unknown_areas": len(unknown),
+        "shared": len(shared), "todos": len(todos),
+        "dependency_expansions": len(expanded),
+        "unknown_areas": len(unknown),
     }))
     return 0
 

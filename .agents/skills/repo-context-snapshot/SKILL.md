@@ -74,6 +74,12 @@ re-scanning. Vocabulary: `../../references/glossary.md`.
 
 ## Heuristics
 
+- **V1 supports Python repositories only.** The scan script uses the Python
+  AST to resolve imports. It will scan non-Python files (count, layer) but
+  will NOT resolve their imports or exports. A snapshot of a non-Python repo
+  has no import graph — the one-hop expansion is empty. If the repo has no
+  `.py` files at all, the script exits with `SNAPSHOT_UNSUPPORTED_OR_EMPTY`.
+  For JS/TS/Rust/Go/C++, use a manual repo-notes scan instead.
 - **Scope to the Stage, not the repo.** If the Stage only touches the API
   layer, scope `app/api/` and its imports — don't scan a 50K-line
   monolith. A tight snapshot is more useful to the decomposer and auditor.

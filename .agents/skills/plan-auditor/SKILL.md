@@ -130,7 +130,7 @@ is the failure this stage exists to catch. Vocabulary:
 
 ## Output
 
-`<plan-dir>/audit.json` (schema `planning/audit@1`). Single writer.
+`<plan-dir>/audit.json` (schema `planning/audit@2`). Single writer.
 
 ## Failure & Escalation
 

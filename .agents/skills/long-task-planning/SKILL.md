@@ -19,6 +19,12 @@ auditor. Shared vocabulary: `../../references/glossary.md`. Schemas:
 - Do NOT use for: tasks an agent can finish in one ~1h run; pure design/brainstorm
   requests (no execution intent); research tasks (use research skills).
 
+**V1 limitation: the repo-grounded pipeline (stages 0–7) only supports Python
+repositories.** Stage 0 uses the Python AST for import resolution. For other
+languages, the snapshot produces no import graph, and the auditor cannot
+verify hidden dependencies. You can still plan with manual repo notes, but
+claims of repo-grounded audit require Python.
+
 ## Inputs
 
 1. The user task, written **verbatim** to `<plan-dir>/input.md`.

@@ -372,30 +372,58 @@ class Plan:
         return [t["id"] for t in self.candidates["tasks"]]
 
     def _new_wiring_present(self) -> bool:
-        """Deterministic proxy for 'this Stage adds production wiring':
-        a leaf task owns a NEW file (absent from the repo snapshot) in a
-        directory that already contains another leaf's code. Creating files
-        next to other tasks' code is wiring work — omitting
-        seam_integration in that situation is a planning defect."""
+        """Conservative proxy for 'this Stage may add production wiring'.
+
+        P1-4: We no longer auto-prove omission is safe because "all new files
+        are in a fresh directory". If the Stage has multiple leaves and defines
+        seams, we CANNOT assume fresh directory proves no wiring — we return
+        True if:
+        (a) a new file lands in a directory that already contains another
+            task's files (actual cross-task wiring), OR
+        (b) multiple leaves create new files and seams are defined (we
+            cannot prove absence of wiring without the grounded auditor).
+
+        The fresh-directory justification alone is insufficient. The grounded
+        auditor must confirm wiring is absent."""
         if self.snapshot is None or not self.candidates:
             return False
+        # Need multiple leaves and seams to have integration work
+        if len(self.candidates["tasks"]) < 2:
+            return False
+        if not self.contract:
+            return False
+        if not self.contract.get("integration_seams"):
+            return False
+
         snap_paths = {f["path"].replace("\\", "/").strip("/")
                       for f in self.snapshot.get("files", [])}
-        existing_by_dir: dict[str, set[str]] = {}
+        # Track which directories already have files (from snapshot = existing repo)
+        existing_dirs = set()
+        for p in snap_paths:
+            d = p.rsplit("/", 1)[0] if "/" in p else ""
+            if d:
+                existing_dirs.add(d)
+        # Check: do any tasks create new files in directories that already
+        # exist in the repo (i.e., the directory had other files before)?
+        # Also: do multiple tasks create new files? (cross-task wiring risk)
+        tasks_with_new_files = 0
         for t in self.candidates["tasks"]:
+            has_new = False
             for p in t["owned_paths"]:
                 np = _norm_path(p)
-                if np in snap_paths:
+                if np not in snap_paths:
+                    has_new = True
+                    # Check if this new file goes into an existing directory
                     d = np.rsplit("/", 1)[0] if "/" in np else ""
-                    existing_by_dir.setdefault(d, set()).add(t["id"])
-        for t in self.candidates["tasks"]:
-            for p in t["owned_paths"]:
-                np = _norm_path(p)
-                if np in snap_paths:
-                    continue
-                d = np.rsplit("/", 1)[0] if "/" in np else ""
-                if existing_by_dir.get(d, set()) - {t["id"]}:
-                    return True
+                    if d in existing_dirs:
+                        # New file in existing directory = actual wiring risk
+                        return True
+            if has_new:
+                tasks_with_new_files += 1
+        # P1-4: Multiple tasks creating new files + seams defined
+        # cannot auto-prove "no wiring" even if all are in fresh directories
+        if tasks_with_new_files >= 2:
+            return True
         return False
 
     def run(self) -> list[dict]:
@@ -736,14 +764,21 @@ class Plan:
                 self.add("INVALID_INTEGRATION_MERGE", "MAJOR", "integration-plan.json",
                          f"integration kind {k!r} is merged into a task AND listed in "
                          f"omitted_kinds — pick exactly one satisfaction path")
+            # P1-2: present ∩ omitted conflict
+            for k in sorted(present & omitted):
+                self.add("INVALID_INTEGRATION_MERGE", "MAJOR", "integration-plan.json",
+                         f"integration kind {k!r} is both a primary task kind AND listed in "
+                         f"omitted_kinds — a present kind cannot also be omitted")
 
             new_wiring = self._new_wiring_present()
+            # P1-3: final closure cannot be satisfied by omission alone
             closure = {"e2e_closure", "final_acceptance"}
-            closure_satisfied = bool((present | merged | omitted) & closure)
-            if not closure_satisfied:
+            closure_present = bool((present | merged) & closure)
+            if not closure_present:
                 self.add("NO_INTEGRATION_GATE", "BLOCKER", "integration-plan.json",
-                         "no integration task of kind e2e_closure or final_acceptance exists "
-                         "(present, merged, or legitimately omitted)")
+                         "no real integration task of kind e2e_closure or final_acceptance "
+                         "exists — omission alone does not satisfy final closure; at least one "
+                         "must be present or merged into a real task")
             for kind in INTEGRATION_KINDS:
                 if kind in present or kind in merged or kind in omitted:
                     continue
@@ -760,10 +795,24 @@ class Plan:
                 self.add("INTEGRATION_KIND_MISSING", sev, "integration-plan.json",
                          f"integration kind {kind!r} is {detail}")
             if "seam_integration" in omitted and new_wiring:
-                self.add("HIDDEN_INTEGRATION_WORK", "BLOCKER", "integration-plan.json",
-                         "seam_integration is omitted with justification, but a leaf task creates "
-                         "new files in a directory that already contains another task's code — "
-                         "new wiring exists and the omission is not legitimate")
+                # P1-4: Fresh directory no longer auto-proves omission safe.
+                # But if an e2e_closure or final_acceptance task already covers
+                # the seams, the wiring verification is implicit. Only flag when
+                # no closure task covers the seams.
+                seams_covered_by_closure = set()
+                for it in self.integration.get("integration_tasks", []):
+                    if it["kind"] in ("e2e_closure", "final_acceptance"):
+                        for s in it.get("seams", []):
+                            seams_covered_by_closure.add(s)
+                # Check if ALL contract seams are covered by closure tasks
+                contract_seams_set = {s["id"] for s in self.contract.get("integration_seams", [])}
+                if contract_seams_set - seams_covered_by_closure:
+                    # Some seams are NOT covered by closure tasks — flag it
+                    self.add("HIDDEN_INTEGRATION_WORK", "BLOCKER", "integration-plan.json",
+                             "seam_integration is omitted with justification, but this Stage has "
+                             "multiple leaves, defined seams, and new files — the deterministic "
+                             "checker cannot prove wiring is absent; the omission must be "
+                             "justified by the grounded auditor")
             contract_seams = {s["id"] for s in self.contract.get("integration_seams", [])}
             covered: set[str] = set()
             for s in self.integration.get("seams", []):
@@ -801,18 +850,28 @@ class Plan:
                 self.add("AUDIT_VERDICT_MISMATCH", "BLOCKER", "audit.json",
                          f"audit verdict is PASS but {len(blockers)} BLOCKER finding(s) exist")
 
-        # --- audit grounding (the auditor must record its repo evidence) ---------
-        if self.audit is not None and self.snapshot is not None:
-            g = self.audit.get("grounding")
-            if not g:
-                self.add("AUDIT_NOT_GROUNDED", "MAJOR", "audit.json",
-                         "audit records no repo grounding — the auditor must verify plan claims "
-                         "against repo-context-snapshot.json and record the snapshot revision")
-            elif g.get("repo_revision") and g["repo_revision"] != self.snapshot.get("repo_revision"):
-                self.add("AUDIT_SNAPSHOT_MISMATCH", "MAJOR", "audit.json",
-                         f"audit grounded against snapshot {g.get('repo_revision')!r} but the "
-                         f"plan's snapshot is {self.snapshot.get('repo_revision')!r} — the repo "
-                         f"moved under the plan; re-snapshot and re-audit")
+        # --- audit grounding (hard gate — auditor must be grounded + isolated) ---
+        if self.audit is not None:
+            # P0-3: isolation check
+            auditor = self.audit.get("auditor", {})
+            if auditor.get("planner_conversation_isolated") is not True:
+                self.add("AUDIT_NOT_ISOLATED", "BLOCKER", "audit.json",
+                         "audit was not run from an isolated path — "
+                         "planner_conversation_isolated must be true; "
+                         "a non-isolated audit inherits the planner's blind spots")
+            # grounding check
+            if self.snapshot is not None:
+                g = self.audit.get("grounding")
+                if not g:
+                    self.add("AUDIT_NOT_GROUNDED", "BLOCKER", "audit.json",
+                             "audit records no repo grounding — the auditor must verify plan "
+                             "claims against repo-context-snapshot.json and record the snapshot "
+                             "revision; grounding is a hard gate")
+                elif g.get("repo_revision") and g["repo_revision"] != self.snapshot.get("repo_revision"):
+                    self.add("AUDIT_SNAPSHOT_MISMATCH", "BLOCKER", "audit.json",
+                             f"audit grounded against snapshot {g.get('repo_revision')!r} but "
+                             f"the plan's snapshot is {self.snapshot.get('repo_revision')!r} — "
+                             f"the repo moved under the plan; re-snapshot and re-audit")
 
         # --- risk coverage ------------------------------------------------------
         if self.risk is not None:
