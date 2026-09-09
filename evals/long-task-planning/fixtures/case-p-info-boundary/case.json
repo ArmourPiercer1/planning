@@ -1,0 +1,17 @@
+{
+  "id": "case-p-info-boundary",
+  "name": "Information-Gain Boundary",
+  "category": "horizon-awareness",
+  "description": "Tests that stage ends at spike completion with next-planning-trigger",
+  "v1_target": {
+    "stage_ends_after_spike": true,
+    "next_planning_trigger_defined": true,
+    "forecast_branches": 2
+  },
+  "scoring": {
+    "spike_is_leaf": {"weight": 3, "description": "probe is a concrete leaf task"},
+    "stage_boundary_at_spike": {"weight": 3, "description": "stage_boundary.stop_after includes spike task"},
+    "next_planning_trigger": {"weight": 2, "description": "next_planning_trigger.normal includes stage_acceptance_reached"},
+    "forecast_branches": {"weight": 2, "description": "two forecast stages for two routes"}
+  }
+}

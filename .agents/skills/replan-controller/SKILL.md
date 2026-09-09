@@ -9,7 +9,12 @@ Replanning is a **legal move**, and only some moves are legal. This skill is
 the gate between "something went wrong" and "the plan changes". **V1 status:
 interface reserved** — the formats, triggers, and action set below are the
 contract that V2 will implement autonomously; in V1 the outcome of a triggered
-replan is always *stop + structured request + user decision*. Vocabulary:
+replan is always *stop + structured request + user decision*. **In v1.1 the
+`planning-governor` subsumes the pre-execution replan-gate role: the governor
+decides EXECUTE / SPIKE / TARGETED_PATCH / HUMAN_BLOCKER before execution
+starts. The replan-controller remains the gate for *in-execution* replan
+triggers (unhealthy run, blocker, gate failure, contract error).**
+Vocabulary:
 `../../references/glossary.md`.
 
 ## Trigger (closed set — no ad-hoc replans)

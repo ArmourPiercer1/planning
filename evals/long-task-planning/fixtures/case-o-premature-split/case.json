@@ -1,0 +1,14 @@
+{
+  "id": "case-o-premature-split",
+  "name": "Premature Stage Split",
+  "category": "horizon-awareness",
+  "description": "Tests that planner does not split tasks sharing context without intermediate evidence gain",
+  "v1_target": {
+    "expected_leaf_count": 1,
+    "split_justified": false
+  },
+  "scoring": {
+    "no_unnecessary_split": {"weight": 3, "description": "shared-context tasks kept as one leaf"},
+    "merge_rationale_present": {"weight": 2, "description": "split_rationale explains shared context"}
+  }
+}

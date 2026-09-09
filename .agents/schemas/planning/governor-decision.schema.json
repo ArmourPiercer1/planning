@@ -1,0 +1,83 @@
+{
+  "$id": "planning/governor-decision@1",
+  "title": "Planning Governor decision",
+  "type": "object",
+  "required": [
+    "schema",
+    "action",
+    "blocking_findings",
+    "spikes",
+    "deferred",
+    "planning_budget_status",
+    "forbidden_actions",
+    "reason"
+  ],
+  "properties": {
+    "schema": { "const": "planning/governor-decision@1" },
+    "action": {
+      "enum": ["EXECUTE", "SPIKE", "TARGETED_PATCH", "HUMAN_BLOCKER"]
+    },
+    "blocking_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding_id", "routing", "original_severity", "why_execution_blocker"],
+        "properties": {
+          "finding_id": { "type": "string" },
+          "routing": { "const": "EXECUTION_BLOCKER" },
+          "original_severity": { "type": "string" },
+          "why_execution_blocker": { "type": "string" }
+        }
+      }
+    },
+    "spikes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding_id", "uncertainty_type", "probe_description", "success_criteria"],
+        "properties": {
+          "finding_id": { "type": "string" },
+          "uncertainty_type": {
+            "enum": [
+              "ARCHITECTURE_DECISION",
+              "REPOSITORY_FACT",
+              "PUBLIC_SEAM_FEASIBILITY",
+              "RUNTIME_FACT",
+              "OPTIONAL_FEATURE",
+              "EXTERNAL_BLOCKER"
+            ]
+          },
+          "probe_description": { "type": "string" },
+          "success_criteria": { "type": "string" }
+        }
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding_id", "routing", "reason"],
+        "properties": {
+          "finding_id": { "type": "string" },
+          "routing": { "enum": ["POST_STAGE", "OPTIONAL"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "planning_budget_status": {
+      "type": "object",
+      "properties": {
+        "plan_revisions": { "type": "integer" },
+        "full_audits": { "type": "integer" },
+        "subagents": { "type": "integer" },
+        "wall_time": { "type": ["string", "null"] },
+        "tokens": { "type": ["string", "null"] }
+      }
+    },
+    "forbidden_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reason": { "type": "string", "minLength": 20 }
+  }
+}

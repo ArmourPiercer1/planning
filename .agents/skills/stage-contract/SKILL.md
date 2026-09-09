@@ -1,6 +1,6 @@
 ---
 name: stage-contract
-description: Compile a bounded user task into a frozen Stage Contract (objective, in/out-of-scope, frozen assumptions and architecture decisions, shared contracts, integration seams, deterministic acceptance, constraints, budget, allowed replan actions). Use as pipeline stage 1 of /long-task-planning, or standalone when a long task needs its scope and shared seams frozen before execution. NOT a design doc, and NOT for small single-session tasks.
+description: Compile a bounded user task into a frozen Stage Contract (objective, in/out-of-scope, frozen assumptions and architecture decisions, shared contracts, integration seams, deterministic acceptance, constraints, budget, allowed replan actions). Use as pipeline stage 1 of /long-task-planning, or standalone when a long task needs its scope and shared seams frozen before execution. NOT a design doc, and NOT for small single-session tasks., horizon awareness (commitment/detailed/forecast), stage boundary selection, and next-planning-trigger definition
 ---
 
 # stage-contract
@@ -57,6 +57,24 @@ Vocabulary: `../../references/glossary.md`.
    `positive_case`, `negative_case`, `failure_behavior`, and `evidence`
    (a test name, command, or concrete observable — "returns 404 with field X",
    never "works correctly").
+7a. **Delivery profile.** Set `delivery_profile.level` to one of:
+    `prototype` (proof of concept), `alpha` (core feature works, focused tests),
+    `beta` (feature complete, missing polish/edge cases), `rc` (release
+    candidate, migration + compatibility verified), `production` (full assurance).
+    Default to `alpha` if the user doesn't specify. The delivery profile gates
+    what the auditor considers blocking.
+7b. **Planning budget.** If the task is large or the user has a cost constraint,
+    set `planning_budget` with sensible defaults:
+    ```json
+    "planning_budget": {
+      "max_full_audits": 2,
+      "max_plan_revisions": 3,
+      "max_planning_subagents": 5,
+      "soft_wall_fraction": 0.3
+    }
+    ```
+    `soft_wall_fraction` = fraction of total budget that, if consumed by
+    planning alone, triggers a warning.
 8. **Constraints + resource budget.** Coarse targets: leaf P50/P80 ranges,
    max compactions per leaf, stage estimate in dev-time (ranges, not fake
    precision).
@@ -69,6 +87,42 @@ Vocabulary: `../../references/glossary.md`.
 11. Gate: `uv run --no-project python ../../scripts/plan-check.py validate <plan-dir>/stage-contract.json`
     (set `UV_CACHE_DIR` to a writable path if the sandbox denies the default).
     Non-zero exit → fix, do not proceed.
+12. **Horizons** (three-level output). Classify every planned task into one
+    horizon:
+    - `commitment` — tasks whose route is certain and will execute regardless
+      of what evidence comes in; these have full Task Packages
+    - `detailed_stage` — tasks whose route is the current best plan but depends
+      on assumptions being validated; these have full Task Packages
+    - `forecast` — future stages whose route depends on evidence not yet
+      available; these get stage-level objective + depends_on_evidence, NO
+      detailed DAG, NO Task Packages
+    Write the classification into `stage-contract.json` `horizons` field.
+13. **Stage boundary.** Explain why this stage ends where it does. The stage
+    should end at one or more of:
+    - new evidence that could change subsequent route
+    - high-risk assumption being validated
+    - shared seam being stabilized and frozen
+    - independently verifiable capability increment
+    - context cluster for next stage clearly differs
+    - budget envelope boundary
+    Write `stage_boundary` into `stage-contract.json`.
+14. **Next planning trigger.** Define what triggers the next planning point:
+    ```json
+    "next_planning_trigger": {
+      "normal": ["stage_acceptance_reached"],
+      "early": [
+        "frozen_assumption_falsified",
+        "core_seam_blocker",
+        "route_changing_evidence",
+        "budget_envelope_threatened"
+      ],
+      "not_triggers": [
+        "first_worker_failure",
+        "optional_bug",
+        "mechanical_merge_conflict"
+      ]
+    }
+    ```
 
 ## Heuristics
 
@@ -89,7 +143,10 @@ Vocabulary: `../../references/glossary.md`.
 
 ## Output
 
-`<plan-dir>/stage-contract.json` (schema `planning/stage-contract@2`).
+`<plan-dir>/stage-contract.json` (schema `planning/stage-contract@3`).
+The new @3 schema adds: `delivery_profile`, `planning_budget`, `horizons`,
+`stage_boundary`, `next_planning_trigger`. All are optional for backward
+compatibility with existing plans.
 Single writer: this skill only. The contract never references task ids —
 ownership is logical (`logical_owner`, role participants); concrete binding
 happens in the DAG stage, so rebinding a contract never rewrites this artifact.

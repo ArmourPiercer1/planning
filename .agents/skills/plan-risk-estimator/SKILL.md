@@ -44,7 +44,9 @@ For each task (leaves + integration tasks):
 6. **P50 / P80** — coarse ranges from the rubric baseline (S ≈ 30–60 min P50;
    scale by footprint × statefulness × uncertainty). Always a **range**;
    never a point estimate. Compare against the Stage budget; exceeding
-   `leaf_p80_max` is a warning, not a gate.
+   `leaf_p80_max` is a warning, not a gate. If P80 exceeds target, record
+   it — but do not demand a revision. The governor handles the schedule-fit
+   decision.
 7. **Compaction risk** — from footprint + statefulness + uncertainty:
    `high` when ≥ 4 compactions are plausibly expected (footprint L/XL with
    statefulness ≥ medium or uncertainty high).
@@ -84,7 +86,11 @@ For each task (leaves + integration tasks):
 - Any XL without `oversized_justification` → invalid artifact; either justify
   or split (back to `context-decomposer`).
 - Budget blown by the plan as a whole (sum of p80s ≫ Stage estimate with
-  little parallelism) → warning in the summary; the auditor decides severity.
+  little parallelism) → warning in the summary. The auditor records it but
+  does NOT force a replan. Schedule is a forecast: the governor decides
+  whether to proceed, cut scope (at most one pass), or escalate to the user.
+  Never force the planner to keep revising until the numbers look good — that
+  is the runaway this version fixes.
 
 ## Examples
 

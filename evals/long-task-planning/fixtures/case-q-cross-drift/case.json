@@ -1,0 +1,15 @@
+{
+  "id": "case-q-cross-drift",
+  "name": "Cross-Stage Drift",
+  "category": "continuity",
+  "description": "Tests that drift checker detects scope expansion beyond project contract",
+  "v1_target": {
+    "drift_detected": true,
+    "scope_added_flagged": true
+  },
+  "scoring": {
+    "scope_drift_detected": {"weight": 3, "description": "scope_added in drift is non-empty"},
+    "frozen_decision_drift": {"weight": 2, "description": "frozen_decisions_changed tracked if applicable"},
+    "replan_triggered": {"weight": 3, "description": "drift causes checkpoint to require replan review"}
+  }
+}

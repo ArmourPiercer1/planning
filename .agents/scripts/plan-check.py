@@ -34,16 +34,20 @@ from pathlib import Path
 
 SCHEMA_TO_FILE = {
     "planning/stage-contract@2": "stage-contract.schema.json",
+    "planning/stage-contract@3": "stage-contract.schema.json",
     "planning/candidate-tasks@1": "candidate-tasks.schema.json",
     "planning/dag@2": "dag.schema.json",
     "planning/integration-plan@2": "integration-plan.schema.json",
     "planning/task-package@2": "task-package.schema.json",
     "planning/risk-estimates@1": "risk-estimates.schema.json",
     "planning/audit@2": "audit.schema.json",
+    "planning/audit@3": "audit-v3.schema.json",
     "planning/checkpoint@1": "checkpoint.schema.json",
+    "planning/checkpoint@2": "checkpoint.schema.json",
     "planning/replan-request@1": "replan-request.schema.json",
     "planning/run-manifest@1": "run-manifest.schema.json",
     "planning/repo-context-snapshot@1": "repo-context-snapshot.schema.json",
+    "planning/governor-decision@1": "governor-decision.schema.json",
 }
 
 DEFAULT_SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas" / "planning"

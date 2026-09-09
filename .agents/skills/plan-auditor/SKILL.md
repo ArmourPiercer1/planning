@@ -1,6 +1,6 @@
 ---
 name: plan-auditor
-description: Independent review pass that gates a finished plan before execution. Runs the deterministic layer (plan-check lint) plus the semantic checklist — scope creep, insufficient non-goals, late contract freeze, hidden dependencies, fake serialization, ownership collision, oversized leaf, broad context loading, hidden integration work, nondeterministic acceptance, lack of local recoverability, append-only replan risk, communication overhead — and issues BLOCKER/MAJOR/MINOR findings. Must run from a path isolated from the planner conversation. Use as pipeline stage 7 of /long-task-planning, or for re-audit after targeted revision.
+description: Independent review pass that gates a finished plan before execution. Runs the deterministic layer (plan-check lint) plus the semantic checklist — scope creep, insufficient non-goals, late contract freeze, hidden dependencies, fake serialization, ownership collision, oversized leaf, broad context loading, hidden integration work, nondeterministic acceptance, lack of local recoverability, append-only replan risk, communication overhead, over-planning, missing spike routes — and issues findings with routing-aware severity (EXECUTION_BLOCKER, SPIKE_REQUIRED, POST_STAGE, OPTIONAL) gated by delivery profile. Must run from a path isolated from the planner conversation. Use as pipeline stage 7 of /long-task-planning, or for re-audit after targeted revision.
 ---
 
 # plan-auditor
@@ -108,13 +108,48 @@ is the failure this stage exists to catch. Vocabulary:
    - `communication_overhead` — packages requiring the whole plan to be read;
      unnecessary reviewer/agent hops; checkpoint requirements that duplicate
      information.
+   - `over_planning` — the plan generates detailed DAGs for stages whose route
+     depends on evidence not yet available (horizon violation);
+   - `missing_spike_route` — an empirical unknown is being debated by more
+     reviewers instead of being routed to a bounded executable probe.
 4. **Severity.** BLOCKER = cannot execute safely (structure/scope/acceptance
    broken); MAJOR = should fix before execution; MINOR = cheap fix, note it.
    Assign by the effect on execution, not by annoyance.
+
+ **Delivery-profile-gated severity.** If `stage-contract.json` contains
+ `delivery_profile.level`, adjust finding severity:
+ - `prototype`/`alpha`: findings about migration matrix, full edge-case coverage,
+   multi-round blind review, crash matrix, rich UI polish → at most `OPTIONAL`
+ - `beta`: findings about compatibility and full recovery testing → `POST_STAGE`
+   (not blocking current stage execution)
+ - `rc`/`production`: full audit depth applies; no automatic demotion
+ A finding that cannot reference a specific stage acceptance or project hard
+ invariant cannot be `EXECUTION_BLOCKER` regardless of delivery profile.
 5. **Verdict.** `PASS` iff zero BLOCKER findings (MAJOR/MINOR are listed and
    carried into the handoff as warnings). Otherwise `FAIL`.
 6. Write `audit.json` (schema `planning/audit@2`, including the
    `grounding` block); gate with `plan-check.py validate`.
+
+## DO NOT AUDIT FOR
+
+The auditor must not issue findings about:
+
+- **future architecture completeness** — the plan covers one stage; judging
+  whether future stages are complete is the `POST_STAGE` governor's routing,
+  not a blocker
+- **deferred feature design** — items in `out_of_scope` with reason are
+  intentionally not designed; asking for their spec is scope creep
+- **optional robustness outside delivery profile** — if the delivery profile
+  is `alpha`, auditing for production-grade error handling is a category error
+- **speculative edge cases without concrete failure path** — a finding must
+  describe a specific scenario that would cause real failure during execution
+  of this stage, not what-if-someday
+- **future Stage detailed DAG correctness** — forecast stages don't have
+  detailed DAGs; demanding one is the anti-pattern this version fixes
+
+Every finding must cite a specific stage acceptance criterion or project hard
+invariant. Findings without such grounding are opinions — classify them
+`OPTIONAL` or drop them.
 
 ## Heuristics
 

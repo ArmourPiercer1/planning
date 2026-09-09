@@ -1,6 +1,6 @@
 {
-  "$id": "planning/stage-contract@2",
-  "title": "Stage Contract (v2: logical ownership only — no task ids; concrete binding happens in the DAG stage)",
+  "$id": "planning/stage-contract@3",
+  "title": "Stage Contract (v3: adds delivery_profile, planning_budget, horizons, stage_boundary, next_planning_trigger)",
   "type": "object",
   "required": [
     "schema", "stage_id", "objective", "in_scope", "out_of_scope",
@@ -9,7 +9,7 @@
     "allowed_replan", "open_questions"
   ],
   "properties": {
-    "schema": { "const": "planning/stage-contract@2" },
+    "schema": { "enum": ["planning/stage-contract@2", "planning/stage-contract@3"] },
     "stage_id": { "type": "string", "minLength": 1 },
     "objective": { "type": "string", "minLength": 20 },
     "in_scope": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
@@ -51,7 +51,7 @@
           "logical_owner": {
             "type": "string",
             "minLength": 2,
-            "description": "The responsibility/layer that implements this contract (e.g. 'persistence', 'api', 'runtime', or 'planner' when no single component owns it). NEVER a task id — task ids do not exist yet; the DAG stage binds logical_owner to a concrete task."
+            "description": "The responsibility/layer that implements this contract. NEVER a task id."
           },
           "frozen": { "enum": [true, false] },
           "unfreeze_rule": { "type": "string" }
@@ -67,8 +67,7 @@
           "participants": {
             "type": "array",
             "items": { "type": "string", "minLength": 2 },
-            "minItems": 2,
-            "description": "Logical participants: components, layers or roles that meet at this seam (e.g. 'api', 'runtime', 'persistence'). NEVER task ids — the DAG stage binds them to concrete tasks."
+            "minItems": 2
           },
           "contract_ids": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" }, "minItems": 1 }
         } },
@@ -123,6 +122,114 @@
           "owner": { "enum": ["user", "planner"] },
           "resolution": { "type": "string" }
         } }
+    },
+    "delivery_profile": {
+      "type": "object",
+      "required": ["level"],
+      "properties": {
+        "level": { "enum": ["prototype", "alpha", "beta", "rc", "production"] },
+        "assurance_overrides": {
+          "type": "object",
+          "properties": {
+            "requires_migration": { "type": "boolean" },
+            "requires_full_edge_cases": { "type": "boolean" },
+            "requires_crash_matrix": { "type": "boolean" },
+            "requires_multi_review": { "type": "boolean" },
+            "requires_ui_polish": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "planning_budget": {
+      "type": "object",
+      "properties": {
+        "max_full_audits": { "type": "integer", "minimum": 1 },
+        "max_plan_revisions": { "type": "integer", "minimum": 1 },
+        "max_planning_subagents": { "type": "integer", "minimum": 1 },
+        "soft_wall_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_planning_tokens": { "type": "integer", "minimum": 0 },
+        "hard_stop": { "type": "boolean" }
+      }
+    },
+    "horizons": {
+      "type": "object",
+      "required": ["commitment", "detailed_stage", "forecast"],
+      "properties": {
+        "commitment": {
+          "type": "object",
+          "required": ["tasks"],
+          "properties": {
+            "tasks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } }
+          }
+        },
+        "detailed_stage": {
+          "type": "object",
+          "required": ["objective", "tasks"],
+          "properties": {
+            "objective": { "type": "string" },
+            "tasks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } }
+          }
+        },
+        "forecast": {
+          "type": "object",
+          "required": ["stages"],
+          "properties": {
+            "stages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["objective", "depends_on_evidence"],
+                "properties": {
+                  "objective": { "type": "string" },
+                  "depends_on_evidence": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stage_boundary": {
+      "type": "object",
+      "required": ["stop_after", "because"],
+      "properties": {
+        "stop_after": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+        "because": { "type": "string", "minLength": 20 },
+        "expected_new_evidence": { "type": "array", "items": { "type": "string" } },
+        "decisions_deferred_until_then": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "next_planning_trigger": {
+      "type": "object",
+      "required": ["normal"],
+      "properties": {
+        "normal": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "early": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "frozen_assumption_falsified",
+              "core_seam_blocker",
+              "route_changing_evidence",
+              "budget_envelope_threatened"
+            ]
+          }
+        },
+        "not_triggers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "first_worker_failure",
+              "optional_bug",
+              "mechanical_merge_conflict"
+            ]
+          }
+        }
+      }
     }
   }
 }

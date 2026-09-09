@@ -1,6 +1,6 @@
 ---
 name: checkpoint-handoff
-description: Execution-time skill that turns a completed (or stopped) stable subgoal into a machine-readable checkpoint — the context handoff artifact carrying revision, contracts satisfied, changed paths, test evidence, verified facts, deviations, newly discovered issues classified A/B/C, blockers of kind CONTRACT_CHANGE_REQUEST or CORE_SEAM_BLOCKER, remaining DAG, and downstream notes. Use during execution of any Task Package, at each stable subgoal, on blocker, and on unhealthy-run stop. NOT a planning stage and NOT a git commit message.
+description: Execution-time skill that turns a completed (or stopped) stable subgoal into a machine-readable checkpoint — the context handoff artifact carrying revision, contracts satisfied, changed paths, test evidence, verified facts, deviations, newly discovered issues classified A/B/C, blockers of kind CONTRACT_CHANGE_REQUEST or CORE_SEAM_BLOCKER, remaining DAG, and downstream notes, drift tracking against project contract, verified/falsified assumptions, and recursive plannability checks. Use during execution of any Task Package, at each stable subgoal, on blocker, and on unhealthy-run stop. NOT a planning stage and NOT a git commit message.
 ---
 
 # checkpoint-handoff
@@ -25,7 +25,7 @@ the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
 
 1. **Commit** the current work (clean boundary); capture `revision`
    (sha, branch, timestamp).
-2. Fill `checkpoints/<task-id>.json` (schema `planning/checkpoint@1`):
+2. Fill `checkpoints/<task-id>.json` (schema `planning/checkpoint@2`):
    - `status` — `complete` / `partial` / `blocked`;
    - `completed` — what is done, one paragraph max;
    - `contracts_satisfied` — contract ids whose spec this task verified
@@ -48,6 +48,21 @@ the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
      requested change, why the current spec is wrong, evidence, proposed new
      spec) or `CORE_SEAM_BLOCKER` (seam, why structurally impossible,
      evidence); set `status: "blocked"`;
+   - `verified_assumptions` — assumption ids from stage-contract.json that this
+     task confirmed as true, with concrete evidence (e.g.
+     `{assumption_id: "A-DB-SUPPORTS-JSON", evidence: "CREATE TABLE ran, pg_version shows 16.2"}`);
+   - `falsified_assumptions` — assumption ids proven wrong, with evidence and
+     implication (e.g. `{assumption_id: "A-SINGLE-NODE", evidence: "deployment uses
+     two workers", implication: "retry logic must be distributed, not file-based"}`);
+   - `unresolved` — questions that arose during execution but weren't blockers,
+     each with `description` and `blocking: false`;
+   - `scope_deviations` — planned vs actual scope with reason (higher-level than
+     per-file deviations; e.g. "planned: implement C1+C2 only, actual: also had
+     to update C3 registration because it depended on C2 shape");
+   - `budget_used` — coarse resources consumed (compactions, wall_time_seconds,
+     tokens, subagents) — used for drift and replan budget accounting;
+   - `next_stage_inputs` — what this checkpoint exports for the next stage, each
+     as `{input: "verified C2 api contract", artifact: "checkpoints/T01.json"}`;
    - `remaining_dag` — task ids still outstanding downstream (from the DAG);
    - `downstream_notes` — what consumers must know that is not in any
      contract (a trap you found, a fixture quirk, a timing behavior).
@@ -55,6 +70,42 @@ the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
 4. If `status: blocked` or any blocker exists → **stop**. Report the blocker
    to the execution orchestrator / user. Do not continue working around a C
    classification.
+5. **Drift check.** Compare what you built against the stage contract. Fill
+   `drift` (optional, write only if any field is non-empty):
+   ```json
+   "drift": {
+     "requirements_removed": [],
+     "scope_added": [],
+     "frozen_decisions_changed": [],
+     "delivery_profile_changed": false,
+     "acceptance_changed": [],
+     "budget_envelope_changed": false
+   }
+   ```
+   Task reorder, route adjustment, and spike insertion do NOT count as drift.
+   Only changes that move outside the Project Contract corridor count.
+   If `frozen_decisions_changed` or `acceptance_changed` is non-empty, the
+   checkpoint MUST set `status: "blocked"` and escalate — these require a
+   replan.
+
+## Recursive Plannability
+
+At stage completion, the checkpoint set must answer:
+
+1. **Stable checkpoint exists?** — Every completed task has a checkpoint with
+   `verified_facts` and `contracts_satisfied`.
+2. **Shared contracts consistent?** — Contracts satisfied by earlier tasks are
+   still true; no later task falsified an assumption an earlier task verified.
+3. **No hidden half-state?** — All `changed_paths` are committed; no task left
+   partial edits without a checkpoint.
+4. **Next-stage inputs identifiable?** — `next_stage_inputs` in each checkpoint
+   names what the next stage needs.
+5. **Remaining project acceptance reachable?** — Even with deviations, the
+   project's acceptance criteria are still achievable (possibly with scope
+   adjustment — that's the replan controller's job).
+
+If any answer is "no", the stage is not plannable-recursive. Set
+`status: "blocked"` and report which check failed.
 
 ## Heuristics
 
@@ -68,10 +119,16 @@ the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
 - A blocked checkpoint is a **good** checkpoint: it stops the expensive
   behavior (out-of-scope architecture repair) exactly where the freeze
   discipline says it must stop.
+- A falsified assumption is more valuable than a perfectly green checkpoint:
+  it saves the next stage from building on a wrong foundation. Report it
+  immediately.
+- `drift` is a factual record, not a judgment. If scope grew, write it in
+  `scope_added` — the replan controller evaluates whether the corridor was
+  exceeded.
 
 ## Output
 
-`<plan-dir>/checkpoints/<task-id>.json` (schema `planning/checkpoint@1`).
+`<plan-dir>/checkpoints/<task-id>.json` (schema `planning/checkpoint@2`).
 Multiple checkpoints per task are allowed (one file, re-written as the task
 advances; keep the latest).
 

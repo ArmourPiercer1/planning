@@ -49,6 +49,7 @@ user names). Create it before stage 1.
 | 5 | `task-packager` | `tasks/<id>.json` | `plan-check.py validate` (each) |
 | 6 | `plan-risk-estimator` | `risk-estimates.json`, fills `risk` blocks in packages | `plan-check.py validate` |
 | 7 | `plan-auditor` | `audit.json` | verdict PASS |
+| 8 | `planning-governor` | `governor-decision.json` | action = EXECUTE |
 
 1. Run stages 0–7 **in order**; each stage reads only the artifacts of earlier
    stages plus the repo (never this conversation's reasoning).
@@ -57,6 +58,12 @@ user names). Create it before stage 1.
    exit **stops the pipeline** — do not proceed "with a note".
 3. Stage 7 FAIL → **targeted revision loop** (max 3 rounds). Re-run only the
    stage(s) owning the failing checks, then re-audit:
+
+   The revision loop must NOT spawn new reviewers to re-audit; it re-runs only
+   the owning stages (per the audit finding → owning stage map below). After
+   revision, the **same** auditor re-runs — not a new one. A second full audit
+   counts against `planning_budget.max_full_audits` (default 2). When the budget
+   is exhausted, the governor routes to `HUMAN_BLOCKER`.
 
    | Audit check | Owning stage(s) to re-run |
    |---|---|
@@ -72,13 +79,23 @@ user names). Create it before stage 1.
     | STALE_CONTRACT_SNAPSHOT, CONTRACT_NOT_INLINED | `task-packager` (re-run or inline-frozen-contracts.py) |
     | AUDIT_NOT_GROUNDED, AUDIT_SNAPSHOT_MISMATCH | `plan-auditor` (grounding pass) |
     | schema_invalid | the stage that wrote that artifact |
+    | over_planning, missing_spike_route | `planning-governor` (route to spike, defer) |
 
    After 3 FAIL rounds: **stop and escalate to the user** with the full finding
-   list. Never ship a FAIL plan.
-4. On PASS: write the execution handoff (below) into
+   list. The governor's `forbidden_actions` will include `launch_another_full_audit`
+   when the budget is exhausted — do not ignore it. Never ship a FAIL plan.
+4. After stage 8 (governor): if `action: EXECUTE` → proceed to handoff.
+   If `action: SPIKE` → run spikes, then re-run stages 7-8.
+   If `action: TARGETED_PATCH` → fix specific findings, re-audit.
+   If `action: HUMAN_BLOCKER` → stop, present to user.
+5. On PASS: write the execution handoff (below) into
    `<plan-dir>/HANDOFF.md` and stop. Execution is a different run.
 
 ## Execution handoff (on PASS)
+
+The governor's `governor-decision.json` accompanies the handoff: the executor
+reads `spikes` to know which bounded probes to run first, and `deferred` to
+know which findings are intentionally postponed.
 
 `HANDOFF.md` contains: plan dir path; execution order (parallel groups from
 `dag.json`, integration gates last); for each leaf: "run `tasks/<id>.json` with a
@@ -99,6 +116,9 @@ paths (blockers → `CONTRACT_CHANGE_REQUEST` / `CORE_SEAM_BLOCKER` via
 - Audit independence matters more than audit speed: always a fresh subagent for
   stage 7. A cheap same-pass "self-audit" is the failure this skill set exists
   to prevent.
+- Forecast stages get a stage-level objective and `depends_on_evidence` — no
+  detailed DAG, no Task Packages. Producing full packages for uncertain future
+  stages is the planning waste this version eliminates.
 
 ## Output
 
@@ -109,8 +129,14 @@ owned by its stage skill.
 ## Failure & Escalation
 
 - Gate non-zero → stop pipeline, report which stage/artifact and the gate output.
-- 3 audit rounds FAIL → stop, present findings + ask the user (revise input,
-  reduce scope, or accept a different Stage boundary).
+- 3 audit rounds FAIL → governor routes to HUMAN_BLOCKER (planning budget
+  exhausted). Present findings + ask the user (revise input, reduce scope,
+  or accept a different Stage boundary).
+- Governor action: SPIKE → run bounded probe, re-audit only the affected
+  findings. Governor action: TARGETED_PATCH → fix specific findings, re-audit.
+- Planning budget exceeded mid-pipeline → governor issues HUMAN_BLOCKER.
+  Do not attempt to continue planning; the cost of more meta-work exceeds
+  the value. Present to the user.
 - Stage skill reports it needs user input (blocking open question) → forward the
   question(s) in one batch to the user; do not guess.
 - Any stage discovers the task is not one Stage (scope > budget) → stop and
@@ -128,3 +154,9 @@ audit PASS with 2 MINOR findings. Full worked instance:
 auditor run in the same conversation that produced the plan, and on audit FAIL
 appends a new task instead of re-running the owning stage. This is exactly the
 degenerate behavior the fixed pipeline + independence rule forbid.
+
+Another anti-pattern: the planner runs four full audits, each time spawning a
+new reviewer, and the plan grows from 6 to 18 tasks while never starting
+execution. The governor's budget enforcement and finding taxonomy prevent this
+— EXECUTION_BLOCKER is rare, SPIKE routes empirical questions to probes, and
+POST_STAGE items wait until the next stage.

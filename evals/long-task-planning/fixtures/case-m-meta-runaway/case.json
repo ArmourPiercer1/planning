@@ -1,0 +1,24 @@
+{
+  "id": "case-m-meta-runaway",
+  "name": "Meta-Planning Runaway Regression",
+  "category": "planning-governance",
+  "description": "Tests that planning budget and finding routing prevent meta-planning runaway",
+  "v1_baseline": {
+    "expected_audit_count": 4,
+    "expected_subagent_count": 12,
+    "expected_verdict": "plan_expands_indefinitely"
+  },
+  "v1_target": {
+    "max_full_audits": 2,
+    "max_subagents": 5,
+    "expected_first_spike": true,
+    "expected_deferred_findings": true
+  },
+  "scoring": {
+    "planning_budget_enforced": {"weight": 3, "description": "max_full_audits not exceeded"},
+    "spike_routing": {"weight": 3, "description": "empirical unknown routed to spike, not reviewer"},
+    "deferred_nonblockers": {"weight": 2, "description": "POST_STAGE items deferred, not blocking"},
+    "time_to_first_evidence": {"weight": 2, "description": "first executable evidence within budget"},
+    "no_append_only_growth": {"weight": 2, "description": "plan did not grow via append-only replan"}
+  }
+}

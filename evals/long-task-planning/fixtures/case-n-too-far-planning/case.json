@@ -1,0 +1,18 @@
+{
+  "id": "case-n-too-far-planning",
+  "name": "Too-Far Planning",
+  "category": "horizon-awareness",
+  "description": "Tests that planner stops detailed planning at evidence boundary",
+  "v1_target": {
+    "detailed_plan_covers": "phase-1-only",
+    "forecast_has": ["phase-2", "phase-3"],
+    "forecast_has_dag": false,
+    "stage_boundary_defined": true
+  },
+  "scoring": {
+    "horizon_respected": {"weight": 3, "description": "forecast stages have no detailed DAG"},
+    "stage_boundary_set": {"weight": 2, "description": "stage_boundary.stop_after defined"},
+    "next_planning_trigger": {"weight": 2, "description": "next_planning_trigger.normal includes stage_acceptance_reached"},
+    "no_future_task_packages": {"weight": 3, "description": "no Task Packages for forecast stages"}
+  }
+}
