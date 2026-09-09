@@ -1,0 +1,22 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    { "from": "T01", "to": "T03", "type": "verification", "reason": "E2E closure exercises the real endpoint against the real cache" },
+    { "from": "T02", "to": "T03", "type": "verification", "reason": "E2E closure exercises the real cache TTL and hit behavior" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T01", "T03"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T03", "seams": ["S1"], "acceptance_ref": "A1" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C2", "unlocks": ["T01"] }
+  ],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": ["none — owned paths are disjoint by construction"]
+  }
+}

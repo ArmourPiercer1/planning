@@ -1,0 +1,21 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "PLANTED DEFECT: verdict claims PASS while the deterministic layer has BLOCKER findings — audit/plan mismatch"
+  },
+  "findings": [],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "scope_creep",
+    "ownership_collision",
+    "nondeterministic_acceptance"
+  ],
+  "revision_round": 1
+}

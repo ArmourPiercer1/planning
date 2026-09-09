@@ -1,0 +1,37 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement the GET /profiles/{id} FastAPI endpoint returning 200 {id, name} or 404 per C1, reading profiles through the frozen Cache interface C2, with API tests for hit, miss, and 404 paths",
+      "required_context": {
+        "files": ["app/api/routes/profiles.py (new)", "tests/api/test_profiles.py (new)"],
+        "contracts": ["C1", "C2"],
+        "concepts": ["FastAPI router", "cache read-through"]
+      },
+      "owned_paths": ["app/api/routes/profiles.py", "tests/api/test_profiles.py"],
+      "forbidden_scope": ["app/cache.py", "app/db/**"],
+      "touched_layers": ["api"],
+      "inputs": ["frozen contracts C1/C2 in stage-contract.json"],
+      "outputs": ["app/api/routes/profiles.py", "tests/api/test_profiles.py"],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "closure = one router + its tests; consumes only frozen contracts, so it can run parallel to the cache module"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the in-memory Cache module (get/set with 60s TTL) matching contract C2 with unit tests covering the hit, miss, and expiry paths",
+      "required_context": {
+        "files": ["app/cache.py (new)", "tests/test_cache.py (new)"],
+        "contracts": ["C2"],
+        "concepts": ["TTL expiry", "in-memory dict store"]
+      },
+      "owned_paths": ["app/cache.py", "tests/test_cache.py"],
+      "forbidden_scope": ["app/api/**", "app/db/**"],
+      "touched_layers": ["service"],
+      "inputs": ["frozen contract C2 in stage-contract.json"],
+      "outputs": ["app/cache.py", "tests/test_cache.py"],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "closure = one module + its tests; the endpoint consumes this module only through frozen contract C2"
+    }
+  ]
+}

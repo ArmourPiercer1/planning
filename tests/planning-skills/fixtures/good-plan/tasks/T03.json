@@ -1,0 +1,62 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T03",
+  "objective": "Run the E2E closure gate for seam S1 — two GETs for the same profile id, first hitting the store, second served from cache, with exactly one store call — and produce the gate evidence",
+  "required_context": {
+    "files": ["tests/e2e/test_profile_flow.py (new)", "app/api/routes/profiles.py (read-only, under test)", "app/cache.py (read-only, under test)"],
+    "contracts": ["C1", "C2"],
+    "concepts": ["E2E gate design", "store-call counting via test double"]
+  },
+  "inputs": ["T01 + T02 checkpoints (changed_paths, verified_facts)", "frozen contracts C1/C2 in stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["tests/e2e/"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "endpoint implementation under test (read-only)" },
+    { "task_id": "T02", "what": "cache implementation under test (read-only)" }
+  ],
+  "non_goals": [
+    "No production code changes — gate defects are reported with seam location, not fixed here",
+    "No new acceptance criteria — only A1/A2 mapped through gate E1"
+  ],
+  "implementation_constraints": [
+    "The store is a test double that counts calls; the cache must be the real module",
+    "Gate evidence records pass/fail + the call count + the output excerpt"
+  ],
+  "deliverables": [
+    { "what": "E2E gate test for S1", "where": "tests/e2e/test_profile_flow.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T03-1", "case": "positive", "description": "two consecutive GETs for the same id both return 200 and the store double records exactly one call", "evidence": "pytest tests/e2e/test_profile_flow.py::test_read_through_cache asserts both responses are 200 and store.call_count == 1" },
+    { "id": "AT-T03-2", "case": "failure", "description": "if the second GET hits the store (read-through regression), the gate fails with the call count recorded as evidence", "evidence": "the same test fails with call_count == 2 recorded in the output excerpt" }
+  ],
+  "failure_cases": [
+    { "scenario": "gate E1 fails while both unit suites are green", "expected_behavior": "record the failing gate + seam S1 + output in the checkpoint as a blocker; do not re-run the leaves" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": ["T01 + T02 checkpoints"],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "Stage-closing checkpoint: remaining_dag empty, acceptance verdict in downstream_notes"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

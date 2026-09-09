@@ -1,0 +1,59 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Implement the GET /profiles/{id} FastAPI endpoint returning 200 {id, name} or 404 per contract C1, reading through the frozen Cache interface C2, with API tests for hit, miss, and 404",
+  "required_context": {
+    "files": ["app/api/routes/profiles.py (new)", "tests/api/test_profiles.py (new)"],
+    "contracts": ["C1", "C2"],
+    "concepts": ["FastAPI router pattern", "cache read-through ordering"]
+  },
+  "inputs": ["frozen contracts C1/C2 in stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" }
+  ],
+  "owned_paths": ["app/shared.py", "app/api/routes/profiles.py", "tests/api/test_profiles.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/cache.py (T02 owns it; consume it through contract C2 only)"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies",
+    "Read-through order is load-bearing: cache.get first, store fetch + cache.set only on miss"
+  ],
+  "deliverables": [
+    { "what": "profile read endpoint", "where": "app/api/routes/profiles.py" },
+    { "what": "API tests for hit, miss, and 404", "where": "tests/api/test_profiles.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T01-1", "case": "positive", "description": "GET /profiles/{known} returns 200 with body fields id and name", "evidence": "pytest tests/api/test_profiles.py::test_get_known_200 asserts status_code == 200" },
+    { "id": "AT-T01-2", "case": "negative", "description": "GET /profiles/{unknown} returns 404 with error.code 'not_found'", "evidence": "pytest tests/api/test_profiles.py::test_get_unknown_404 asserts status_code == 404" }
+  ],
+  "failure_cases": [
+    { "scenario": "store raises during the read-through", "expected_behavior": "503 with error.code 'store_unavailable', the cache is not populated" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T04"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T04"],
+    "notes": "record the response field list in verified_facts"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["api"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$id": "planning/integration-plan@1",
+  "title": "Integration plan (seams + integration tasks + E2E gates)",
+  "type": "object",
+  "required": ["schema", "seams", "integration_tasks", "e2e_gates"],
+  "properties": {
+    "schema": { "const": "planning/integration-plan@1" },
+    "seams": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "contract_ids", "covered_by"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^S[0-9]+$" },
+          "description": { "type": "string" },
+          "contract_ids": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" }, "minItems": 1 },
+          "covered_by": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" }, "minItems": 1 }
+        }
+      }
+    },
+    "integration_tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["task_id", "kind", "seams", "owns_fixes_for", "acceptance_ref"],
+        "properties": {
+          "task_id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "kind": { "enum": ["contract_consistency", "seam_integration", "e2e_closure", "final_acceptance"] },
+          "seams": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]+$" } },
+          "owns_fixes_for": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+          "acceptance_ref": { "type": "string", "pattern": "^A[0-9]+$" }
+        }
+      }
+    },
+    "e2e_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "scenario", "covers", "evidence"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^E[0-9]+$" },
+          "scenario": { "type": "string", "minLength": 10 },
+          "covers": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]+$" }, "minItems": 1 },
+          "evidence": { "type": "string", "minLength": 5 }
+        }
+      }
+    }
+  }
+}

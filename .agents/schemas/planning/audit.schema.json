@@ -1,0 +1,54 @@
+{
+  "$id": "planning/audit@1",
+  "title": "Plan audit verdict (independent path; deterministic layer + semantic layer)",
+  "type": "object",
+  "required": ["schema", "verdict", "auditor", "findings", "deterministic", "checks_performed"],
+  "properties": {
+    "schema": { "const": "planning/audit@1" },
+    "verdict": { "enum": ["PASS", "FAIL"] },
+    "auditor": {
+      "type": "object",
+      "required": ["path", "planner_conversation_isolated"],
+      "properties": {
+        "path": { "enum": ["fresh_subagent", "fresh_session", "same_session_late_pass"] },
+        "planner_conversation_isolated": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "check", "evidence", "suggested_fix"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^F[0-9]{2,}$" },
+          "severity": { "enum": ["BLOCKER", "MAJOR", "MINOR"] },
+          "check": {
+            "enum": [
+              "scope_creep", "insufficient_non_goals", "late_contract_freeze",
+              "hidden_dependency", "fake_serialization", "ownership_collision",
+              "oversized_leaf", "broad_context_loading", "hidden_integration_work",
+              "nondeterministic_acceptance", "lack_of_local_recoverability",
+              "replan_only_by_append", "communication_overhead",
+              "schema_invalid", "deterministic_lint"
+            ]
+          },
+          "task_id": { "type": ["string", "null"], "pattern": "^T[0-9]{2,}$" },
+          "evidence": { "type": "string", "minLength": 10 },
+          "suggested_fix": { "type": "string" }
+        }
+      }
+    },
+    "deterministic": {
+      "type": "object",
+      "required": ["tool", "exit_code", "finding_count"],
+      "properties": {
+        "tool": { "type": "string" },
+        "exit_code": { "type": "integer" },
+        "finding_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checks_performed": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "revision_round": { "type": "integer", "minimum": 1 }
+  }
+}

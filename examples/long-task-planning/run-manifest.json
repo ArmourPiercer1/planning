@@ -1,0 +1,45 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "plan-report-jobs-v1",
+  "stage_id": "report-jobs-v1",
+  "created_at": "2026-07-23T10:00:00Z",
+  "skill_versions": [
+    "long-task-planning@1",
+    "stage-contract@1",
+    "context-decomposer@1",
+    "dependency-dag@1",
+    "integration-planner@1",
+    "task-packager@1",
+    "plan-risk-estimator@1",
+    "plan-auditor@1"
+  ],
+  "pipeline": [
+    { "stage": "stage-contract", "status": "done", "gate": "plan-check validate stage-contract.json", "artifact": "stage-contract.json", "exit_code": 0, "fallbacks": [] },
+    { "stage": "context-decomposer", "status": "done", "gate": "plan-check validate candidate-tasks.json", "artifact": "candidate-tasks.json", "exit_code": 0, "fallbacks": [] },
+    { "stage": "dependency-dag", "status": "done", "gate": "plan-check validate dag.json", "artifact": "dag.json", "exit_code": 0, "fallbacks": [] },
+    { "stage": "integration-planner", "status": "done", "gate": "plan-check validate integration-plan.json + dag.json", "artifact": "integration-plan.json, dag.json (gates amended)", "exit_code": 0, "fallbacks": [] },
+    { "stage": "task-packager", "status": "done", "gate": "plan-check validate tasks/*.json", "artifact": "tasks/T01..T08.json", "exit_code": 0, "fallbacks": [] },
+    { "stage": "plan-risk-estimator", "status": "done", "gate": "plan-check validate risk-estimates.json + tasks/*.json", "artifact": "risk-estimates.json, tasks/*.json (risk blocks final)", "exit_code": 0, "fallbacks": [] },
+    { "stage": "plan-auditor (round 1)", "status": "failed", "gate": "audit verdict", "artifact": "audit-v1.json", "exit_code": 1, "fallbacks": ["verdict FAIL: F01 BLOCKER hidden_integration_work, F02 MAJOR nondeterministic_acceptance, F03 MINOR insufficient_non_goals"] },
+    { "stage": "targeted-revision (integration-planner + stage-contract)", "status": "done", "gate": "plan-check validate integration-plan.json + stage-contract.json", "artifact": "integration-plan.json (E2/E3 added), stage-contract.json (A6 wording, legacy non-goal)", "exit_code": 0, "fallbacks": [] },
+    { "stage": "plan-auditor (round 2)", "status": "done", "gate": "audit verdict", "artifact": "audit.json", "exit_code": 0, "fallbacks": [] }
+  ],
+  "gates": [
+    { "name": "validate stage-contract.json", "exit_code": 0, "ts": "2026-07-23T10:04:00Z" },
+    { "name": "validate candidate-tasks.json", "exit_code": 0, "ts": "2026-07-23T10:09:00Z" },
+    { "name": "validate dag.json", "exit_code": 0, "ts": "2026-07-23T10:13:00Z" },
+    { "name": "validate integration-plan.json", "exit_code": 0, "ts": "2026-07-23T10:16:00Z" },
+    { "name": "validate dag.json (post-amendment)", "exit_code": 0, "ts": "2026-07-23T10:16:00Z" },
+    { "name": "validate tasks/*.json", "exit_code": 0, "ts": "2026-07-23T10:24:00Z" },
+    { "name": "validate risk-estimates.json", "exit_code": 0, "ts": "2026-07-23T10:27:00Z" },
+    { "name": "lint (pre-audit round 1)", "exit_code": 0, "ts": "2026-07-23T10:28:00Z" },
+    { "name": "audit verdict round 1", "exit_code": 1, "ts": "2026-07-23T10:35:00Z" },
+    { "name": "validate stage-contract.json (revision)", "exit_code": 0, "ts": "2026-07-23T10:39:00Z" },
+    { "name": "validate integration-plan.json (revision)", "exit_code": 0, "ts": "2026-07-23T10:40:00Z" },
+    { "name": "lint (pre-audit round 2)", "exit_code": 0, "ts": "2026-07-23T10:41:00Z" },
+    { "name": "audit verdict round 2", "exit_code": 0, "ts": "2026-07-23T10:48:00Z" }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 2,
+  "notes": "Round 1 FAIL drove a targeted revision (only integration-planner and stage-contract re-ran; decomposer/DAG/packager untouched). Round 2 PASS with 3 MINOR findings carried into the handoff as warnings."
+}

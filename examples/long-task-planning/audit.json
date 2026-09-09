@@ -1,0 +1,56 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "audit round 2 — after targeted revision (integration-planner re-run for E2/E3; stage-contract re-run for A6 wording + legacy non-goal)"
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MINOR",
+      "check": "communication_overhead",
+      "task_id": "T08",
+      "evidence": "tasks/T08.json re-lists all four T07 gate test paths in required_context even though the gate evidence arrives via the T07 checkpoint — the package is self-contained but duplicates information a checkpoint already carries",
+      "suggested_fix": "acceptable as-is for a 4-gate plan; in larger plans T08-style packages should reference checkpoint evidence instead of re-listing test paths"
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "oversized_leaf",
+      "task_id": "T06",
+      "evidence": "tasks/T06.json touched_layers spans 4 layers (service, runtime, api, persistence) — a phase-shaped leaf on the surface; risk-estimates carries the keep-single-leaf rationale (fix rights are per-leaf via owns_fixes_for and the SPLIT_RECHECK_REQUIRED warning pre-commits the per-seam split path)",
+      "suggested_fix": "none required; the pre-committed checkpoint_and_split trigger in the package's implementation_constraints is the control"
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "check": "scope_creep",
+      "task_id": null,
+      "evidence": "input.md contains an explicit temptation (legacy CSV export TODO) and the plan correctly excludes it in stage-contract.json out_of_scope with a reason — recorded as a positive control, no action",
+      "suggested_fix": "none — keep named non-goals for every in-repo temptation; this is the pattern to repeat"
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "scope_creep",
+    "insufficient_non_goals",
+    "late_contract_freeze",
+    "hidden_dependency",
+    "fake_serialization",
+    "ownership_collision",
+    "oversized_leaf",
+    "broad_context_loading",
+    "hidden_integration_work",
+    "nondeterministic_acceptance",
+    "lack_of_local_recoverability",
+    "replan_only_by_append",
+    "communication_overhead"
+  ],
+  "revision_round": 2
+}

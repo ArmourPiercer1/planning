@@ -1,0 +1,70 @@
+{
+  "schema": "planning/stage-contract@1",
+  "stage_id": "report-jobs-v1",
+  "objective": "Add resumable long-running report generation to invoice-svc: submit returns 202 immediately, an in-process pool of 3 workers executes jobs with persisted state, restarts recover in-flight jobs, and status is queryable by job id.",
+  "in_scope": [
+    "POST /reports endpoint returning 202 {job_id} with a persisted queued job row",
+    "In-process worker pool (3 workers) executing report jobs with persisted progress",
+    "Job state machine queued/running/retry_wait/done/failed with max 3 attempts and 1s/4s/16s backoff",
+    "Startup recovery of running (requeue+recompute) and retry_wait (reschedule) jobs",
+    "GET /reports/{job_id} status endpoint including 404 for unknown ids",
+    "report_jobs table + migration + JobStore module",
+    "Integration tasks: contract consistency, seam wiring, E2E closure, final acceptance evidence"
+  ],
+  "out_of_scope": [
+    { "item": "Refactor of legacy CSV export in app/api/routes/legacy.py (file-header TODO)", "reason": "Does not touch report jobs; named non-goal so it is not absorbed during execution; belongs to a separate Stage" },
+    { "item": "Message-queue infrastructure (Celery/RQ/SQS) or any external worker service", "reason": "User constraint: in-process pool only" },
+    { "item": "Authentication/authorization changes for the new endpoints", "reason": "User constraint: no auth changes this Stage" },
+    { "item": "ORM-layer refactoring beyond adding the report_jobs model", "reason": "User constraint: no ORM refactoring" },
+    { "item": "Streaming/SSE progress or job listing (GET /reports)", "reason": "Not requested; id-based polling via GET /reports/{id} is the frozen interface" },
+    { "item": "Multi-instance / distributed job coordination", "reason": "Single-process deployment is frozen assumption A-1" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "Deployment is single-process: exactly one app instance holds the worker pool; no cross-process locking is required", "rationale": "User constraint + current deployment model; keeps recovery logic at the row level" },
+    { "id": "A-2", "statement": "Report generation is a pure function of its input, so recomputing a crashed running job is safe (idempotent)", "rationale": "Input task states report generation has no external side effects; enables requeue-on-crash" },
+    { "id": "A-3", "statement": "The testcontainers-Postgres fixture in tests/conftest.py is available in CI and locally for this Stage's tests", "rationale": "Fixture exists today and is used by current DB tests" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "Worker pool is in-process (3 workers), started and stopped from the FastAPI lifespan in app/main.py", "rationale": "User constraint (no queue infra); lifespan is the existing startup hook", "seams_affected": ["S3"] },
+    { "id": "DA-2", "decision": "Job state lives in Postgres table report_jobs (same DB); no new storage system", "rationale": "Single-DB constraint; persistence is the recovery mechanism", "seams_affected": ["S2"] },
+    { "id": "DA-3", "decision": "No new heavy runtime dependencies; implementation uses existing fastapi/sqlalchemy/pytest + stdlib", "rationale": "User constraint: no new heavy dependencies", "seams_affected": [] }
+  ],
+  "shared_contracts": [
+    { "id": "C1", "kind": "schema", "spec": "report_jobs table: id UUID pk; status enum('queued','running','retry_wait','done','failed'); attempts int 0..3; progress int 0..100; result_ref nullable text; error nullable text; created_at/updated_at timestamptz. SQLAlchemy model ReportJob in app/db/models.py; alembic migration creates the table.", "owned_by": "T01", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" },
+    { "id": "C2", "kind": "api", "spec": "POST /reports body {input: object} -> 202 {job_id: uuid} (422 on invalid body, error shape C6). GET /reports/{job_id} -> 200 {job_id, status, attempts, progress, result_ref, error, created_at} or 404 {error: {code: 'not_found', message}} for unknown/invalid uuid.", "owned_by": "T03", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" },
+    { "id": "C3", "kind": "state", "spec": "States queued, running, retry_wait, done, failed. Legal transitions: queued->running; running->retry_wait (attempt < 3, backoff 1s/4s/16s by attempt number); running->done; running->failed (attempt == 3); retry_wait->running; retry_wait->failed (attempt == 3). Crash recovery: any row with status running at startup transitions running->queued (recompute, idempotent per A-2); rows in retry_wait resume their schedule. attempts increments when leaving running toward retry_wait or failed; progress written by the worker between 0..100.", "owned_by": "planner (from user requirement)", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" },
+    { "id": "C4", "kind": "service", "spec": "ReportWorkerPool (app/services/report_worker.py): start(session_factory), stop(), submit(job_id: str) -> None (no-op if already queued in pool); run_job(job_id) executes one job to terminal state honoring C3. Pool size fixed at 3. Callable synchronously from tests.", "owned_by": "T02", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" },
+    { "id": "C5", "kind": "service", "spec": "JobStore (app/services/job_store.py), methods on a session: create_job(input_payload: dict) -> ReportJob (status queued); get(job_id) -> ReportJob|None; transition(job_id, from_status, to_status, **fields) -> ReportJob, raises IllegalTransition on illegal C3 transition; recover_stale(now) -> list[ReportJob] (running rows, per C3 recovery).", "owned_by": "T01", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" },
+    { "id": "C6", "kind": "data", "spec": "Error shape for all new-endpoint errors: {error: {code: str, message: str}}. Codes: 'not_found' (GET unknown id), 'invalid_body' (422). Job-level failure stored as report_jobs.error = {code: 'generation_failed', message: <str(exc)>} text field.", "owned_by": "planner (from user requirement)", "frozen": true, "unfreeze_rule": "Only via CONTRACT_CHANGE_REQUEST with evidence from execution" }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "API submit path: POST /reports persists a queued row and the pool picks it up; response carries the job_id the status endpoint later serves", "participants": ["T03", "T02", "T01"], "contract_ids": ["C2", "C4", "C5"] },
+    { "id": "S2", "description": "Worker persistence: state transitions (running/retry_wait/done/failed) and attempts/progress updates written through JobStore match C3 exactly", "participants": ["T02", "T01"], "contract_ids": ["C3", "C5", "C1"] },
+    { "id": "S3", "description": "Lifecycle: lifespan starts the pool after recovery runs; startup recovery requeues stale running rows and resumes retry_wait schedules; shutdown drains the pool", "participants": ["T04", "T02", "T01"], "contract_ids": ["C3", "C4", "C5"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "POST /reports with a valid payload returns HTTP 202 with body containing job_id, and a report_jobs row exists with status 'queued'", "positive_case": "a valid payload {input: {...}} is submitted and a queued row is created", "negative_case": "a payload missing the 'input' field returns 422", "failure_behavior": "422 with error.code 'invalid_body'", "evidence": "pytest tests/api/test_reports.py::test_submit_returns_202 asserts response.status_code == 202 and row status == 'queued'" },
+    { "id": "A2", "description": "With the stub generator, a submitted job reaches status 'done' with progress 100 and result_ref set", "positive_case": "generator returns a result_ref", "negative_case": "no negative case — this criterion asserts the happy path only; proven by the named test", "failure_behavior": "no failure behavior in this criterion — the error path is covered by A4, asserted by its test", "evidence": "pytest tests/e2e/test_reports_flow.py::test_submit_to_done asserts row status 'done', progress 100, result_ref not null" },
+    { "id": "A3", "description": "Crash recovery: a job left in status 'running' is re-queued at startup, recomputed exactly once, and reaches 'done'", "positive_case": "app restarted with a running row present", "negative_case": "no stale rows at startup — recovery performs a no-op and a test asserts the row count is unchanged", "failure_behavior": "requeue transition running->queued rejected would leave the job stuck; test asserts final status 'done'", "evidence": "pytest tests/e2e/test_reports_flow.py::test_crash_recovery_resume asserts generator call count == 1 and final status 'done'" },
+    { "id": "A4", "description": "A generator that always raises produces status 'failed' with attempts 3 and error set; no 4th attempt is made", "positive_case": "generator raises 3 times", "negative_case": "generator raises once then succeeds (must reach 'done')", "failure_behavior": "row status 'failed', attempts 3, error non-empty, call count 3", "evidence": "pytest tests/e2e/test_retry.py::test_retry_exhaustion asserts status 'failed', attempts 3, generator called exactly 3 times" },
+    { "id": "A5", "description": "GET /reports/{unknown_uuid} returns HTTP 404 with error.code 'not_found'", "positive_case": "an unknown but valid-format uuid returns 404", "negative_case": "a malformed uuid string returns 404 as well", "failure_behavior": "404 with error {code: 'not_found'} in both cases", "evidence": "pytest tests/api/test_reports.py::test_get_unknown_404 asserts status_code == 404 and body error.code == 'not_found'" },
+    { "id": "A6", "description": "GET /reports/{job_id} while the job is running returns HTTP 200 with status 'running' and progress an integer in 0..100", "positive_case": "a paused generator holds the job in running state; the status read returns 200", "negative_case": "no negative case — this criterion asserts a state read; the 404 behavior is covered by A5", "failure_behavior": "no failure behavior in this criterion — the error shape is covered by A5, asserted by its test", "evidence": "pytest tests/api/test_reports.py::test_get_running asserts status 'running' and 0 <= progress <= 100" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "No new runtime dependencies beyond what invoice-svc already uses (fastapi, sqlalchemy, uvicorn, pytest, testcontainers)" },
+    { "kind": "resource", "rule": "Leaf P50 target 30-60 min; P80 max 90 min; max 4 compactions per leaf" },
+    { "kind": "style", "rule": "Tests follow existing layout: pytest, TestClient for API, testcontainers fixture for DB, no async tests" },
+    { "kind": "process", "rule": "Executors follow the execution protocol: package-only startup, A/B/C classification of findings, checkpoint at every stable subgoal" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 4,
+    "stage_estimate": "0.5-1 dev-day wall time with parallel leaves (critical path ~4-6 sequential leaves)"
+  },
+  "allowed_replan": ["split", "merge", "reorder", "change_dependency", "defer", "reduce_scope", "replace_route", "checkpoint_and_split", "request_contract_revision"],
+  "open_questions": [
+    { "id": "Q1", "question": "Is the retry backoff schedule (1s/4s/16s) fixed by the requirement or configurable?", "blocking": true, "owner": "user", "resolution": "Fixed by user requirement (input.md item 3); not configurable in this Stage" },
+    { "id": "Q2", "question": "Should GET /reports support listing jobs (no id)?", "blocking": false, "owner": "user", "resolution": "Excluded: id-based polling is the frozen interface (see out_of_scope 'job listing')" }
+  ]
+}

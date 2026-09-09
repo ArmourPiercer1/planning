@@ -1,0 +1,12 @@
+{
+  "schema": "planning/integration-plan@1",
+  "seams": [
+    { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "contract_ids": ["C1", "C2"], "covered_by": ["T03"] }
+  ],
+  "integration_tasks": [
+    { "task_id": "T04", "kind": "contract_consistency", "seams": ["S1"], "owns_fixes_for": [], "acceptance_ref": "A1" }
+  ],
+  "e2e_gates": [
+    { "id": "E1", "scenario": "two GETs for the same profile id: the first hits the store, the second is served from the cache, and the store is called exactly once", "covers": ["S1"], "evidence": "pytest tests/e2e/test_profile_flow.py::test_read_through_cache" }
+  ]
+}

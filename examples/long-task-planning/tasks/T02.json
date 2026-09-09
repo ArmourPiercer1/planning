@@ -1,0 +1,70 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T02",
+  "objective": "Implement ReportWorkerPool (start/stop/submit/run_job) executing jobs through the C3 state machine with retry/backoff (1s/4s/16s, max 3 attempts), unit-tested against an in-memory fake of the frozen JobStore interface C5",
+  "required_context": {
+    "files": ["app/services/report_worker.py (new)", "tests/services/test_report_worker.py (new)", "app/services/report_gen.py (existing stub, read-only)"],
+    "contracts": ["C3", "C4", "C5"],
+    "concepts": ["state machine execution", "backoff retry", "in-memory test fake for interface contract C5"]
+  },
+  "inputs": ["frozen contracts C3/C4/C5 in stage-contract.json", "existing report_gen.generate_report(payload) -> result_ref interface"],
+  "frozen_contracts": [
+    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" }
+  ],
+  "owned_paths": ["app/services/report_worker.py", "tests/services/test_report_worker.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/db/**, app/api/**, or app/main.py",
+    "Do not implement or modify JobStore (consume the C5 interface via a test fake)",
+    "Do not add a scheduler library — backoff sleep is stdlib",
+    "Do not add metrics/logging infrastructure beyond the existing repo pattern"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies",
+    "All state changes go through JobStore.transition (never direct model writes) so C3 legality is enforced in one place",
+    "run_job must be callable synchronously in tests (C4); the pool uses stdlib threading with 3 workers",
+    "attempts increments when leaving running toward retry_wait or failed (C3)"
+  ],
+  "deliverables": [
+    { "what": "ReportWorkerPool implementation matching C4", "where": "app/services/report_worker.py" },
+    { "what": "unit test suite (incl. in-memory C5 fake)", "where": "tests/services/test_report_worker.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T02-1", "case": "positive", "description": "submit enqueues a job; run_job transitions queued -> running, calls generate_report once, and writes status 'done' with progress 100 and result_ref set", "evidence": "pytest tests/services/test_report_worker.py::test_run_to_done asserts row.status == 'done', row.progress == 100, result_ref not null" },
+    { "id": "AT-T02-2", "case": "failure", "description": "generator raises on attempts 1 and 2 (row writes status 'retry_wait', attempts 1/2) and on the 3rd raise writes status 'failed' with attempts 3 and error set; generate_report is called exactly 3 times", "evidence": "pytest tests/services/test_report_worker.py::test_retry_exhaustion_unit asserts row.status == 'failed', row.attempts == 3, call_count == 3" },
+    { "id": "AT-T02-3", "case": "negative", "description": "submit for a job id the pool already holds is a no-op — a test asserts the pool queue count stays 1", "evidence": "pytest tests/services/test_report_worker.py::test_submit_idempotent asserts queue length == 1 after double submit" },
+    { "id": "AT-T02-4", "case": "positive", "description": "stop() drains the pool: after stop returns, worker threads are joined (active thread count 0)", "evidence": "pytest tests/services/test_report_worker.py::test_stop_drains asserts active worker count == 0" }
+  ],
+  "failure_cases": [
+    { "scenario": "generator raises a non-timeout error", "expected_behavior": "error recorded on the row as {code: 'generation_failed', message: str(exc)} per C6; the attempt counts against the 3-attempt budget" },
+    { "scenario": "JobStore.transition raises IllegalTransition (should be impossible under C3 usage)", "expected_behavior": "run_job re-raises; the pool does not swallow the exception — surfacing contract misuse is the intended behavior" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [],
+    "consumers": ["T04", "T05", "T06", "T07", "T08"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T04", "T05", "T06", "T07", "T08"],
+    "notes": "Record the exact backoff schedule implementation and the attempts-increment point in verified_facts — T05 will diff them against C3"
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["service", "runtime"],
+    "cross_contracts": 3,
+    "statefulness": "high",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "45-75 min",
+    "p80": "90-120 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      { "code": "SPLIT_RECHECK_REQUIRED", "detail": "p80 upper bound (120 min) exceeds the Stage budget leaf_p80_max (90 min)", "rationale": "concurrent pool plus retry/backoff logic is the densest logic in the Stage; if execution exceeds p80, checkpoint_and_split around the retry-policy boundary" }
+    ],
+    "oversized_justification": null
+  }
+}

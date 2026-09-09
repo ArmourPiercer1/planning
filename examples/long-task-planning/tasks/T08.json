@@ -1,0 +1,69 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T08",
+  "objective": "Execute final acceptance: re-run the evidence commands for contract acceptance A1-A6 on the closed system and write the acceptance results table that closes the Stage",
+  "required_context": {
+    "files": ["tests/api/test_reports.py (evidence re-run)", "tests/e2e/test_reports_flow.py (evidence re-run)", "tests/e2e/test_retry.py (evidence re-run)", "tests/services/test_job_store.py (evidence re-run)"],
+    "contracts": ["C1", "C2", "C3", "C4", "C5", "C6"],
+    "concepts": ["acceptance evidence collection", "no-waiver rule (a failing item stops the Stage)"]
+  },
+  "inputs": ["T07 gate evidence", "acceptance criteria A1-A6 in stage-contract.json", "T01-T07 checkpoints"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
+    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  ],
+  "owned_paths": ["tests/acceptance/"],
+  "allowed_dependencies": [
+    { "task_id": "T07", "what": "E2E gate evidence (A2/A3/A4/A5/A6 already produced)" },
+    { "task_id": "T01", "what": "unit evidence for A1 row assertions" },
+    { "task_id": "T03", "what": "API evidence for A1/A5/A6" }
+  ],
+  "non_goals": [
+    "No code changes of any kind — this task only runs evidence and records results",
+    "No new criteria, no waivers, no 'close enough' — a failing A-item stops the Stage"
+  ],
+  "implementation_constraints": [
+    "Re-run the exact evidence commands named in stage-contract.json acceptance (no substitutes)",
+    "Write the results table {A1..A6: pass/fail + command + output excerpt} into the checkpoint"
+  ],
+  "deliverables": [
+    { "what": "acceptance results table A1-A6", "where": "tests/acceptance/results.json + checkpoint T08 verified_facts" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T08-1", "case": "positive", "description": "all six evidence commands re-run: results.json records A1-A6 each as pass with the command and an output excerpt", "evidence": "tests/acceptance/results.json contains 6 entries, all pass, each with command + excerpt" },
+    { "id": "AT-T08-2", "case": "failure", "description": "if any A-item fails, the results table marks it failed with the failing command and the checkpoint stops (no waiver, no re-run beyond the 3-strike gate_failure rule)", "evidence": "results.json entry for the failing item is pass=false; checkpoint T08 status is blocked" }
+  ],
+  "failure_cases": [
+    { "scenario": "an evidence command errors for environmental reasons (fixture missing, DB unavailable)", "expected_behavior": "the results table records it as an environment failure (not an acceptance failure) with the exact error output; V1: stop and report to the user rather than waiving" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2", "S3"],
+    "upstream_outputs": ["T07 gate evidence", "T01-T07 checkpoints"],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T08.json",
+    "downstream_consumers": [],
+    "notes": "this is the Stage-closing checkpoint — remaining_dag is empty and downstream_notes carry the acceptance verdict for the orchestrator"
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 6,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "20-40 min",
+    "p80": "40-60 min",
+    "compaction_risk": "low",
+    "warnings": [
+      { "code": "CONTRACT_DENSITY", "detail": "re-runs acceptance evidence A1-A6 covering C1-C6", "rationale": "final acceptance is read-only evidence collection; no implementation context is loaded" }
+    ],
+    "oversized_justification": null
+  }
+}

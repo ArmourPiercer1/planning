@@ -1,0 +1,53 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement the GET /profiles/{id} FastAPI endpoint returning 200 {id, name} or 404 per C1, reading profiles through the frozen Cache interface C2, with API tests for hit, miss, and 404 paths",
+      "required_context": {
+        "files": ["app/api/routes/profiles.py (new)", "tests/api/test_profiles.py (new)"],
+        "contracts": ["C1", "C2"],
+        "concepts": ["FastAPI router", "cache read-through"]
+      },
+      "owned_paths": ["app/shared.py", "app/api/routes/profiles.py", "tests/api/test_profiles.py"],
+      "forbidden_scope": ["app/cache.py"],
+      "touched_layers": ["api"],
+      "inputs": ["frozen contracts C1/C2 in stage-contract.json"],
+      "outputs": ["app/api/routes/profiles.py", "tests/api/test_profiles.py"],
+      "downstream_consumers": ["T04"],
+      "split_rationale": "closure = one router + its tests; PLANTED DEFECT: also claims app/shared.py, which T02 claims too, and the two are unordered"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the in-memory Cache module (get/set with 60s TTL) matching contract C2 with unit tests covering the hit, miss, and expiry paths",
+      "required_context": {
+        "files": ["app/cache.py (new)", "tests/test_cache.py (new)"],
+        "contracts": ["C2"],
+        "concepts": ["TTL expiry", "in-memory dict store"]
+      },
+      "owned_paths": ["app/cache.py", "tests/test_cache.py"],
+      "forbidden_scope": ["app/api/**"],
+      "touched_layers": ["service"],
+      "inputs": ["frozen contract C2 in stage-contract.json"],
+      "outputs": ["app/cache.py", "tests/test_cache.py"],
+      "downstream_consumers": ["T04"],
+      "split_rationale": "closure = one module + its tests"
+    },
+    {
+      "id": "T03",
+      "objective": "Implement the E2E flow test for the profile read-through path with a deterministic store-call counter proving cache hits skip the store",
+      "required_context": {
+        "files": ["tests/e2e/test_profile_flow.py (new)"],
+        "contracts": ["C1", "C9"],
+        "concepts": ["E2E gate design"]
+      },
+      "owned_paths": ["app/shared.py", "tests/e2e/test_profile_flow.py"],
+      "forbidden_scope": ["app/**"],
+      "touched_layers": ["e2e"],
+      "inputs": ["frozen contracts C1/C9 in stage-contract.json"],
+      "outputs": ["tests/e2e/test_profile_flow.py"],
+      "downstream_consumers": [],
+      "split_rationale": "PLANTED DEFECTS: consumes contract C9 which does not exist; has no task package file; also claims app/shared.py in parallel with T01 (unordered — a shared-file collision)"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T01",
+  "objective": "Implement the ReportJob SQLAlchemy model, the alembic migration for report_jobs, and the JobStore module (create_job/get/transition/recover_stale) satisfying contracts C1 and C5, with unit tests against the testcontainers-Postgres fixture",
+  "required_context": {
+    "files": ["app/db/models.py", "alembic/versions/ (one new migration file)", "app/services/job_store.py (new)", "tests/services/test_job_store.py (new)", "tests/conftest.py (fixture, read-only)"],
+    "contracts": ["C1", "C3", "C5"],
+    "concepts": ["SQLAlchemy declarative models", "alembic migrations", "illegal-state-transition guard"]
+  },
+  "inputs": ["frozen contracts C1/C3/C5 in stage-contract.json", "existing test db fixture in tests/conftest.py"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" }
+  ],
+  "owned_paths": ["app/db/models.py", "app/services/job_store.py", "alembic/versions/", "tests/services/test_job_store.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/api/**, app/main.py, or app/services/report_worker.py",
+    "Do not refactor the legacy CSV export in app/api/routes/legacy.py (Stage non-goal)",
+    "Do not add any storage system beyond the existing Postgres DB",
+    "Do not add index/optimization work beyond the PK — performance tuning is not in scope"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies (constraint kind=dependency in stage contract)",
+    "transition() must enforce C3 legal transitions and raise IllegalTransition otherwise",
+    "Tests use the existing testcontainers-Postgres fixture; no sqlite fallback, no async tests"
+  ],
+  "deliverables": [
+    { "what": "ReportJob model matching C1", "where": "app/db/models.py" },
+    { "what": "alembic migration creating report_jobs", "where": "alembic/versions/" },
+    { "what": "JobStore implementation matching C5", "where": "app/services/job_store.py" },
+    { "what": "unit test suite", "where": "tests/services/test_job_store.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T01-1", "case": "positive", "description": "create_job writes a row with status 'queued' and attempts 0; get returns that row", "evidence": "pytest tests/services/test_job_store.py::test_create_get asserts row.status == 'queued' and row.attempts == 0" },
+    { "id": "AT-T01-2", "case": "positive", "description": "transition(queued -> running) writes status 'running' and returns the updated row", "evidence": "pytest tests/services/test_job_store.py::test_transition_legal asserts row.status == 'running'" },
+    { "id": "AT-T01-3", "case": "failure", "description": "transition(queued -> done) raises IllegalTransition and the row keeps status 'queued'", "evidence": "pytest tests/services/test_job_store.py::test_transition_rejects_illegal uses pytest.raises(IllegalTransition) and asserts row.status == 'queued'" },
+    { "id": "AT-T01-4", "case": "positive", "description": "recover_stale(now) returns rows with status 'running' and updated_at older than now-300s, and returns an empty list when no stale rows exist", "evidence": "pytest tests/services/test_job_store.py::test_recover_stale asserts the returned row id set and the empty-list case" }
+  ],
+  "failure_cases": [
+    { "scenario": "transition called with from_status that does not match the row's current status", "expected_behavior": "raises IllegalTransition; the row is unchanged" },
+    { "scenario": "get called with an unknown id", "expected_behavior": "returns None (callers map None to 404 per C2)" }
+  ],
+  "integration_dependency": {
+    "seams": ["S2"],
+    "upstream_outputs": [],
+    "consumers": ["T04", "T05", "T06", "T07", "T08"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T04", "T05", "T06", "T07", "T08"],
+    "notes": "Recovery semantics in recover_stale are the load-bearing behavior for T04 and gate E2 — record exact row-selection predicate in verified_facts"
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["persistence"],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

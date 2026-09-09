@@ -1,0 +1,41 @@
+{
+  "schema": "planning/stage-contract@1",
+  "stage_id": "bad-plan",
+  "objective": "Add a cached read-through endpoint for user profiles with a deterministic fallback path for store outages",
+  "in_scope": [
+    "GET /profiles/{id} endpoint with cache read-through",
+    "In-memory cache module with unit tests"
+  ],
+  "out_of_scope": [
+    { "item": "write-path invalidation redesign", "reason": "separate Stage" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "single-process deployment", "rationale": "current deployment model" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "in-memory dict cache with 60s TTL", "rationale": "no new dependencies allowed", "seams_affected": ["S1"] }
+  ],
+  "shared_contracts": [
+    { "id": "C1", "kind": "api", "spec": "GET /profiles/{id} returns 200 {id, name} for a known id or 404 {error: {code: 'not_found'}} for an unknown id", "owned_by": "T01", "frozen": true },
+    { "id": "C2", "kind": "service", "spec": "Cache: get(key) -> value|None; set(key, value, ttl_seconds) -> None; 60s default TTL; in-memory only", "owned_by": "T02", "frozen": true }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "endpoint reads through the cache to the profile store; a cache hit must skip the store call", "participants": ["T01", "T02"], "contract_ids": ["C1", "C2"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "the profile endpoint works correctly under all conditions", "positive_case": "requests succeed", "negative_case": "requests fail", "failure_behavior": "the system handles errors", "evidence": "test the endpoint" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "no new runtime dependencies" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90 min",
+    "max_compactions_per_leaf": 4,
+    "stage_estimate": "0.5 dev-day"
+  },
+  "allowed_replan": ["split", "defer", "request_contract_revision"],
+  "open_questions": [
+    { "id": "Q1", "question": "Should the cache persist across restarts?", "blocking": true, "owner": "user", "resolution": "" }
+  ]
+}

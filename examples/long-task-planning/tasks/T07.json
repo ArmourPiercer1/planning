@@ -1,0 +1,73 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T07",
+  "objective": "Run the four E2E gates (E1 submit-to-done, E2 crash-recovery, E3 retry-exhaustion, E4 unknown-id) against the fully wired app and produce gate evidence, locating any failure to a seam",
+  "required_context": {
+    "files": ["tests/e2e/test_reports_flow.py (new)", "tests/e2e/test_retry.py (new)", "tests/api/test_reports.py (E4 re-run)", "tests/conftest.py (fixtures, read-only)", "app/main.py (app entry for restart fixture, read-only)"],
+    "contracts": ["C2", "C3", "C4", "C5", "C6"],
+    "concepts": ["E2E gate design (happy + failure scenarios per seam)", "app-restart test fixture for crash recovery", "gate evidence collection"]
+  },
+  "inputs": ["T06 checkpoint (verified consistent system)", "frozen contracts C2-C6 in stage-contract.json", "acceptance criteria A1-A6 in stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
+    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  ],
+  "owned_paths": ["tests/e2e/"],
+  "allowed_dependencies": [
+    { "task_id": "T06", "what": "the seam-wired, consistency-verified system under test" }
+  ],
+  "non_goals": [
+    "No production code changes — E2E defects are reported with seam location, not fixed here (T06 owns fixes; a re-entry loop is the replan path)",
+    "No new acceptance criteria — gates E1-E4 only, mapped to A2/A3/A4/A5/A6"
+  ],
+  "implementation_constraints": [
+    "Each gate is an independent test so a failing gate does not block the others from producing evidence",
+    "The crash-recovery gate needs an app-restart fixture: start app, pause a job mid-run, stop app, start app again, assert recovery",
+    "If the restart fixture proves unstable (see risk warning), checkpoint_and_split into per-gate subtasks before continuing"
+  ],
+  "deliverables": [
+    { "what": "E2E test suite for gates E1-E2", "where": "tests/e2e/test_reports_flow.py" },
+    { "what": "E2E test suite for gate E3", "where": "tests/e2e/test_retry.py" },
+    { "what": "gate evidence (pass/fail per gate + output)", "where": "checkpoint T07 tests.evidence" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T07-1", "case": "positive", "description": "E1: POST /reports returns 202, the job reaches status 'done' with progress 100 and result_ref set, and GET returns those values", "evidence": "pytest tests/e2e/test_reports_flow.py::test_submit_to_done passes" },
+    { "id": "AT-T07-2", "case": "positive", "description": "E2: a job left in status 'running' across an app restart is re-queued, recomputed exactly once (generator call count 1), and reaches status 'done'", "evidence": "pytest tests/e2e/test_reports_flow.py::test_crash_recovery_resume passes with generator call count asserted == 1" },
+    { "id": "AT-T07-3", "case": "failure", "description": "E3: a generator that always raises produces status 'failed', attempts 3, error set, and exactly 3 generator calls", "evidence": "pytest tests/e2e/test_retry.py::test_retry_exhaustion passes with call count asserted == 3" },
+    { "id": "AT-T07-4", "case": "negative", "description": "E4: GET /reports/{unknown} returns 404 with error.code 'not_found'; a malformed uuid also returns 404", "evidence": "pytest tests/api/test_reports.py::test_get_unknown_404 passes (re-run in E2E context)" }
+  ],
+  "failure_cases": [
+    { "scenario": "an E2E gate fails while all leaf unit suites are green", "expected_behavior": "the failing gate, its seam (from the gate's covers field), and the test output are recorded in the checkpoint as a blocker of kind CORE_SEAM_BLOCKER or a gate_failure replan trigger; leaves are not re-executed" },
+    { "scenario": "the same gate fails 3 consecutive re-runs", "expected_behavior": "the gate_failure trigger fires after 3 consecutive failed re-runs of the same test — replan-controller path (V1: stop + user decision with the structured stop-report)" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2", "S3"],
+    "upstream_outputs": ["T06 checkpoint", "all leaf checkpoints"],
+    "consumers": ["T08"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T07.json",
+    "downstream_consumers": ["T08"],
+    "notes": "gate evidence is T08's input for A2/A3/A4/A5/A6 — verified_facts must state pass/fail per gate with test ids"
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 5,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "60-90 min",
+    "p80": "90-150 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      { "code": "SPLIT_RECHECK_REQUIRED", "detail": "E2E harness setup (app restart fixture for crash recovery) dominates the estimate", "rationale": "if the crash-restart fixture proves unstable, checkpoint_and_split into per-gate subtasks (E1/E2/E3/E4 are already separate gates)" },
+      { "code": "CONTRACT_DENSITY", "detail": "verifies contracts C2-C6 end to end", "rationale": "inherent to E2E closure; it is the seam where all contracts meet" }
+    ],
+    "oversized_justification": null
+  }
+}

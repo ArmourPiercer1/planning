@@ -1,0 +1,88 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement the ReportJob SQLAlchemy model, the alembic migration for report_jobs, and the JobStore module (create_job/get/transition/recover_stale) satisfying contracts C1 and C5, with unit tests against the testcontainers-Postgres fixture",
+      "required_context": {
+        "files": [
+          "app/db/models.py",
+          "alembic/versions/ (one new migration file)",
+          "app/services/job_store.py (new)",
+          "tests/services/test_job_store.py (new)",
+          "tests/conftest.py (fixture, read-only)"
+        ],
+        "contracts": ["C1", "C3", "C5"],
+        "concepts": ["SQLAlchemy declarative models", "alembic migrations", "illegal-state-transition guard"]
+      },
+      "owned_paths": ["app/db/models.py", "app/services/job_store.py", "alembic/versions/", "tests/services/test_job_store.py"],
+      "forbidden_scope": ["app/api/**", "app/main.py", "app/services/report_worker.py", "app/api/routes/legacy.py (non-goal: legacy CSV export)"],
+      "touched_layers": ["persistence"],
+      "inputs": ["stage-contract.json shared_contracts C1/C3/C5", "existing test db fixture"],
+      "outputs": ["report_jobs table + model", "JobStore implementation", "unit test suite tests/services/test_job_store.py"],
+      "downstream_consumers": ["T04", "T05", "T06", "T07", "T08"],
+      "split_rationale": "Closure = one table + one module + its tests; the state-machine legality logic (C3) lives here because transition() enforces it, so runtime and recovery both inherit it for free"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement ReportWorkerPool (start/stop/submit/run_job) executing jobs through the C3 state machine with retry/backoff (1s/4s/16s, max 3 attempts), unit-tested against an in-memory fake of the frozen JobStore interface C5",
+      "required_context": {
+        "files": [
+          "app/services/report_worker.py (new)",
+          "tests/services/test_report_worker.py (new)",
+          "app/services/report_gen.py (existing stub, read-only)"
+        ],
+        "contracts": ["C3", "C4", "C5"],
+        "concepts": ["state machine execution", "backoff retry", "in-memory test fake for interface contract C5"]
+      },
+      "owned_paths": ["app/services/report_worker.py", "tests/services/test_report_worker.py"],
+      "forbidden_scope": ["app/db/**", "app/api/**", "app/main.py", "app/services/job_store.py (interface only, via C5)"],
+      "touched_layers": ["service", "runtime"],
+      "inputs": ["frozen contracts C3/C4/C5 (spec in stage-contract.json)", "existing report_gen.generate_report interface"],
+      "outputs": ["ReportWorkerPool implementation", "unit test suite tests/services/test_report_worker.py"],
+      "downstream_consumers": ["T04", "T05", "T06", "T07", "T08"],
+      "split_rationale": "Closure = one module + its tests; all three consumed contracts (C3/C4/C5) specify this same state machine, so splitting retry from pool would make two agents re-read the same contracts — merged per the shared-context rule"
+    },
+    {
+      "id": "T03",
+      "objective": "Implement FastAPI routes POST /reports and GET /reports/{job_id} with pydantic request/response schemas satisfying contracts C2 and C6, with API tests covering 202, 200-running, and 404 cases using a fake JobStore",
+      "required_context": {
+        "files": [
+          "app/api/routes/reports.py (new)",
+          "tests/api/test_reports.py (new)",
+          "app/api/routes/health.py (existing pattern reference, read-only)",
+          "app/api/deps.py (existing DI, read-only)"
+        ],
+        "contracts": ["C2", "C5", "C6"],
+        "concepts": ["FastAPI router pattern used by health.py", "pydantic v2 schemas", "TestClient without async tests"]
+      },
+      "owned_paths": ["app/api/routes/reports.py", "tests/api/test_reports.py"],
+      "forbidden_scope": ["app/db/**", "app/services/**", "app/main.py", "app/api/routes/legacy.py (non-goal: legacy CSV export)"],
+      "touched_layers": ["api"],
+      "inputs": ["frozen contracts C2/C5/C6 (spec in stage-contract.json)", "existing router pattern app/api/routes/health.py"],
+      "outputs": ["app/api/routes/reports.py", "API test suite tests/api/test_reports.py"],
+      "downstream_consumers": ["T05", "T06", "T07", "T08"],
+      "split_rationale": "Closure = one router module + its tests; consumes only frozen contracts C2/C5/C6 (JobStore via fake), so it needs no runtime code — this is what lets it run parallel to T01/T02"
+    },
+    {
+      "id": "T04",
+      "objective": "Wire ReportWorkerPool into the FastAPI lifespan in app/main.py and implement startup recovery (requeue stale running rows, resume retry_wait schedules) satisfying contracts C3/C4/C5, with lifecycle tests",
+      "required_context": {
+        "files": [
+          "app/main.py (existing)",
+          "app/services/recovery.py (new)",
+          "tests/test_startup_recovery.py (new)"
+        ],
+        "contracts": ["C3", "C4", "C5"],
+        "concepts": ["FastAPI lifespan startup/shutdown ordering", "idempotent requeue per A-2", "stale-row detection"]
+      },
+      "owned_paths": ["app/main.py", "app/services/recovery.py", "tests/test_startup_recovery.py"],
+      "forbidden_scope": ["app/db/**", "app/api/**", "app/services/report_worker.py (interface only, via C4)"],
+      "touched_layers": ["lifecycle", "service"],
+      "inputs": ["T01 JobStore implementation (real, via data dependency)", "T02 ReportWorkerPool implementation (real, via data dependency)", "frozen contracts C3/C4/C5"],
+      "outputs": ["lifespan wiring in app/main.py", "app/services/recovery.py", "lifecycle test suite tests/test_startup_recovery.py"],
+      "downstream_consumers": ["T05", "T06", "T07", "T08"],
+      "split_rationale": "Closure = startup hook + recovery module + its tests; needs the real store and pool because importing app.main pulls both modules — a true data dependency, not a fake one"
+    }
+  ]
+}

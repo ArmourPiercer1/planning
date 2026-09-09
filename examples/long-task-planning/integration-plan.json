@@ -1,0 +1,20 @@
+{
+  "schema": "planning/integration-plan@1",
+  "seams": [
+    { "id": "S1", "description": "API submit path: POST /reports persists a queued row and the pool picks it up; response carries the job_id the status endpoint later serves", "contract_ids": ["C2", "C4", "C5"], "covered_by": ["T06", "T07"] },
+    { "id": "S2", "description": "Worker persistence: state transitions (running/retry_wait/done/failed) and attempts/progress updates written through JobStore match C3 exactly", "contract_ids": ["C3", "C5", "C1"], "covered_by": ["T06", "T07"] },
+    { "id": "S3", "description": "Lifecycle: lifespan starts the pool after recovery runs; startup recovery requeues stale running rows and resumes retry_wait schedules; shutdown drains the pool", "contract_ids": ["C3", "C4", "C5"], "covered_by": ["T06", "T07"] }
+  ],
+  "integration_tasks": [
+    { "task_id": "T05", "kind": "contract_consistency", "seams": ["S1", "S2", "S3"], "owns_fixes_for": [], "acceptance_ref": "A2" },
+    { "task_id": "T06", "kind": "seam_integration", "seams": ["S1", "S2", "S3"], "owns_fixes_for": ["T01", "T02", "T03", "T04"], "acceptance_ref": "A3" },
+    { "task_id": "T07", "kind": "e2e_closure", "seams": ["S1", "S2", "S3"], "owns_fixes_for": [], "acceptance_ref": "A2" },
+    { "task_id": "T08", "kind": "final_acceptance", "seams": ["S1", "S2", "S3"], "owns_fixes_for": [], "acceptance_ref": "A2" }
+  ],
+  "e2e_gates": [
+    { "id": "E1", "scenario": "submit to done — POST /reports returns 202, the job runs to completion, GET /reports/{id} then returns status 'done' with progress 100 and result_ref set", "covers": ["S1", "S2"], "evidence": "pytest tests/e2e/test_reports_flow.py::test_submit_to_done" },
+    { "id": "E2", "scenario": "crash recovery — a job left in status 'running' is re-queued at startup, recomputed exactly once (generator call count 1), and reaches status 'done'", "covers": ["S2", "S3"], "evidence": "pytest tests/e2e/test_reports_flow.py::test_crash_recovery_resume" },
+    { "id": "E3", "scenario": "retry exhaustion — generator raises 3 times, row ends status 'failed' with attempts 3 and error set, and no 4th attempt occurs", "covers": ["S2"], "evidence": "pytest tests/e2e/test_retry.py::test_retry_exhaustion" },
+    { "id": "E4", "scenario": "unknown job id — GET /reports/{unknown} returns 404 with error.code 'not_found'; a malformed uuid string also returns 404", "covers": ["S1"], "evidence": "pytest tests/api/test_reports.py::test_get_unknown_404" }
+  ]
+}

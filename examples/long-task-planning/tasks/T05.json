@@ -1,0 +1,71 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T05",
+  "objective": "Run a read-only contract consistency sweep over the four implemented modules, diffing every implementation against frozen contracts C1-C6 and writing a structured deviation report that T06 consumes",
+  "required_context": {
+    "files": ["app/db/models.py", "app/services/job_store.py", "app/services/report_worker.py", "app/api/routes/reports.py", "app/services/recovery.py", "app/main.py", "tests/integration/test_contract_consistency.py (new)"],
+    "contracts": ["C1", "C2", "C3", "C4", "C5", "C6"],
+    "concepts": ["read-only diffing against a frozen spec", "structured deviation report format"]
+  },
+  "inputs": ["completed checkpoints T01-T04 (changed_paths + verified_facts)", "frozen contracts C1-C6 in stage-contract.json"],
+  "frozen_contracts": [
+    { "contract_id": "C1", "spec_ref": "stage-contract.json#shared_contracts[C1]" },
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C3", "spec_ref": "stage-contract.json#shared_contracts[C3]" },
+    { "contract_id": "C4", "spec_ref": "stage-contract.json#shared_contracts[C4]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
+    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  ],
+  "owned_paths": ["tests/integration/test_contract_consistency.py"],
+  "allowed_dependencies": [
+    { "task_id": "T01", "what": "model + JobStore implementation (read-only diff)" },
+    { "task_id": "T02", "what": "worker pool implementation (read-only diff)" },
+    { "task_id": "T03", "what": "router implementation (read-only diff)" },
+    { "task_id": "T04", "what": "lifespan + recovery implementation (read-only diff)" }
+  ],
+  "non_goals": [
+    "No implementation changes of any kind — this task is read-only over other modules",
+    "No behavior tests (that is T07); only spec-vs-code consistency",
+    "Do not 'fix while you see it' — every deviation goes into the report, T06 owns fixes"
+  ],
+  "implementation_constraints": [
+    "Output is a machine-readable report: list of {contract_id, file, deviation, severity} plus 'no deviations' when clean",
+    "Read the four modules and their tests only; do not open unrelated repo territory"
+  ],
+  "deliverables": [
+    { "what": "contract consistency deviation report (or 'no deviations')", "where": "tests/integration/test_contract_consistency.py + its stdout report" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T05-1", "case": "positive", "description": "with clean implementations the consistency check writes 'no deviations' and the test exits 0", "evidence": "pytest tests/integration/test_contract_consistency.py -q exits 0 and report contains 'no deviations'" },
+    { "id": "AT-T05-2", "case": "failure", "description": "a deliberately injected deviation (test fixture renaming a C5 method) is reported: the report lists the C5 field/method mismatch", "evidence": "pytest tests/integration/test_contract_consistency.py::test_detects_injected_deviation asserts the report contains the C5 mismatch entry" }
+  ],
+  "failure_cases": [
+    { "scenario": "a contract spec is ambiguous to read against the code", "expected_behavior": "the report records the ambiguity as an unresolved item with both readings; T06 escalates it instead of guessing" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2", "S3"],
+    "upstream_outputs": ["T01-T04 checkpoints"],
+    "consumers": ["T06", "T07", "T08"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T05.json",
+    "downstream_consumers": ["T06", "T07", "T08"],
+    "notes": "The deviation report is T06's input — verified_facts must include the exact report location and entry count"
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": ["service", "persistence", "api", "lifecycle"],
+    "cross_contracts": 6,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [
+      { "code": "CONTRACT_DENSITY", "detail": "consumes all 6 contracts C1-C6", "rationale": "a read-only consistency sweep is deliberately one pass — splitting per contract would re-scan the same four modules six times (context amplification)" }
+    ],
+    "oversized_justification": null
+  }
+}

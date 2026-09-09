@@ -1,0 +1,45 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    { "from": "T01", "to": "T04", "type": "data", "reason": "recovery logic queries real report_jobs rows; needs T01's store implementation and migration, not just the C5 interface" },
+    { "from": "T02", "to": "T04", "type": "data", "reason": "lifespan wiring imports the real ReportWorkerPool; T04's tests import app.main which imports T02's module" },
+    { "from": "T01", "to": "T05", "type": "verification", "reason": "contract consistency sweep reads T01's model and JobStore against C1/C5" },
+    { "from": "T02", "to": "T05", "type": "verification", "reason": "contract consistency sweep reads T02's worker against C3/C4" },
+    { "from": "T03", "to": "T05", "type": "verification", "reason": "contract consistency sweep reads T03's routes against C2/C6" },
+    { "from": "T04", "to": "T05", "type": "verification", "reason": "contract consistency sweep reads T04's lifecycle wiring against C3/C4/C5 recovery semantics" },
+    { "from": "T05", "to": "T06", "type": "data", "reason": "seam fixes consume T05's consistency diff report; no fix is taken before the diff exists" },
+    { "from": "T01", "to": "T07", "type": "verification", "reason": "E2E closure exercises real store behavior (state rows, recovery)" },
+    { "from": "T02", "to": "T07", "type": "verification", "reason": "E2E closure exercises real worker/retry behavior" },
+    { "from": "T03", "to": "T07", "type": "verification", "reason": "E2E closure exercises the real API endpoints" },
+    { "from": "T04", "to": "T07", "type": "verification", "reason": "E2E closure exercises real startup recovery across an app restart" },
+    { "from": "T06", "to": "T07", "type": "data", "reason": "E2E runs against the seam-wired system after T06's fixes" },
+    { "from": "T07", "to": "T08", "type": "verification", "reason": "final acceptance re-runs contract acceptance A1-A6 evidence after E2E closure is green" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02", "T03"],
+    ["T04"],
+    ["T05"],
+    ["T06"],
+    ["T07"],
+    ["T08"]
+  ],
+  "critical_path": ["T01", "T04", "T05", "T06", "T07", "T08"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T05", "seams": ["S1", "S2", "S3"], "acceptance_ref": "A2" },
+    { "gate_id": "G2", "task_id": "T06", "seams": ["S1", "S2", "S3"], "acceptance_ref": "A3" },
+    { "gate_id": "G3", "task_id": "T07", "seams": ["S1", "S2", "S3"], "acceptance_ref": "A2" },
+    { "gate_id": "G4", "task_id": "T08", "seams": ["S1", "S2", "S3"], "acceptance_ref": "A2" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C5", "unlocks": ["T02", "T03"] }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      { "from": "T03", "to": "T02", "why_not_real": "requirements doc lists the API before the worker, but T03 consumes only frozen contracts C2/C5/C6 plus a fake JobStore — no shared paths, no data flow" },
+      { "from": "T02", "to": "T01", "why_not_real": "doc order suggests store-first, but C5 is frozen so the worker's tests run against an in-memory C5 fake; no real data flow until integration" },
+      { "from": "T03", "to": "T04", "why_not_real": "doc order lists the API before recovery; neither module reads the other" }
+    ],
+    "collisions_handled": ["none — owned paths are disjoint by construction (decomposer step 4); fixture ownership shared via read-only tests/conftest.py context"],
+    "free_parallelism_trades": ["T04 serializes after both T01 and T02 (true data dependencies via app.main import); accepted 1 extra critical-path hop rather than duplicating pool wiring behind a fake"]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "planning/audit@1",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "fixture plan — clean by construction"
+  },
+  "findings": [],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "scope_creep",
+    "insufficient_non_goals",
+    "late_contract_freeze",
+    "hidden_dependency",
+    "fake_serialization",
+    "ownership_collision",
+    "oversized_leaf",
+    "broad_context_loading",
+    "hidden_integration_work",
+    "nondeterministic_acceptance",
+    "lack_of_local_recoverability",
+    "replan_only_by_append",
+    "communication_overhead"
+  ],
+  "revision_round": 1
+}

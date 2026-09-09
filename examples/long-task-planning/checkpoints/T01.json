@@ -1,0 +1,56 @@
+{
+  "schema": "planning/checkpoint@1",
+  "task_id": "T01",
+  "status": "complete",
+  "revision": {
+    "sha": "9f3c1e2",
+    "branch": "stage/report-jobs-v1",
+    "committed_at": "2026-07-24T14:20:00Z"
+  },
+  "completed": {
+    "task_id": "T01",
+    "summary": "ReportJob model, alembic migration, and JobStore (create_job/get/transition/recover_stale) implemented per C1/C5 with C3 legality enforced in transition(); 12 unit tests green against the testcontainers-Postgres fixture"
+  },
+  "contracts_satisfied": ["C1", "C5"],
+  "changed_paths": [
+    "app/db/models.py",
+    "app/services/job_store.py",
+    "alembic/versions/20260724_0001_create_report_jobs.py",
+    "tests/services/test_job_store.py"
+  ],
+  "tests": {
+    "passed": [
+      "tests/services/test_job_store.py::test_create_get",
+      "tests/services/test_job_store.py::test_transition_legal",
+      "tests/services/test_job_store.py::test_transition_rejects_illegal",
+      "tests/services/test_job_store.py::test_recover_stale",
+      "tests/services/test_job_store.py (12 passed total)"
+    ],
+    "failed": [],
+    "evidence": "pytest tests/services/test_job_store.py -q -> 12 passed in 4.1s"
+  },
+  "verified_facts": [
+    "report_jobs rows: id uuid pk, status enum queued|running|retry_wait|done|failed, attempts int 0..3, progress int 0..100, result_ref/error nullable text, created_at/updated_at timestamptz",
+    "JobStore.transition raises IllegalTransition on any C3-illegal move (asserted by test_transition_rejects_illegal); legal moves return the updated row",
+    "recover_stale(now) selects rows with status 'running' AND updated_at < now - interval '300s' (asserted by test_recover_stale); returns [] when no stale rows",
+    "migration downgrades cleanly (tested with alembic downgrade base in the test fixture)"
+  ],
+  "deviations": [
+    {
+      "planned": "required_context listed exactly 5 entries",
+      "actual": "read one extra file: alembic/env.py (header only)",
+      "why": "needed to confirm the migration env picks up new models from app.db.models without config changes"
+    }
+  ],
+  "newly_discovered_issues": [
+    {
+      "id": "N1",
+      "description": "legacy CSV export in app/api/routes/legacy.py implements a home-grown polling loop over a jobs-like table; could be a future consumer of the new store but is out of scope",
+      "classification": "B",
+      "handling": "backlog"
+    }
+  ],
+  "blockers": [],
+  "remaining_dag": ["T04", "T05", "T06", "T07", "T08"],
+  "downstream_notes": "T04 recovery: use recover_stale with now-300s semantics (the 300s constant is in C3's recovery semantics — do not re-derive it). Test db fixture is testcontainers postgres; recovery tests must use the same fixture, do not add a sqlite fallback. T02's fake must match C5 exactly, including IllegalTransition raising."
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "planning/dag@1",
+  "edges": [
+    { "from": "T01", "to": "T04", "type": "verification", "reason": "consistency sweep checks the endpoint against C1" },
+    { "from": "T04", "to": "T01", "type": "data", "reason": "PLANTED DEFECT: reverse edge forming the cycle T01 -> T04 -> T01" },
+    { "from": "T02", "to": "T04", "type": "verification", "reason": "consistency sweep checks the cache against C2" },
+    { "from": "T01", "to": "T99", "type": "data", "reason": "PLANTED DEFECT: edge to a task that no artifact defines" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02"],
+    ["T04"]
+  ],
+  "critical_path": ["T01", "T02", "T04"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T04", "seams": ["S1"], "acceptance_ref": "A1" }
+  ],
+  "unlock_contracts": [],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": ["none — PLANTED DEFECT: T01/T02 both own app/shared.py and are unordered"]
+  }
+}

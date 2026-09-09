@@ -1,0 +1,68 @@
+{
+  "schema": "planning/task-package@1",
+  "task_id": "T03",
+  "objective": "Implement FastAPI routes POST /reports and GET /reports/{job_id} with pydantic request/response schemas satisfying contracts C2 and C6, with API tests covering 202, 200-running, and 404 cases using a fake JobStore",
+  "required_context": {
+    "files": ["app/api/routes/reports.py (new)", "tests/api/test_reports.py (new)", "app/api/routes/health.py (existing pattern reference, read-only)", "app/api/deps.py (existing DI, read-only)"],
+    "contracts": ["C2", "C5", "C6"],
+    "concepts": ["FastAPI router pattern used by health.py", "pydantic v2 schemas", "TestClient without async tests"]
+  },
+  "inputs": ["frozen contracts C2/C5/C6 in stage-contract.json", "existing router pattern app/api/routes/health.py"],
+  "frozen_contracts": [
+    { "contract_id": "C2", "spec_ref": "stage-contract.json#shared_contracts[C2]" },
+    { "contract_id": "C5", "spec_ref": "stage-contract.json#shared_contracts[C5]" },
+    { "contract_id": "C6", "spec_ref": "stage-contract.json#shared_contracts[C6]" }
+  ],
+  "owned_paths": ["app/api/routes/reports.py", "tests/api/test_reports.py"],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/db/**, app/services/**, or app/main.py",
+    "Do not add auth/authorization to the new endpoints (Stage non-goal)",
+    "Do not add streaming/SSE or a job listing endpoint (Stage non-goals)",
+    "Do not refactor the legacy CSV export router (Stage non-goal)"
+  ],
+  "implementation_constraints": [
+    "No new runtime dependencies",
+    "Follow the app/api/routes/health.py router pattern and app/api/deps.py DI for the DB session",
+    "Errors use the C6 shape {error: {code, message}}; 422 for invalid body, 404 for unknown id",
+    "The route must not start the worker pool (lifespace owns that in T04); it only persists the queued row and submits to the pool if one is present"
+  ],
+  "deliverables": [
+    { "what": "FastAPI router for POST /reports and GET /reports/{job_id}", "where": "app/api/routes/reports.py" },
+    { "what": "API test suite (202 / 200-running / 404)", "where": "tests/api/test_reports.py" }
+  ],
+  "acceptance_tests": [
+    { "id": "AT-T03-1", "case": "positive", "description": "POST /reports with a valid body {input: {...}} returns 202 and the body contains job_id (uuid)", "evidence": "pytest tests/api/test_reports.py::test_submit_returns_202 asserts response.status_code == 202 and 'job_id' in body" },
+    { "id": "AT-T03-2", "case": "positive", "description": "GET /reports/{id} with a job held in status 'running' returns 200 with status 'running' and progress an integer in 0..100", "evidence": "pytest tests/api/test_reports.py::test_get_running asserts status_code == 200, status == 'running', 0 <= progress <= 100" },
+    { "id": "AT-T03-3", "case": "negative", "description": "GET /reports/{unknown} returns 404 and the body contains error.code 'not_found'", "evidence": "pytest tests/api/test_reports.py::test_get_unknown_404 asserts status_code == 404 and body error.code == 'not_found'" },
+    { "id": "AT-T03-4", "case": "failure", "description": "POST /reports with a body missing 'input' returns 422 and the body contains error.code 'invalid_body'", "evidence": "pytest tests/api/test_reports.py::test_submit_invalid_body_422 asserts status_code == 422 and error.code == 'invalid_body'" }
+  ],
+  "failure_cases": [
+    { "scenario": "malformed uuid string in the path", "expected_behavior": "404 with error.code 'not_found' (not 500)" },
+    { "scenario": "JobStore.get returns None for a well-formed uuid", "expected_behavior": "404 with error.code 'not_found'" }
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": [],
+    "consumers": ["T05", "T06", "T07", "T08"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T05", "T06", "T07", "T08"],
+    "notes": "Record the exact response field list in verified_facts — T05 diffs it against C2"
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["api"],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-50 min",
+    "p80": "50-80 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

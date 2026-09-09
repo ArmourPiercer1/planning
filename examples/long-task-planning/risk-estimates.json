@@ -1,0 +1,130 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "M",
+      "touched_layers": ["persistence"],
+      "cross_contracts": 3,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "M",
+      "touched_layers": ["service", "runtime"],
+      "cross_contracts": 3,
+      "statefulness": "high",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "45-75 min",
+      "p80": "90-120 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        { "code": "SPLIT_RECHECK_REQUIRED", "detail": "p80 upper bound (120 min) exceeds the Stage budget leaf_p80_max (90 min)", "rationale": "concurrent pool plus retry/backoff logic is the densest logic in the Stage; if execution exceeds p80, checkpoint_and_split around the retry-policy boundary" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "M",
+      "touched_layers": ["api"],
+      "cross_contracts": 3,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-50 min",
+      "p80": "50-80 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T04",
+      "context_footprint": "M",
+      "touched_layers": ["lifecycle", "service"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "45-75 min",
+      "p80": "75-110 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        { "code": "SPLIT_RECHECK_REQUIRED", "detail": "p80 upper bound (110 min) exceeds the Stage budget leaf_p80_max (90 min)", "rationale": "recovery edge cases (stale detection, retry_wait reschedule, restart ordering) are the uncertainty source; checkpoint at the 'lifespan wiring done' subgoal regardless" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T05",
+      "context_footprint": "L",
+      "touched_layers": ["service", "persistence", "api", "lifecycle"],
+      "cross_contracts": 6,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [
+        { "code": "CONTRACT_DENSITY", "detail": "consumes all 6 contracts C1-C6", "rationale": "a read-only consistency sweep is deliberately one pass — splitting per contract would re-scan the same four modules six times (context amplification)" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T06",
+      "context_footprint": "L",
+      "touched_layers": ["service", "runtime", "api", "persistence"],
+      "cross_contracts": 6,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "45-90 min",
+      "p80": "90-135 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        { "code": "SPLIT_RECHECK_REQUIRED", "detail": "fix scope is proportional to T05's diff, which is unknown before T05 runs", "rationale": "if the consistency diff is large, checkpoint_and_split per seam (S1/S2/S3) before starting fixes; owned fix rights are already per-leaf in owns_fixes_for" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T07",
+      "context_footprint": "L",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 5,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "60-90 min",
+      "p80": "90-150 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        { "code": "SPLIT_RECHECK_REQUIRED", "detail": "E2E harness setup (app restart fixture for crash recovery) dominates the estimate", "rationale": "if the crash-restart fixture proves unstable, checkpoint_and_split into per-gate subtasks (E1/E2/E3/E4 are already separate gates)" },
+        { "code": "CONTRACT_DENSITY", "detail": "verifies contracts C2-C6 end to end", "rationale": "inherent to E2E closure; it is the seam where all contracts meet" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T08",
+      "context_footprint": "L",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 6,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "20-40 min",
+      "p80": "40-60 min",
+      "compaction_risk": "low",
+      "warnings": [
+        { "code": "CONTRACT_DENSITY", "detail": "re-runs acceptance evidence A1-A6 covering C1-C6", "rationale": "final acceptance is read-only evidence collection; no implementation context is loaded" }
+      ],
+      "oversized_justification": null
+    }
+  ]
+}

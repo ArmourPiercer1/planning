@@ -1,0 +1,119 @@
+{
+  "$id": "planning/stage-contract@1",
+  "title": "Stage Contract",
+  "type": "object",
+  "required": [
+    "schema", "stage_id", "objective", "in_scope", "out_of_scope",
+    "frozen_assumptions", "frozen_architecture", "shared_contracts",
+    "integration_seams", "acceptance", "constraints", "resource_budget",
+    "allowed_replan", "open_questions"
+  ],
+  "properties": {
+    "schema": { "const": "planning/stage-contract@1" },
+    "stage_id": { "type": "string", "minLength": 1 },
+    "objective": { "type": "string", "minLength": 20 },
+    "in_scope": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "out_of_scope": {
+      "type": "array",
+      "items": { "type": "object", "required": ["item", "reason"],
+        "properties": {
+          "item": { "type": "string" },
+          "reason": { "type": "string" }
+        } },
+      "minItems": 1
+    },
+    "frozen_assumptions": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "statement", "rationale"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^A-[A-Z0-9-]+$" },
+          "statement": { "type": "string" },
+          "rationale": { "type": "string" }
+        } }
+    },
+    "frozen_architecture": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "decision", "rationale", "seams_affected"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^DA-[A-Z0-9-]+$" },
+          "decision": { "type": "string" },
+          "rationale": { "type": "string" },
+          "seams_affected": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]+$" } }
+        } }
+    },
+    "shared_contracts": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "kind", "spec", "owned_by", "frozen"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^C[0-9]+$" },
+          "kind": { "enum": ["api", "schema", "state", "service", "data"] },
+          "spec": { "type": "string", "minLength": 10 },
+          "owned_by": { "type": "string" },
+          "frozen": { "enum": [true, false] },
+          "unfreeze_rule": { "type": "string" }
+        } },
+      "minItems": 1
+    },
+    "integration_seams": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "description", "participants", "contract_ids"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^S[0-9]+$" },
+          "description": { "type": "string" },
+          "participants": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+          "contract_ids": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" }, "minItems": 1 }
+        } },
+      "minItems": 1
+    },
+    "acceptance": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "description", "positive_case", "negative_case", "failure_behavior", "evidence"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^A[0-9]+$" },
+          "description": { "type": "string", "minLength": 10 },
+          "positive_case": { "type": "string" },
+          "negative_case": { "type": "string" },
+          "failure_behavior": { "type": "string" },
+          "evidence": { "type": "string", "minLength": 5 }
+        } },
+      "minItems": 1
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "object", "required": ["kind", "rule"],
+        "properties": {
+          "kind": { "enum": ["dependency", "resource", "style", "performance", "process"] },
+          "rule": { "type": "string" }
+        } }
+    },
+    "resource_budget": {
+      "type": "object",
+      "required": ["leaf_p50", "leaf_p80_max", "max_compactions_per_leaf", "stage_estimate"],
+      "properties": {
+        "leaf_p50": { "type": "string" },
+        "leaf_p80_max": { "type": "string" },
+        "max_compactions_per_leaf": { "type": "integer", "minimum": 1 },
+        "stage_estimate": { "type": "string" }
+      }
+    },
+    "allowed_replan": {
+      "type": "array",
+      "items": {
+        "enum": ["split", "merge", "reorder", "change_dependency", "defer",
+                 "reduce_scope", "replace_route", "checkpoint_and_split", "request_contract_revision"]
+      },
+      "minItems": 1
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "question", "blocking", "owner", "resolution"],
+        "properties": {
+          "id": { "type": "string" },
+          "question": { "type": "string" },
+          "blocking": { "type": "boolean" },
+          "owner": { "enum": ["user", "planner"] },
+          "resolution": { "type": "string" }
+        } }
+    }
+  }
+}

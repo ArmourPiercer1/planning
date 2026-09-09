@@ -1,0 +1,38 @@
+{
+  "$id": "planning/replan-request@1",
+  "title": "Replan request (interface reserved in V1; only legal actions allowed)",
+  "type": "object",
+  "required": ["schema", "trigger", "proposed_actions", "append_only_rejected", "status"],
+  "properties": {
+    "schema": { "const": "planning/replan-request@1" },
+    "trigger": {
+      "type": "object",
+      "required": ["kind", "evidence", "source"],
+      "properties": {
+        "kind": { "enum": ["unhealthy_run", "blocker", "gate_failure", "contract_error"] },
+        "evidence": { "type": "string" },
+        "source": { "enum": ["checkpoint", "audit", "execution", "integration"] }
+      }
+    },
+    "proposed_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["action", "target_task", "detail", "scope_delta"],
+        "properties": {
+          "action": {
+            "enum": ["split", "merge", "reorder", "change_dependency", "defer",
+                     "reduce_scope", "replace_route", "checkpoint_and_split", "request_contract_revision"]
+          },
+          "target_task": { "type": "string" },
+          "detail": { "type": "string" },
+          "scope_delta": { "enum": ["none", "reduced", "expanded_needs_user_approval"] }
+        }
+      }
+    },
+    "append_only_rejected": { "type": "boolean" },
+    "status": { "enum": ["proposed", "approved", "rejected"] },
+    "planner_ack": { "type": ["string", "null"] }
+  }
+}
