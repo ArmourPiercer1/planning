@@ -1,0 +1,44 @@
+{
+  "$id": "planning/run-manifest@1",
+  "title": "Planning run manifest (pipeline + gate log; attribution source for evals)",
+  "type": "object",
+  "required": ["schema", "plan_id", "stage_id", "created_at", "pipeline", "gates", "audit_verdict"],
+  "properties": {
+    "schema": { "const": "planning/run-manifest@1" },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "stage_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "skill_versions": { "type": "array", "items": { "type": "string" } },
+    "pipeline": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["stage", "status", "gate", "artifact"],
+        "properties": {
+          "stage": { "type": "string" },
+          "status": { "enum": ["done", "failed", "skipped"] },
+          "gate": { "type": "string" },
+          "artifact": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "fallbacks": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "exit_code"],
+        "properties": {
+          "name": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "ts": { "type": "string" }
+        }
+      }
+    },
+    "audit_verdict": { "enum": ["PASS", "FAIL", "not_run"] },
+    "audit_rounds": { "type": "integer", "minimum": 0 },
+    "notes": { "type": "string" }
+  }
+}

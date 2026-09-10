@@ -1,5 +1,5 @@
 {
-  "schema": "planning/stage-contract@2",
+  "schema": "planning/stage-contract@3",
   "stage_id": "planning-v1.1-governance-horizon",
   "objective": "Upgrade Planning Skills v1.0 to v1.1: add planning governance (budget, governor, finding taxonomy, delivery profile) and horizon awareness (commitment/detailed/forecast, stage boundary, next-planning trigger, checkpoint drift) without replacing the existing 8-stage pipeline",
   "in_scope": [
@@ -201,5 +201,23 @@
     { "id": "Q1", "question": "Should replan-controller be subsumed by planning-governor or kept as a separate skill with a clear boundary?", "blocking": false, "owner": "planner", "resolution": "DA-1 decides: subsume. replan-controller becomes a skill alias that delegates to planning-governor. No separate implementation." },
     { "id": "Q2", "question": "Should delivery profile default assurance table be in stage-contract SKILL.md or a separate reference doc?", "blocking": false, "owner": "planner", "resolution": "In stage-contract SKILL.md as a table. Separate reference doc can be created later if it grows." },
     { "id": "Q3", "question": "Should the governor_decision be a separate artifact or embedded in audit.json?", "blocking": false, "owner": "planner", "resolution": "Separate artifact: governor_decision.json. Keeps the audit output focused on findings; governor output is a decision on top of findings." }
-  ]
+  ],
+  "delivery_profile": { "level": "alpha" },
+  "planning_budget": { "max_full_audits": 2, "max_plan_revisions": 3, "max_planning_subagents": 8 },
+  "horizons": {
+    "commitment": { "tasks": ["T01"] },
+    "detailed_stage": { "objective": "Planning Skills v1.1 governance and horizon awareness implementation", "tasks": ["T01","T02","T03","T04","T05","T06","T07"] },
+    "forecast": { "stages": [{ "objective": "Probe validation of v1.1 behavior (P1-P6)", "depends_on_evidence": ["C1 candidate frozen", "governor control-flow verified by deterministic checks"] }] }
+  },
+  "stage_boundary": {
+    "stop_after": ["T07"],
+    "because": "v1.1 skill/schemas/fixtures are all in place and deterministic checks verify the contract chain; behavior-level validation (probes) is the next stage, not this one",
+    "expected_new_evidence": ["probe scores for P1-P6"],
+    "decisions_deferred_until_then": ["v1.2 skill iteration vs runtime compatibility route"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified", "core_seam_blocker"],
+    "not_triggers": ["first_worker_failure", "optional_bug"]
+  }
 }

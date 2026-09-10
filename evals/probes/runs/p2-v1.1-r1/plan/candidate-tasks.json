@@ -1,0 +1,37 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Run the bounded probe (30-60 min cap): enumerate ALL external readers of config.json by grepping the repo for references to 'config.json', inspecting CI config and deploy scripts, and reading the deploy runbook where present; record the complete reader list (each reader with location + evidence) and a route A vs B recommendation as a plan artifact.",
+      "required_context": {
+        "files": ["README.md", "deploy/"],
+        "contracts": ["C2"],
+        "concepts": ["grep-based reference inventory", "route A (keep JSON export mirror) vs route B (full cutover) decision criteria from the task input", "required config keys (C2) that each reader may depend on"]
+      },
+      "owned_paths": ["evals/probes/runs/p2-v1.1-r1/plan/spike-reader-inventory.md"],
+      "forbidden_scope": ["app/ (read-only for the spike — no code changes)", "modifying deploy/check.sh or any script", "adding dependencies, code, or config keys"],
+      "touched_layers": ["tooling", "docs"],
+      "inputs": ["repo-wide grep results for 'config.json'", "deploy/check.sh contents", "README.md layout + open-question notes", "task input (route A/B definitions)"],
+      "outputs": ["spike-reader-inventory.md: complete reader list with per-reader evidence + explicit route recommendation with reasoning"],
+      "downstream_consumers": [],
+      "split_rationale": "evidence-gathering closure: grep + script/runbook reads with no code context shared with the store implementation; separate so the route decision rests on evidence, not implementer assumption, and it has a hard 30-60 min boundary"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement YamlConfigStore in app/yaml_store.py satisfying the frozen C1 store interface (get/set/save/as_dict, REQUIRED_KEYS, ConfigError on missing file) over a vendored YAML-subset parser (flat dict of scalars, stdlib only), and prove full behavioral parity with JsonConfigStore via a parity test matrix in tests/test_yaml_store.py; loader.py and cli.py stay on JSON (DA-1).",
+      "required_context": {
+        "files": ["app/config_store.py", "app/loader.py", "tests/test_config.py", "app/yaml_store.py (new)", "tests/test_yaml_store.py (new)"],
+        "contracts": ["C1", "C2"],
+        "concepts": ["YAML-subset parse/serialize for flat scalar maps", "interface parity testing against a reference implementation"]
+      },
+      "owned_paths": ["app/yaml_store.py", "tests/test_yaml_store.py"],
+      "forbidden_scope": ["app/config_store.py (read-only reference implementation)", "app/loader.py and app/cli.py (DA-1: unwired in this stage)", "deploy/ (spike territory; route stage)", "config.json itself (live data file)"],
+      "touched_layers": ["service", "e2e"],
+      "inputs": ["C1 store interface spec", "C2 data shape", "JsonConfigStore reference implementation", "existing test matrix (tests/test_config.py)"],
+      "outputs": ["app/yaml_store.py", "tests/test_yaml_store.py (parity matrix mirroring tests/test_config.py)"],
+      "downstream_consumers": [],
+      "split_rationale": "store implementation + its parity suite is one closure: both share the C1 interface, the config_store.py reference, and the test matrix; splitting implementation from tests would make both agents re-learn the same interface (pure context amplification), and the work stays within two layers with no stable seam to cut"
+    }
+  ]
+}

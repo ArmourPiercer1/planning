@@ -1,0 +1,25 @@
+{
+  "schema": "planning/stage-checkpoint@1",
+  "stage_id": "v11-plan",
+  "status": "complete",
+  "completed_tasks": ["T01", "T02", "T03"],
+  "satisfied_contracts": ["C1", "C2"],
+  "falsified_assumptions": [],
+  "scope_drift": {
+    "requirements_removed": [],
+    "scope_added": [],
+    "frozen_decisions_changed": [],
+    "acceptance_changed": [],
+    "budget_envelope_changed": false
+  },
+  "acceptance_status": {
+    "met": ["A1", "A2"],
+    "unmet": [],
+    "deferred": []
+  },
+  "next_stage_inputs": [
+    { "input": "caching policy tuning depends on load evidence", "artifact": "stage-checkpoint.json" }
+  ],
+  "stop_reason": "integration gate T03 closed seam S1; feature verifiable end to end",
+  "downstream_notes": "cache invalidation strategy deferred to next stage"
+}

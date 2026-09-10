@@ -1,0 +1,105 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T05",
+  "objective": "Wire seams S1 (API<->JobStore) and S2 (Worker<->PdfExportService) by running the full import chain end-to-end: verify that app/api.py handlers can import and call JobStore from app/services/jobstore.py, and that the worker thread can import and call PdfExportService from app/services/pdf_export.py; fix any seam defects in T01/T02/T03 code",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/services/jobstore.py",
+      "app/services/pdf_export.py",
+      "app/services/i18n.py",
+      "app/services/pdflib_shim.py",
+      "app/queries.py"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": ["import chain: api -> jobstore -> pdf_export -> i18n -> pdflib_shim", "seam S1: API creates/reads jobs via JobStore", "seam S2: worker calls PdfExportService.export_pdf"]
+  },
+  "inputs": ["C1/C2/C3 specs (inlined below)", "Checkpoint outputs from T01, T02, T03, T04"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:b68311094451d4abf959c3ad0bab29255d180763d06e4b3e495a59e4b9ac8211"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a92f1005d7e84f03c1aab8342660945187f692e0ee6ba22729b36ca663aaa3d7"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf: body {lang: str (optional, default 'en')} -> 202 {job_id: str}. 404 if report_id unknown. 400 if lang not in {en, de}. GET /jobs/{id} -> 200 {job_id, status, result_available: bool, error: str|None}. 404 if job unknown. GET /jobs/{id}/download -> 200 (application/pdf bytes) if done, 409 if not done, 404 if unknown.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:36ea071992fcc9d6e89a3e77b99ab3bce11ae959a92e4c50dd922efd6fbf839e"
+    }
+  ],
+  "owned_paths": [
+    "checkpoints/T05.json"
+  ],
+  "allowed_dependencies": [
+    {"task_id": "T01", "what": "JobStore code (may patch for seam defects)"},
+    {"task_id": "T02", "what": "PdfExportService code (may patch for seam defects)"},
+    {"task_id": "T03", "what": "API handler code (may patch for seam defects)"}
+  ],
+  "non_goals": [
+    "Do not add new features or endpoints",
+    "Do not refactor beyond seam fixes",
+    "Do not modify app/queries.py, app/models.py, or app/services/export.py"
+  ],
+  "implementation_constraints": [
+    "Fix ownership: may only patch files owned by T01, T02, T03 for seam defects",
+    "Verify import chain works: from app.api import handle_export_pdf; from app.services.jobstore import JobStore; from app.services.pdf_export import PdfExportService",
+    "Run existing tests to confirm no regression after fixes",
+    "Record all fixes in checkpoint with file:line and description"
+  ],
+  "deliverables": [
+    {"what": "Seam integration checkpoint with fix list", "where": "checkpoints/T05.json"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT15",
+      "case": "positive",
+      "description": "All imports in the chain resolve: api -> jobstore -> pdf_export -> i18n -> pdflib_shim",
+      "evidence": "python -c 'from app.api import handle_export_pdf, handle_get_job, handle_download_job' succeeds"
+    },
+    {
+      "id": "AT16",
+      "case": "positive",
+      "description": "All existing tests (test_export.py, test_jobstore.py, test_pdf_export.py, test_api_pdf.py) pass after seam fixes",
+      "evidence": "pytest tests/ -> all passed"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "Import cycle between jobstore and pdf_export", "expected_behavior": "Restructure imports to break the cycle; record the fix"},
+    {"scenario": "Method signature mismatch at seam (e.g., worker calls export_pdf with wrong args)", "expected_behavior": "Fix the calling code to match the frozen contract; record the fix"}
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T01", "T02", "T03", "T04"],
+    "consumers": ["T06"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T05.json",
+    "downstream_consumers": ["T06"],
+    "notes": "T05 owns fixes for seam defects in T01/T02/T03 code. If T04 found mismatches, T05 fixes them. Checkpoint should list all fixes made and confirm all imports resolve."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["api", "runtime", "service"],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "15-30 min",
+    "p80": "30-60 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

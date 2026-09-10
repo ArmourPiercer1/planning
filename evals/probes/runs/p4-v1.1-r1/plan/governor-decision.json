@@ -1,0 +1,40 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "HUMAN_BLOCKER",
+  "blocking_findings": [
+    {
+      "finding_id": "F01",
+      "routing": "EXECUTION_BLOCKER",
+      "original_severity": "BLOCKER",
+      "why_execution_blocker": "Requirement 1 (full history, verifiable end-to-end at any time, any truncation/rewrite breaks it) is structurally unmet under the frozen single-store 1024-slot overwriting RingBuffer — grounded in app/storage.py, tests/test_events.py::test_ring_overwrites_oldest, and the README platform constraint, and restated in input.md. The plan substituted the weaker windowed reading as frozen acceptance A1/A2 and frozen assumption A-CHAIN-WINDOW before its owner (user) decided, with blocking=false. This meets the EXECUTION_BLOCKER criterion 'requires the user to re-decide product semantics' and cites the specific acceptance A1. TARGETED_PATCH is not available for F01: none of the three resolution paths in OQ1 (accept windowed semantics in writing / confirm literal reading is mandatory -> request_contract_revision re-scope / reduce requirement 1) is specific, local, and a known fix — all are user- or contract-level decisions."
+    },
+    {
+      "finding_id": "F02",
+      "routing": "EXECUTION_BLOCKER",
+      "original_severity": "MAJOR",
+      "why_execution_blocker": "C1 (frozen in stage-contract.json and inlined into all three task packages) fixes the hash input to {id, prev_entry_hash}, while A1/A2 negative cases, T01's AT-01-2, and integration gate E3 require payload-rewrite detection — unsatisfiable by any C1-conformant implementation (a payload rewrite that keeps id and prev_entry_hash changes no stored hash and no link). Continuing would cause core acceptance failure at T01, the stage's first task, against its own frozen contract. The fix is specific, local, and known (include the canonicalized payload in the hash input; propagate to C1, T01 constraint/AT, A1/A2 wording), but it amends a FROZEN contract and its A1/A2 wording depends on the user's F01 answer, so it rides this escalation and the single subsequent patch/re-audit cycle rather than a standalone TARGETED_PATCH (decision rule 1 fires first; TARGETED_PATCH is unavailable while an EXECUTION_BLOCKER finding exists)."
+    }
+  ],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F03",
+      "routing": "OPTIONAL",
+      "reason": "Stale style-constraint line ('new tests go in tests/test_audit.py') vs the three-file test split used consistently across acceptance evidence and task owned_paths (test_audit_core.py / test_audit.py / test_audit_boundary.py). Mechanical one-line correction folded into the same patch round as F02; no separate scheduling."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 0,
+    "full_audits": 1,
+    "subagents": 1,
+    "wall_time": null,
+    "tokens": null
+  },
+  "forbidden_actions": [
+    "dispatch_execution (no execution of T01-T03 until the user answers the escalation question below)",
+    "apply any plan revision (including the F02/F03 patch) before the user's full-history-vs-windowed semantics decision is recorded — A1/A2 wording depends on it",
+    "launch another full audit before a revision incorporating the user's decision — the remaining 1/2 audit budget is reserved for the post-patch re-audit",
+    "replace the auditor for the revision re-audit — the re-audit must use the SAME auditor with revision_round 2 (a fresh planning reviewer for a targeted patch is forbidden by the governor skill)"
+  ],
+  "reason": "Decision rule 1 fires: an EXECUTION_BLOCKER finding exists, so the action is HUMAN_BLOCKER. F01 is a user product-semantics decision — no bounded executable probe (60-90 min) can answer whether compliance accepts windowed chain semantics under the fixed platform constraint; the feasibility fact itself is already grounded by the auditor, only the semantics choice remains (ARCHITECTURE_DECISION, semantic -> escalate to Human per the uncertainty table). F02 is routed EXECUTION_BLOCKER (core acceptance A1 unsatisfiable under frozen C1 at the stage's first task) and, per the audit's suggested framing, rides this same escalation: one user decision, then one patch round (F02 hash-input amendment + F03 constraint line via request_contract_revision), then one bounded re-audit by the same auditor (revision_round 2) and a return to the governor. No SPIKE_REQUIRED findings exist — spikes is empty by classification, not by omission. Budget: 1/2 full audits used (1 reserved for the post-patch re-audit), 0/3 plan revisions used (1 will be consumed by the patch round), 1/5 planning subagents (the independent auditor is tracked in run-manifest audit_rounds=1, not as a planning subagent) — within limits, no budget-forced escalation. Schedule (step 5): aggregate P80 ~5.5h vs stage estimate 0.5-1 dev-day — not a factor in the block. USER QUESTION (owner: user/compliance — only this party can answer): TASK.md requirement 1 demands 'the full history forms a verifiable chain ... verifiable end-to-end at any time (any truncation or rewrite breaks it)'; the platform constraint (README, fixed this release cycle) allows exactly one 1024-slot overwriting RingBuffer and no second store, so a full-history chain cannot be held and an unanchored chain cannot detect tail truncation or head re-anchoring. Decision required, one of: (a) EXPLICITLY ACCEPT windowed semantics — the chain verifies anchored at GENESIS until the first wrap, then reports unanchored_head while all links among surviving entries still detect rewrites and mid-truncation (acceptance A1/A2 stand as the approved re-scoped acceptance, and the deviation from requirement 1 is recorded); or (b) CONFIRM the literal full-history/any-truncation reading is mandatory — in which case the stage is infeasible under the frozen platform constraint and must be re-scoped via request_contract_revision (relax the single-store constraint, allow an externally anchored root, or reduce requirement 1) before any execution. After (a): the patch round applies the F02 amendment (entry_hash over canonicalized {id, prev_entry_hash, payload}) + F03 line fix, the same auditor re-audits (round 2), and execution dispatches if the verdict clears. After (b): no execution under the current contract; a contract-level re-plan begins."
+}

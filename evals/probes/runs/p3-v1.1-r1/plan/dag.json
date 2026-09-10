@@ -1,0 +1,86 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T02",
+      "type": "data",
+      "reason": "T02's production code imports app/rotation.py and its wiring tests (A1, A2) execute the real rotation functions created by T01 — a concrete file dependency, not just a contract read, so T02 runs after T01."
+    },
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 exists to verify T01 end-to-end: its e2e scenarios drive the rotation module's C1/C3 behavior (naming, retention, compression) through LogWriter and assert the observable file layout."
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 exists to verify T02: its e2e runs serve() plus the unmodified pre-existing tests against the LogWriter wiring, and it owns seam-defect fixes inside T02's owned files (owns_fixes_for)."
+    }
+  ],
+  "parallel_groups": [
+    ["T01"],
+    ["T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T01", "T02", "T03"],
+  "integration_gates": [
+    {
+      "gate_id": "G1",
+      "task_id": "T03",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A6"
+    }
+  ],
+  "unlock_contracts": [],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T02",
+        "to": "T01",
+        "why_not_real": "Task statement lists rotation, then retention, then compression as separate bullets; a naive reading could order the wiring (T02) before or alongside the module (T01) by doc order. All three bullets live inside one closure, T01 — no task edge is created from bullet order. The only real leaf edge is T01→T02 (data): T02 imports T01's module in production code, and coding against a test fake would leave T02 unrunnable until T01 lands anyway, for a leaf small enough that the parallelism gain is negative."
+      }
+    ],
+    "collisions_handled": [
+      "app/logger.py is a known shared file (snapshot known_shared_files): assigned to exactly one owner, T02; T01's forbidden_scope names it and C1 forbids the rotation module importing it, so no ownership collision exists."
+    ],
+    "free_parallelism_trades": [
+      "T02 could in principle run in parallel against frozen C1 with a monkeypatched rotation module, but T02's production import and its A1/A2 wiring tests need the real module; serializing one ~30-60 min leaf to keep the tests honest is the cheaper trade for a 2-leaf plan.",
+      "T03 is alone in its group (last): it consumes both leaves' outputs; adding it to an earlier group would violate the verification ordering."
+    ]
+  },
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T01",
+      "consumer_tasks": ["T02", "T03"],
+      "rationale": "T01 owns app/rotation.py, the file that defines the C1 interface (service layer per snapshot); T02 imports it for the LogWriter hooks and T03's e2e exercises it through LogWriter."
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T02",
+      "consumer_tasks": ["T03"],
+      "rationale": "C2 is the invariant LogWriter interface; T02 owns app/logger.py and must keep the interface unchanged while adding hooks; T03's e2e runs serve() and the pre-existing unmodified tests against it."
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T01",
+      "consumer_tasks": ["T02", "T03"],
+      "rationale": "The naming/retention/compression policy (C3) is implemented in app/rotation.py by T01; T02's hooks must honor it when calling rotate/apply_retention and T03 asserts its observable file layout end-to-end."
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "S1 is LogWriter ↔ rotation module: T01 owns the module side (app/rotation.py) and T02 owns the writer side (app/logger.py trigger points in __init__ and append); T03 verifies the seam end-to-end and owns seam-defect fixes for both."
+    },
+    {
+      "seam_id": "S2",
+      "participant_tasks": ["T02", "T03"],
+      "rationale": "S2 is LogWriter ↔ consumers: T02 maintains the invariant interface consumed by the unmodified serve loop (lifecycle side, app/server.py stays untouched) and T03 exercises it through serve() plus the unmodified pre-existing tests (e2e side)."
+    }
+  ]
+}

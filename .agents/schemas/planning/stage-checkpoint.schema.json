@@ -1,0 +1,82 @@
+{
+  "$id": "planning/stage-checkpoint@1",
+  "title": "Stage completion checkpoint — the thin planner handoff for the NEXT stage. NOT a replacement for task-level checkpoints (planning/checkpoint@2); it compresses what the next planner must know.",
+  "type": "object",
+  "required": [
+    "schema", "stage_id", "status", "completed_tasks", "satisfied_contracts",
+    "falsified_assumptions", "scope_drift", "acceptance_status",
+    "next_stage_inputs", "stop_reason", "downstream_notes"
+  ],
+  "properties": {
+    "schema": { "const": "planning/stage-checkpoint@1" },
+    "stage_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["complete", "partial", "blocked", "replan_required"] },
+    "revision": {
+      "type": "object",
+      "properties": {
+        "sha": { "type": "string" },
+        "branch": { "type": "string" },
+        "committed_at": { "type": "string" }
+      }
+    },
+    "completed_tasks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+    "satisfied_contracts": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" } },
+    "verified_assumptions": { "type": "array", "items": { "type": "string" } },
+    "falsified_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["assumption_id", "evidence", "implication"],
+        "properties": {
+          "assumption_id": { "type": "string" },
+          "evidence": { "type": "string" },
+          "implication": { "type": "string" }
+        }
+      }
+    },
+    "scope_drift": {
+      "type": "object",
+      "properties": {
+        "requirements_removed": { "type": "array", "items": { "type": "string" } },
+        "scope_added": { "type": "array", "items": { "type": "string" } },
+        "frozen_decisions_changed": { "type": "array", "items": { "type": "string" } },
+        "acceptance_changed": { "type": "array", "items": { "type": "string" } },
+        "budget_envelope_changed": { "type": "boolean" }
+      }
+    },
+    "acceptance_status": {
+      "type": "object",
+      "required": ["met", "unmet", "deferred"],
+      "properties": {
+        "met": { "type": "array", "items": { "type": "string" } },
+        "unmet": { "type": "array", "items": { "type": "string" } },
+        "deferred": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "new_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact", "source"],
+        "properties": {
+          "fact": { "type": "string" },
+          "source": { "type": "string" }
+        }
+      }
+    },
+    "next_stage_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["input", "artifact"],
+        "properties": {
+          "input": { "type": "string" },
+          "artifact": { "type": "string" }
+        }
+      }
+    },
+    "remaining_objective": { "type": "string" },
+    "stop_reason": { "type": "string", "minLength": 10 },
+    "downstream_notes": { "type": "string" }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T04",
+  "objective": "Perform a read-only contract consistency check: diff the actual implementations in jobstore.py, pdf_export.py, and api.py against the frozen C1/C2/C3 specs, producing a pass/fail report per contract with any mismatches listed; no code changes",
+  "required_context": {
+    "files": [
+      "app/services/jobstore.py",
+      "app/services/pdf_export.py",
+      "app/services/i18n.py",
+      "app/api.py",
+      "app/queries.py"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": ["frozen contract specs (inlined below)", "method signature matching", "state transition validation", "HTTP status code matching"]
+  },
+  "inputs": ["C1/C2/C3 specs (inlined below)", "Checkpoint outputs from T01, T02, T03"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:b68311094451d4abf959c3ad0bab29255d180763d06e4b3e495a59e4b9ac8211"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a92f1005d7e84f03c1aab8342660945187f692e0ee6ba22729b36ca663aaa3d7"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf: body {lang: str (optional, default 'en')} -> 202 {job_id: str}. 404 if report_id unknown. 400 if lang not in {en, de}. GET /jobs/{id} -> 200 {job_id, status, result_available: bool, error: str|None}. 404 if job unknown. GET /jobs/{id}/download -> 200 (application/pdf bytes) if done, 409 if not done, 404 if unknown.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:36ea071992fcc9d6e89a3e77b99ab3bce11ae959a92e4c50dd922efd6fbf839e"
+    }
+  ],
+  "owned_paths": [
+    "checkpoints/T04.json"
+  ],
+  "allowed_dependencies": [
+    {"task_id": "T01", "what": "JobStore implementation to check against C1"},
+    {"task_id": "T02", "what": "PdfExportService implementation to check against C2"},
+    {"task_id": "T03", "what": "API handler implementations to check against C3"}
+  ],
+  "non_goals": [
+    "Do not modify any source files — this is a read-only check",
+    "Do not fix mismatches — record them in the checkpoint for T05 to address",
+    "Do not add new tests — this task produces a report, not code"
+  ],
+  "implementation_constraints": [
+    "Read-only: no file writes outside the checkpoint",
+    "Check method signatures, return types, exception types, and status codes against the frozen specs",
+    "Report format: per contract, list PASS or list of mismatches with file:line references"
+  ],
+  "deliverables": [
+    {"what": "Contract consistency report (checkpoint)", "where": "checkpoints/T04.json"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT14",
+      "case": "positive",
+      "description": "All three contracts (C1, C2, C3) pass the consistency check with no mismatches",
+      "evidence": "checkpoints/T04.json contains all_contracts_pass: true"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "Method signature differs from frozen spec", "expected_behavior": "Record mismatch with file:line and the expected vs actual signature in the checkpoint"},
+    {"scenario": "Status code differs from C3 spec", "expected_behavior": "Record mismatch with the actual and expected status codes"}
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T01", "T02", "T03"],
+    "consumers": ["T06"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": ["T05", "T06"],
+    "notes": "If mismatches are found, T05 must fix them before E2E gates run. The checkpoint should include per-contract pass/fail and mismatch details."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["runtime", "service", "api"],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "15-30 min",
+    "p80": "30-45 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement app/jobs.py (in-memory JobStore with the exact C2 record shape, including customer_id, and the JobStore API) and app/services/worker.py (a single worker loop that takes next_queued jobs, marks them running, calls the injected renderer with (job.customer_id, job.lang) per C3, and marks done/failed), with unit tests driving both against a stub renderer.",
+  "required_context": {
+    "files": [],
+    "contracts": [
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "job state machine queued->running->done|failed",
+      "in-process background thread (daemon) over an in-memory queue",
+      "deterministic testing of a worker loop (injectable renderer + explicit step for tests)"
+    ]
+  },
+  "inputs": [
+    "frozen contract C2 (job record + JobStore API, this task owns it)",
+    "frozen contract C3 (renderer signature, consumed as a stub)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:7be93ba195cca2c1715deba19d73ea11d18bd7a596a98541877236c3e67a0793"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "render_report_pdf(customer_id: str, lang: str) -> bytes — renders one PDF page per report of the customer, fetching report data exclusively via app/queries.py, labels from the C4 label tables for the given lang; returns a non-empty byte string starting with b'%PDF'.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f61551c901bb7c83ce338b454792d331dbc85033ecbc9454e9878b2e6d210451"
+    }
+  ],
+  "owned_paths": [
+    "app/jobs.py",
+    "app/services/worker.py",
+    "tests/test_jobs.py",
+    "tests/test_worker.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no API handlers (T04)",
+    "no PDF rendering (T03)",
+    "no disk persistence for jobs (in-memory only, per A-IN-PROCESS)",
+    "no external queue libraries"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only",
+    "JobStore API must match C2 verbatim: create(customer_id, report_id, lang) -> job_id; get/mark_running/mark_done/mark_failed/next_queued",
+    "worker catches ANY exception from the renderer and converts it to mark_failed(str(exc)) — the thread must never die silently",
+    "worker must expose a deterministic entry point for tests (e.g. step_once()) so tests never sleep on real threads",
+    "job ids follow 'j<n>' with a monotonically increasing counter"
+  ],
+  "deliverables": [
+    {
+      "what": "in-memory job store",
+      "where": "app/jobs.py"
+    },
+    {
+      "what": "worker loop",
+      "where": "app/services/worker.py"
+    },
+    {
+      "what": "unit tests",
+      "where": "tests/test_jobs.py, tests/test_worker.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "create('c1', 'r1', 'en') returns 'j1'; the job record has customer_id 'c1', status 'queued', lang and created_at set; next_queued returns it; mark_done stores pdf_ref and status 'done'",
+      "evidence": "python -m unittest tests.test_jobs.TestStore.test_lifecycle -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "failure",
+      "description": "renderer stub raising RuntimeError('boom') -> the worker marks the job status 'failed' with error 'boom'; the job remains retrievable; the worker survives and processes the next queued job",
+      "evidence": "python -m unittest tests.test_worker.TestWorker.test_renderer_failure -> test passes"
+    },
+    {
+      "id": "AT03",
+      "case": "positive",
+      "description": "full step with stub renderer: queued -> running -> done, the stub received (job.customer_id, job.lang) exactly as recorded in the job record, pdf_ref = the stub's returned token",
+      "evidence": "python -m unittest tests.test_worker.TestWorker.test_happy_step -> test passes"
+    },
+    {
+      "id": "AT04",
+      "case": "negative",
+      "description": "get(unknown) returns None; mark_running on unknown id raises KeyError; next_queued on empty store returns None",
+      "evidence": "python -m unittest tests.test_jobs.TestStore.test_unknown_and_empty -> test passes"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "renderer raises",
+      "expected_behavior": "the job record is marked status 'failed' with the exception text; the worker continues with the next job"
+    },
+    {
+      "scenario": "queue empty",
+      "expected_behavior": "next_queued returns None; the worker idles (or stops its loop) without error"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T04",
+      "T05",
+      "T06",
+      "T07"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T04",
+      "T05",
+      "T06",
+      "T07"
+    ],
+    "notes": "step_once() is the test seam; the real thread loop wraps it. T04 codes against the C2 spec only (stub store) — do not import app/jobs.py in T04 tests."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "runtime"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "medium",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

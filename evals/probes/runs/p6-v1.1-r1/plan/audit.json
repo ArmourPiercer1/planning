@@ -1,0 +1,86 @@
+{
+  "schema": "planning/audit@3",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Isolated re-audit (revision_round 2) replacing the round-1 audit. The round-1 audit was a same_session_late_pass run inside the planner conversation and self-certified planner_conversation_isolated=true; an in-conversation audit cannot self-certify isolation, and the plan-auditor skill's independence requirement does not permit it — the round-1 record is superseded as invalid for that reason. This pass ran as a fresh subagent that never saw the planning conversation; inputs were the plan directory (artifacts only), the stage-0 snapshot, read-only spot checks of snapshot-listed files, the stage-1 frozen baseline named by the task as the baseline, and the README platform note the plan's A-2 rationale cites. Every check below was performed from the artifacts; no planner-conversation reasoning was available to reuse."
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/api.py",
+      "app/store.py",
+      "app/webhooks.py",
+      "tests/test_api.py",
+      "stage-1/stage-contract.json",
+      "stage-1/stage-checkpoint.json",
+      "README.md"
+    ],
+    "notes": "Frozen-item drift judgment (this probe's core question): (1) C1 carry-forward — the stage-2 C1 spec is RAW byte-identical to the stage-1 C1 spec (programmatic comparison, not strip-only), with identical unfreeze_rule and logical_owner: the frozen GET /todos API shape is unchanged, no silent drift. (2) C2 carry-forward — the stage-2 C2 is a pure additive: ', webhook_url?: string' inserted after 'tag?: string' with existing keys and their order preserved, plus an in-writing proposal note recorded in the spec per C2's unfreeze rule ('additive-only until stage 2 proposes otherwise in writing'); last_notified_at deliberately NOT added. (3) The product ticket note (last_notified_at in GET /todos) is NOT absorbed: out_of_scope with rule-based reason (a ticket note is input to a formal contract change request, not the request itself C1's unfreeze rule requires), recorded as non-blocking open question Q1 (owner: user), with a conditional forecast stage that depends on the Q1 decision and a C1 revision — matching the README platform note ('any change to a frozen item is drift and must be surfaced, not absorbed silently') and the stage-1 checkpoint's downstream_notes. (4) app/webhooks.py: WebhookDispatcher.send appends to WebhookLog.sent and returns 200, never raises by design — A-2 is a verified repo fact, and the reuse constraint (no new HTTP client/worker/queue) is feasible without modifying the dispatcher. (5) tests/test_api.py::test_create_and_list_shape asserts the exact per-todo key set {id,title,done} — the C1 canary named in A4 exists in the frozen suite. (6) mark_done (app/api.py) re-applies done=true and returns 200 even for an already-done todo (idempotent) — the repo basis for finding F01. (7) stage-1 out-of-scope items (multi-user auth, bulk operations) are carried into stage-2 out_of_scope, and the stage-1 forecast objective ('stage 2: notifications on completion') is met by the stage-2 objective. (8) Inlined frozen contracts: all 7 inlined specs in tasks/T01.json, T02.json, T03.json match the current stage-contract specs byte-for-byte and by sha256 source_hash (programmatic verification). No repo drift observed: the four snapshot-listed files match the snapshot's layer/import map; stage-1/ files and README.md are outside the scan boundary (snapshot unknown_areas) and were read as the task-named frozen baseline and as the platform note the plan cites, not as a repo re-scan."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "app/api.py mark_done re-applies todo['done']=True and returns 200 even when the todo is already done, so a repeated done is a 'successful' call in the repo's own semantics. C3 says 'on a successful mark_done (todo exists, transition applied), exactly one webhook is dispatched' — the parenthetical does not settle whether a repeat done (state unchanged) counts as a transition applied, and A1.negative_case ('marking the same todo done again is a no-op state-wise but still returns 200 (idempotent transition)') is silent on the dispatch count. An executor therefore must decide whether a second done logs a second webhook for the same todo.done event (duplicates) or zero (one notification per completion event); the product reading favors the latter, but no acceptance test pins it.",
+      "suggested_fix": "Pin it in one place: state in C3 (or A1.negative_case) that a repeat done on an already-done todo dispatches zero webhooks (WebhookLog.sent count stays 1), and add the assertion-level case to tests/test_notifications.py (mark a done todo done again; assert WebhookLog.sent still has exactly 1 entry).",
+      "acceptance_ref": "A1",
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "hidden_dependency",
+      "task_id": "T03",
+      "evidence": "T03's e2e test file must import app/api.py (TodoAPI under test) and app/webhooks.py (WebhookDispatcher — the E2 raising-dispatcher scenario has to construct a dispatcher whose send() raises), and asserts on store records (app/store.py), yet tasks/T03.json required_context.files lists only tests/test_api.py and the new tests/test_e2e_notifications.py. A fresh executor loading exactly the declared context would have to discover the production modules on its own (possible — the declared frozen suite imports them — but the context closure is not fully declared).",
+      "suggested_fix": "Add app/api.py, app/webhooks.py, and app/store.py to T03.required_context.files (read-only; T03's owned_paths stays test-only).",
+      "acceptance_ref": null,
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "schema_invalid",
+      "task_id": null,
+      "evidence": "plan-check.py validate run-manifest.json (schema planning/run-manifest@1) fails: missing required top-level keys plan_id, stage_id, created_at, audit_verdict; every pipeline row missing required status and gate; every gate row missing required name; pipeline[].stage is int where the schema expects string. The manifest is a gate/attribution log, not an execution input, so this does not block execution — but an artifact that declares a schema must validate against it, and plan-check lint does not cover this file (lint passed 0/0/0 while the manifest is schema-invalid).",
+      "suggested_fix": "Rewrite run-manifest.json to the run-manifest@1 shape (add plan_id, stage_id, created_at, audit_verdict; per-row status + gate; per-gate name; string stage ids), or drop the schema declaration if the manifest is meant to be freeform. Re-validate after.",
+      "acceptance_ref": null,
+      "delivery_profile_note": null
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "deterministic_lint: ran plan-check.py lint on the full plan dir myself — exit 0, 0 BLOCKER / 0 MAJOR / 0 MINOR (inlined contract hashes verified; no HORIZON_SCOPE_VIOLATION / GOVERNOR_* / HIDDEN_DEPENDENCY / MISSING_* findings). Two caveats recorded honestly: (a) the round-1 audit.json on disk at lint time was the in-conversation record with self-certified isolation — its deterministic result was not reused, the lint was re-run; (b) plan-check lint does NOT schema-validate run-manifest.json, and the round-1 audit's 'all artifacts schema-valid' claim was wrong on that point — a separate validate of the manifest fails its own run-manifest@1 schema (recorded as F03)",
+    "grounding: verified the snapshot against app/api.py, app/store.py, app/webhooks.py, tests/test_api.py (all four snapshot-listed files) plus the stage-1 baseline pair and README.md as described in grounding.notes — programmatic C1 raw byte-identity vs stage-1, programmatic C2 pure-additive verification, programmatic sha256 verification of all 7 inlined contract specs",
+    "cross_stage_drift (this probe's question): C1 carried forward raw byte-identical with unfreeze rule intact; C2 purely additive and proposed in writing; last_notified_at surfaced (out_of_scope + Q1 owner:user + conditional forecast stage), not absorbed; stage-1 out-of-scope items carried forward; stage-1 forecast objective met — no silent drift on any frozen stage-1 item",
+    "scope_creep: in-scope is exactly what TASK-STAGE-2.md asks (URL registration + done-notification via the existing dispatcher + failure tolerance + tests); retry/delivery-history/management surface and last_notified_at are out_of_scope with reasons and appear in every leaf's non_goals — no B-class item smuggled in",
+    "insufficient_non_goals: T01/T02 non_goals name the specific tempting work (modifying app/webhooks.py, the C1 response shape, last_notified_at, the other leaf's closure) — ambiguity eliminated",
+    "late_contract_freeze: C1/C2/C3 all frozen at stage-contract time; T02's consumption of T01's deliverable (the webhook_url field) is covered by the frozen C2 spec + dag unlock_contracts (C2 unlocks T02 — T02 codes against the frozen field spec before T01's store change lands), so no parallel consumption of an unfrozen contract",
+    "hidden_dependency: T01/T02 reads are fully declared (T02 reads app/store.py, listed in its required_context.files; allowed_dependency names the T01 webhook_url field); one under-declared closure found in T03 (F02) — its e2e imports of app/api.py + app/webhooks.py are not in its required_context.files",
+    "fake_serialization: the single leaf edge T01->T02 is a real data dependency (T02 reads the field T01 adds) and also resolves the shared app/api.py ownership overlap; with two ordered leaves no parallelism is possible, and the absence is claimed in dag.json notes (free_parallelism_trades) — not artificially serialized",
+    "ownership_collision: T01/T02 overlap on app/api.py (create_todo vs mark_done) and are ordered T01->T02, recorded in dag collisions_handled; T03 owns only its new test file — no unordered overlap",
+    "oversized_leaf: no XL footprints (T01 S, T02 S, T03 M); no leaf objective enumerates phase-scale sub-deliverables",
+    "broad_context_loading: at most 5 context files per package — well inside the closure",
+    "hidden_integration_work: S1 and S2 both have E2E gates (E1/E2/E3) each with failure scenarios (unknown-id 404 with zero dispatches, raising dispatcher, no-URL done); the seam_integration omission is grounded (the repo has exactly 4 production/test files and no leaf creates a new production file — new files are tests only); T03 records deviations instead of patching leaves, with explicit gates and evidence",
+    "nondeterministic_acceptance: A1-A4 all state observable status/record/log outcomes with named tests; one micro-ambiguity found (F01: repeat-done dispatch count); p50/p80 are ranges only",
+    "lack_of_local_recoverability: all three tasks have checkpoint_required handoffs with recorded-checkpoint requirements; T03 (e2e closure) legitimately requires both leaves' checkpoints — no leaf's failure restarts the stage",
+    "replan_only_by_append: allowed_replan = [split, reorder, defer, reduce_scope, request_contract_revision] — growth-only replan not forced",
+    "communication_overhead: packages are @2 self-contained (frozen contracts inlined with matching sha256 source hashes, verified); no package requires reading the full plan",
+    "over_planning: horizons honored — commitment [T01] is a subset of detailed_stage [T01,T02,T03] (exactly the packaged tasks); forecast holds one conditional stage (C1 response-shape revision if Q1 is approved) with no detailed DAG generated for it; stop_after [T03] is the detailed stage's terminal task",
+    "missing_spike_route: no empirical unknown is being debated — A-2 (dispatcher never raises) is a verified repo fact (webhooks.py read), Q1 is a product-sign-off decision correctly parked as non-blocking with owner user; nothing requires a bounded probe before execution",
+    "schedule_fit (noted per the risk-estimator handoff, not a finding): sum of p80 upper bounds 60+75+75 = 210 min vs stage_estimate 180 min with zero parallelism; within the coarseness of the ranges (p50 sum ~130 min), recorded for the governor's schedule-fit decision"
+  ],
+  "revision_round": 2,
+  "delivery_profile_applied": "alpha"
+}

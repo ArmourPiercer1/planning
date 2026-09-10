@@ -1,0 +1,165 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Verify the S1 chain seam end-to-end against the fixed RingBuffer: own and run tests/test_audit_boundary.py covering (E1) happy-path chain via the API verifies anchored at GENESIS, (E2) frozen-contract regression — no audit field leaks into any C2 response and the 404 shape is unchanged, (E3) wrap boundary — capacity-3 buffer + 5 posts yields verify status 'unanchored_head' with head anchored=false and a head rewrite still detected as 'broken', (E4) mid-chain tamper — deleting a middle buffer slot yields 'broken' at the dangling link; then execute acceptance A1-A4 and record evidence. Observable outcome: all four boundary tests pass and the full suite (python -m unittest discover tests -v) is green.",
+  "required_context": {
+    "files": [
+      "app/events.py",
+      "app/audit.py",
+      "app/storage.py",
+      "tests/test_events.py",
+      "tests/test_audit_core.py",
+      "tests/test_audit.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "wrap semantics: a capacity-N ring after N+2 appends holds exactly the newest N items (oldest-first via read_all())",
+      "frozen response discipline: no audit field may appear in any C2 response",
+      "structured verification statuses: 'ok' (anchored, links intact) / 'broken' (hash or link failure) / 'unanchored_head' (links intact but first item's prev != GENESIS)"
+    ]
+  },
+  "inputs": [
+    "T01's completed app/audit.py + tests/test_audit_core.py",
+    "T02's completed app/events.py (modified) + tests/test_audit.py",
+    "integration-plan gates E1-E4 (scenario texts inlined in acceptance_tests below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "data",
+      "spec": "Audit entry data stored inside each event item in the RingBuffer: the stored item is {id: 'e<n>', <event payload fields>, prev_entry_hash: str, entry_hash: str} where prev_entry_hash = entry_hash of the previously appended item (or GENESIS = sha256(b'genesis').hexdigest() for the first item ever appended) and entry_hash = sha256(canonical_json({id, prev_entry_hash})).hexdigest() with canonical_json = json.dumps(obj, sort_keys=True, separators=(',', ':')). Chain order = RingBuffer storage order (oldest surviving first). The API layer never exposes prev_entry_hash/entry_hash outside the C3 query.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:bce13d995b06364d379cd863eac77d32eeb1ea5b7fe92ea4bf30af19146ab84d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "api",
+      "spec": "FROZEN, unchanged: POST /events -> 201 {'id': 'e<n>'}; GET /events?since=<id> -> 200 {'events': [...]} where each item has EXACTLY the keys the client posted plus 'id' (audit fields stripped at the API boundary — no prev_entry_hash/entry_hash in the response); unknown since id -> 404 {'error': 'unknown since id: <id>'}. Existing tests in tests/test_events.py stay green against this contract.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:addac9f29b3bb8878347596dc03e612b8f4a525c19497a0c4d486ea575113753"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "New: GET /events?audit=true -> 200 {'audit_chain': [{'event_id': str, 'prev_entry_hash': str, 'entry_hash': str}, ...]} in storage order (oldest surviving first); empty buffer -> 200 {'audit_chain': []}. This is the only API surface that exposes audit fields.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:ac412703555ec8ae18b5ddec3349350d72e0d22ec35da8d38d101d6b2a3fca09"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_audit_boundary.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "app/audit.py — verify() + hashing (read; patch only via owns_fixes_for for seam defects)"
+    },
+    {
+      "task_id": "T02",
+      "what": "app/events.py — EventAPI with chain append + audit query (read; patch only via owns_fixes_for for seam defects)"
+    }
+  ],
+  "non_goals": [
+    "No new production modules — this task owns a test file only",
+    "No changes to app/storage.py (platform-frozen)",
+    "No weakening or modification of any pre-existing test (tests/test_events.py, tests/test_audit_core.py, tests/test_audit.py)",
+    "No seam fix that rewrites a leaf's module — integration-only minimal patches, or stop and record a blocker"
+  ],
+  "implementation_constraints": [
+    "tests are deterministic and in-memory: construct RingBuffer with small capacities directly; no network, no files, no sleeps",
+    "unittest style matching the repo suite; discoverable via python -m unittest discover tests -v",
+    "simulating tamper/truncation happens in-memory on the buffer's internal slot list after posting (test-level access to the fixture's internals is allowed and expected)",
+    "if a seam defect is found: minimal patch to the owning leaf's file (T01 or T02), re-run E1-E4, and record the deviation in the checkpoint; if the defect needs a leaf redesign, stop and record CORE_SEAM_BLOCKER instead of fixing it"
+  ],
+  "deliverables": [
+    {
+      "what": "boundary + frozen-regression tests (gates E1-E4)",
+      "where": "tests/test_audit_boundary.py"
+    },
+    {
+      "what": "acceptance evidence A1-A4 (command + outcome) and any seam-fix deviations",
+      "where": "checkpoints/T03.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-03-1",
+      "case": "positive",
+      "description": "E1: capacity-5 buffer, 3 posts via EventAPI; GET /events?audit=true returns exactly 3 entries in storage order; verify() over the presented items returns status 'ok', anchored at GENESIS, 0 broken links",
+      "evidence": "python -m unittest tests.test_audit_boundary.test_chain_e2e_ok -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-03-2",
+      "case": "negative",
+      "description": "E2: frozen-contract regression — after 2 posts, GET /events?since=<first id> returns 200 whose items have exactly the posted keys + 'id' with 'prev_entry_hash'/'entry_hash' absent; GET /events?since=unknown returns 404 {'error': 'unknown since id: unknown'} unchanged",
+      "evidence": "python -m unittest tests.test_audit_boundary.test_frozen_contract_unchanged -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-03-3",
+      "case": "failure",
+      "description": "E3: capacity-3 buffer, 5 posts (two overwrites); verify() over the 3 surviving entries returns status 'unanchored_head', head anchored=false, 0 broken links among survivors; then rewriting the head item's payload in memory makes verify() return status 'broken' (head rewrite still detected)",
+      "evidence": "python -m unittest tests.test_audit_boundary.test_wrap_unanchored_head tests.test_audit_boundary.test_wrap_head_rewrite_detected -v → 2 tests pass, exit code 0"
+    },
+    {
+      "id": "AT-03-4",
+      "case": "failure",
+      "description": "E4: capacity-5 buffer, 3 posts; delete the middle stored item from the buffer's slot list (simulating truncation); verify() over the remaining items returns status 'broken' with first_broken_link at the dangling link",
+      "evidence": "python -m unittest tests.test_audit_boundary.test_mid_truncation_detected_e2e -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-03-5",
+      "case": "positive",
+      "description": "A4: the entire suite — pre-existing plus all new tests — exits 0 (all pass)",
+      "evidence": "python -m unittest discover tests -v → all tests pass, exit code 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "seam defect found (order mismatch, hash mismatch between T01/T02, audit field leaking into C2)",
+      "expected_behavior": "minimal integration-only patch to the owning leaf file, re-run E1-E4, record the deviation in checkpoints/T03.json"
+    },
+    {
+      "scenario": "defect requires redesigning a leaf (not an integration-only patch)",
+      "expected_behavior": "stop; record CORE_SEAM_BLOCKER in checkpoints/T03.json; do not rewrite the leaf"
+    },
+    {
+      "scenario": "pre-existing test starts failing after a seam fix",
+      "expected_behavior": "revert the fix, record the conflict in the checkpoint — pre-existing tests are inviolable"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [
+      "T01: app/audit.py + tests/test_audit_core.py",
+      "T02: app/events.py (modified) + tests/test_audit.py"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "Final task of the stage (stage_boundary.stop_after = [T03]). The checkpoint must record: E1-E4 results, the full suite output (A4), acceptance evidence for A1-A4, and any seam fixes with their deviation notes. After this checkpoint the plan goes to the independent auditor — no further planning-stage work is expected from the executor."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "60-90 min",
+    "p80": "90-120 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

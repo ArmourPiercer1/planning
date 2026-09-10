@@ -1,0 +1,51 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["tooling", "docs"],
+      "cross_contracts": 1,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "30-45 min",
+      "p80": "45-60 min",
+      "compaction_risk": "low",
+      "warnings": [
+        { "code": "EVIDENCE_OUT_OF_REPO", "detail": "CI config and the deploy runbook may live outside this repo", "rationale": "the probe boundary rule settles it: check named locations, record 'not present' gaps, stop at the 30-60 min cap — uncertainty is bounded by design" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["service", "e2e"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "45-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [
+        { "code": "VENDORED_PARSER", "detail": "the YAML subset parser is new code with no reference implementation in the repo", "rationale": "the 1:1 parity matrix against JsonConfigStore is the control; the parser is kept strictly at flat scalar maps (A-1), and p80 sits exactly at leaf_p80_max — if execution exceeds it, checkpoint_and_split around the parser" }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "S",
+      "touched_layers": ["e2e", "service"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    }
+  ]
+}

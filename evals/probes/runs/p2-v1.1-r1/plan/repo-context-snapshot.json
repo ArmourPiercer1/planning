@@ -1,0 +1,73 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+  "scope_root": ".",
+  "scanned_at": "2026-09-10T12:19:13+00:00",
+  "files": [
+    {
+      "path": "app/cli.py",
+      "layer": "tooling",
+      "role": "Ops CLI: set / show.",
+      "imports": [
+        "app/config_store.py"
+      ],
+      "exports": [
+        "main"
+      ]
+    },
+    {
+      "path": "app/config_store.py",
+      "layer": "service",
+      "role": "JSON file config store.",
+      "imports": [],
+      "exports": [
+        "ConfigError",
+        "JsonConfigStore"
+      ]
+    },
+    {
+      "path": "app/loader.py",
+      "layer": "service",
+      "role": "Startup loading + validation.",
+      "imports": [
+        "app/config_store.py"
+      ],
+      "exports": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "tests/test_config.py",
+      "layer": "e2e",
+      "role": "Config store tests.",
+      "imports": [
+        "app/config_store.py",
+        "app/loader.py"
+      ],
+      "exports": [
+        "TestConfigStore"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_config.py"
+  ],
+  "known_shared_files": [
+    "app/config_store.py"
+  ],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [
+    "app/config_store.py (imported across layers: e2e, tooling)"
+  ],
+  "scan_boundary": [
+    "app",
+    "tests",
+    "deploy"
+  ],
+  "dependency_expansions": [],
+  "unknown_areas": [
+    "README.md",
+    "TASK.md"
+  ]
+}

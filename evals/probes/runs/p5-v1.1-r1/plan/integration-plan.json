@@ -1,0 +1,74 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "API endpoints interact with JobStore: POST creates a job, GET reads job state, download reads job result",
+      "contract_ids": ["C1", "C3"],
+      "covered_by": ["T05", "T06"]
+    },
+    {
+      "id": "S2",
+      "description": "Job worker invokes PdfExportService: worker picks up pending job, calls export_pdf, stores result or error",
+      "contract_ids": ["C1", "C2"],
+      "covered_by": ["T05", "T06"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T04",
+      "kind": "contract_consistency",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A1"
+    },
+    {
+      "task_id": "T05",
+      "kind": "seam_integration",
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02", "T03"],
+      "acceptance_ref": "A2"
+    },
+    {
+      "task_id": "T06",
+      "kind": "e2e_closure",
+      "merged_kinds": ["final_acceptance"],
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A3"
+    }
+  ],
+  "omitted_kinds": [],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Happy path: POST /reports/r1/export-pdf returns 202 with job_id; poll GET /jobs/{job_id} until status done; GET /jobs/{job_id}/download returns PDF bytes starting with %PDF",
+      "covers": ["S1", "S2"],
+      "evidence": "pytest tests/test_e2e_pdf.py::test_full_export_flow"
+    },
+    {
+      "id": "E2",
+      "scenario": "Unknown report: POST /reports/nope/export-pdf returns 404 with error field",
+      "covers": ["S1"],
+      "evidence": "pytest tests/test_e2e_pdf.py::test_unknown_report_404"
+    },
+    {
+      "id": "E3",
+      "scenario": "Invalid language: POST /reports/r1/export-pdf with lang=fr returns 400 with error field",
+      "covers": ["S1"],
+      "evidence": "pytest tests/test_e2e_pdf.py::test_invalid_lang_400"
+    },
+    {
+      "id": "E4",
+      "scenario": "Download before completion: GET /jobs/{job_id}/download while job status is pending returns 409",
+      "covers": ["S1"],
+      "evidence": "pytest tests/test_e2e_pdf.py::test_download_pending_409"
+    },
+    {
+      "id": "E5",
+      "scenario": "Job failure: PdfExportService raises exception; job transitions to failed with error string populated; GET /jobs/{job_id} shows status failed",
+      "covers": ["S2"],
+      "evidence": "pytest tests/test_e2e_pdf.py::test_job_failure_state"
+    }
+  ]
+}

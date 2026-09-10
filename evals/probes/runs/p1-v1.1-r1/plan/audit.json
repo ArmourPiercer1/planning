@@ -1,0 +1,96 @@
+{
+  "schema": "planning/audit@3",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Fresh subagent; the planner's (orchestrator's) conversation was not shared. Provenance note for the record: this subagent's context was seeded from the parent orchestration session, which contains this probe's fixture design and scoring criteria; all judgments below were made strictly from the plan artifacts, the plan-auditor skill, and read-only spot checks of the snapshot-listed repo files — not from inherited design knowledge. revision_round 2 (bounded re-audit of the F01 TARGETED_PATCH) was performed by this same auditor, same isolation."
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/api.py",
+      "app/db.py",
+      "app/notify.py",
+      "app/provider.py",
+      "tests/test_gateway_observed.py",
+      "tests/test_notify.py"
+    ],
+    "notes": "Probe repo is a non-git subdirectory; repo_revision is the enclosing planning repo's HEAD as recorded by the stage-0 script. All 6 snapshot-listed files opened read-only. Repo matches the plan's claims: app/notify.py is 35 lines with a single client.send() call and attempts hardcoded to 1; tests/test_notify.py has exactly 3 TestSendPath tests (test_success_records_sent, test_failure_records_failed, test_record_persisted); tests/test_gateway_observed.py captures first-call-429 (body {'error':'rate limited'}, no Retry-After) then second-call-202, matching frozen assumption A-429-TRANSIENT; ProviderClient.send/ProviderResponse shape matches C3; app/api.py handlers call send_notification and return the record unchanged, matching the 'no handler change needed' out-of-scope claim."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MAJOR",
+      "routing": "POST_STAGE",
+      "check": "scope_creep",
+      "task_id": null,
+      "evidence": "stage-contract.json horizons.detailed_stage.tasks = [\"T01\"] and stage_boundary.stop_after = [\"T01\"] with because: 'There is no point at which new evidence would change the route of the remaining work — because there is no remaining work.' But the plan contains a second detailed task in this same stage: tasks/T02.json (e2e_closure merged final_acceptance), dag.json edge T01->T02 (verification), integration_gates G1/G2 both on task_id T02, and acceptance A5 ('all 3 tests in tests/test_notify.py pass') is verified only at T02 per integration-plan.json e2e_gates E1/E2. The stage-completion signal (stop_after) therefore fires before the stage's own acceptance gate runs: an orchestrator following stage_boundary literally would write the stage-checkpoint and declare the stage complete after T01, with A5 unverified, while the DAG still schedules T02. Execution itself is safe (the handoff's DAG order runs T02 after T01), so this is a contract self-consistency defect, not an execution blocker. No horizon-specific check value exists in the enum; filed under scope_creep as a stage-scope description defect.",
+      "suggested_fix": "Fix stage-contract.json before execution (single-artifact, local, known fix — TARGETED_PATCH candidate, do not defer into execution): set horizons.detailed_stage.tasks = [\"T01\", \"T02\"], set stage_boundary.stop_after = [\"T02\"], and correct the 'because' text (T02 is the remaining work: it runs the acceptance gate). No re-planning of the DAG or packages needed.",
+      "acceptance_ref": "A5",
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T01",
+      "evidence": "stage-contract.json C1 spec: 'max_attempts: 3 ... Total max wait = 1+2+4 = 7s' — but 3 attempts imply at most 2 backoff sleeps (before attempt 2 and attempt 3), so the total max wait is 1+2 = 3s, not 7s; the '4s' delay would only occur before a nonexistent 4th attempt. tasks/T01.json repeats 'backoff (1s, 2s, 4s)' and implementation_constraints says 'time.sleep must be called with 1s, 2s, 4s delays (patched in tests)'; frozen_assumptions A-ASYNC-RETRY cites '+7s worst-case delay'. A third party could not determine the expected sleep sequence from the spec: implement it as three sleeps and the contract text is 'satisfied' but the last sleep is dead weight; implement two and the text is violated.",
+      "suggested_fix": "Clarify C1 (and T01's constraint text): delays apply before attempts 2 and 3 only — 1s then 2s; total max wait 3s. Optionally add a test asserting the patched time.sleep call sequence to remove the ambiguity.",
+      "acceptance_ref": null,
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "All acceptance evidence commands use 'pytest' (e.g. tasks/T01.json AT1 'pytest tests/test_notify.py::TestSendPath::test_success_records_sent -v -> 1 passed', tasks/T02.json AT1 'pytest tests/ -v -> 7 passed', integration-plan.json E1 'pytest tests/ -v -> 7 passed'), but the repo's test suite is plain stdlib unittest (tests import unittest; README Platform notes: 'Python 3.11, stdlib only (tests use plain unittest)') and the task's hard requirement is 'No new dependencies'. In an environment honoring that constraint, the evidence commands as written may not be runnable, so the executor could not verify acceptance exactly as specified.",
+      "suggested_fix": "Rewrite evidence commands with the stdlib runner, e.g. 'python -m unittest tests.test_notify -v' and 'python -m unittest discover tests -v' (7 tests total), keeping the same pass-count expectations.",
+      "acceptance_ref": null,
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F04",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "deterministic_lint",
+      "task_id": null,
+      "evidence": "Carried over from the deterministic layer (plan-check.py lint, exit 0): 4x VAGUE_ACCEPTANCE on description text lacking an inline evidence marker — tasks/T01.json AT5 'Existing tests remain green: all 3 original tests in TestSendPath pass without modification.', tasks/T01.json failure_cases[2] 'Tests may still pass with faked clients, but the backoff behavior is wrong; time.sleep must be called with 1s, 2s, 4s de...', tasks/T02.json AT3 'All 5 acceptance criteria (A1-A5) are covered by passing tests.', tasks/T02.json AT3 evidence mapping 'A1: test_success_records_sent + attempts==1; A2: ...'. Semantic confirmation: all four are in fact observable (each names concrete test ids/commands in adjacent fields), so these are heuristic phrasing hits, not genuinely nondeterministic criteria.",
+      "suggested_fix": "Optionally move the test command/id into each flagged description sentence so the inline text itself carries the observable marker; no functional change needed.",
+      "acceptance_ref": null,
+      "delivery_profile_note": null
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 4
+  },
+  "checks_performed": [
+    "revision_round 2 (bounded re-audit) — verified the governor's F01 TARGETED_PATCH on stage-contract.json only: horizons.detailed_stage.tasks = [T01, T02] (objective text updated to name the e2e closure gate); stage_boundary.stop_after = [T02] with 'because' corrected to state T02 is the stage's acceptance gate. Cross-checked against dag.json (single edge T01->T02 verification; T02 is the terminal task; gates G1/G2 on T02; critical path [T01, T02]) and the task packages (T01.json, T02.json both exist; T02 is the e2e_closure verifying A1-A5). commitment [T01] remains a subset of detailed_stage; forecast remains empty. The patch touched nothing else: C1/C2/C3 specs, A1-A5, frozen assumptions, constraints, out_of_scope are byte-identical to the round-1 audit, so the inlined frozen contracts (with source hashes) in both task packages remain current — no staleness introduced. stage-contract.json re-validated against planning/stage-contract@3: ok. F01 RESOLVED. No full semantic re-check and no full-plan re-lint, per bounded re-audit semantics; F02-F04 remain deferred per the governor's decision and were not re-litigated.",
+    "deterministic_lint — plan-check.py lint run first: exit 0, 0 BLOCKER / 0 MAJOR / 4 MINOR (all carried over as F04)",
+    "grounding — snapshot loaded; 6/6 snapshot-listed files spot-checked read-only; repo matches plan claims (see grounding.notes)",
+    "scope_creep — in-scope is tight (retry loop + tests + attempts field); all three ticket context items (bulk-send, retry storm, provider-client change) are named in out_of_scope with concrete reasons; F01 covers the one stage-scope description inconsistency",
+    "insufficient_non_goals — non_goals name the tempting items specifically (provider.py, db.py, api.py, bulk-send, queue/worker, new packages); no vague 'no refactoring'",
+    "late_contract_freeze — C1/C2/C3 frozen before task packages; contract_bindings and seam_bindings in dag.json are consistent with the frozen specs; hashes inlined in both packages match",
+    "hidden_dependency — T01 required_context covers all 5 files it reads; T02's dependency on T01's output is declared in allowed_dependencies; no undeclared reads",
+    "fake_serialization — the single edge T01->T02 is a verification edge and survives the 4-type test; fake_serialization_removed is empty, correctly, since no doc ordering suggested more edges",
+    "ownership_collision — T01 and T02 both list tests/test_notify.py, but they are ordered (T01->T02) and T02 is the e2e_closure with owns_fixes_for=[T01], the intended integration pattern; no unordered overlap",
+    "oversized_leaf — T01 is footprint S/M, 2 layers, one file changed + tests; not a Phase",
+    "broad_context_loading — 5 files for T01 is exactly its closure; no over-loading",
+    "hidden_integration_work — both seams (S1, S2) have the T02 gate (G1/G2); e2e gates E1/E2 include explicit failure scenarios; omitted_kinds (contract_consistency, seam_integration) are justified by single-leaf + no-new-files evidence that the snapshot supports",
+    "nondeterministic_acceptance — A1-A5 are all judgeable from named tests/commands; F02 (sleep-sequence ambiguity) and F03 (pytest vs stdlib unittest runner) are the two real verifiability wrinkles",
+    "lack_of_local_recoverability — T01 failure is diagnosed at T02 and recorded in its checkpoint; no task owns a path every other task needs; T02 could not run a meaningful subset, it is the gate itself",
+    "replan_only_by_append — allowed_replan includes split/reduce_scope/request_contract_revision; next_planning_trigger has early (frozen_assumption_falsified) and not_triggers; not append-only",
+    "communication_overhead — both packages carry inlined frozen contracts with source hashes; neither requires reading another plan artifact to start",
+    "over_planning — single stage, empty forecast, nothing detailed beyond the evidence; the 429 question was resolved from the in-repo staging capture (A-429-TRANSIENT carries an explicit falsification condition and the early replan trigger), so no horizon violation",
+    "missing_spike_route — no empirical unknown is being debated: the only unknown (429 semantics) is answered by the observed gateway trace in tests/test_gateway_observed.py (verified by spot check: 429 then 202, no Retry-After), frozen as A-429-TRANSIENT with falsification criteria; the residual per-key-vs-per-IP question only affects the explicitly out-of-scope retry-storm work; the fixture's ProviderClient.send is a stub, so a runtime probe could not produce evidence beyond the same trace"
+  ],
+  "revision_round": 2,
+  "notes": "revision_round 2 (bounded re-audit, same auditor, same isolation): the governor's TARGETED_PATCH for F01 is CORRECT AND COMPLETE — stage-contract.json is the only artifact changed; T02 is now inside horizons.detailed_stage.tasks, stage_boundary.stop_after is [T02] (the DAG's terminal task and the A5 acceptance gate), and the because text no longer claims 'no remaining work'. The patch introduced NO new issues: all other contract sections are byte-identical to round 1 (frozen specs intact, task-package inlines current), and the patched file validates against planning/stage-contract@3. F01 is RESOLVED. No new findings. F02, F03, F04 remain deferred per the governor's decision (not re-litigated). Verdict: PASS.",
+  "delivery_profile_applied": "alpha"
+}

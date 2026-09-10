@@ -1,0 +1,124 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p1-v1.1-r1",
+  "stage_id": "p1-notification-retry",
+  "created_at": "2026-07-08T00:00:00Z",
+  "skill_versions": [
+    "long-task-planning/v1.1",
+    "repo-context-snapshot/v1.0",
+    "stage-contract/v1.1",
+    "context-decomposer/v1.0",
+    "dependency-dag/v1.0",
+    "integration-planner/v1.0",
+    "task-packager/v1.0",
+    "plan-risk-estimator/v1.1"
+  ],
+  "pipeline": [
+    {
+      "stage": "0: repo-context-snapshot",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "repo-context-snapshot.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "1: stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "stage-contract.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "2: context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "3: dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "dag.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "4: integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "integration-plan.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "5: task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "tasks/T01.json, tasks/T02.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "6: plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "risk-estimates.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "7: plan-auditor",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "audit.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "8: planning-governor",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "governor-decision.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "9: bounded re-audit (post-patch)",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "audit.json (revision_round 2)",
+      "exit_code": 0,
+      "fallbacks": ["re-audit is a bounded revision of audit.json (revision_round 2) by the same auditor, not a fresh audit"]
+    }
+  ],
+  "gates": [
+    {
+      "name": "final-lint",
+      "exit_code": 0,
+      "ts": "2026-07-08T00:00:00Z"
+    },
+    {
+      "name": "stage-7 audit validate (plan-check.py validate audit.json)",
+      "exit_code": 0,
+      "ts": "2026-07-08T01:00:00Z"
+    },
+    {
+      "name": "stage-8 governor validate (plan-check.py validate governor-decision.json)",
+      "exit_code": 0,
+      "ts": "2026-07-08T02:00:00Z"
+    },
+    {
+      "name": "post-patch lint",
+      "exit_code": 0,
+      "ts": "2026-07-08T02:00:00Z"
+    },
+    {
+      "name": "stage-9 bounded re-audit (revision_round 2; F01 patch verified correct+complete; stage-contract.json + audit.json re-validated; no full re-lint per re-audit semantics)",
+      "exit_code": 0,
+      "ts": "2026-07-08T03:00:00Z"
+    },
+    {
+      "name": "stage-8 governor re-run (EXECUTE; governor-decision.json updated; HANDOFF.md written; final plan-wide lint)",
+      "exit_code": 0,
+      "ts": "2026-07-08T04:00:00Z"
+    }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 2,
+  "notes": "Probe run P1-v1.1-r1: stages 0-9 complete + final governor pass. Round 1: TARGETED_PATCH (F01 MAJOR: stage-contract self-consistency). Patch applied: T02 added to detailed_stage.tasks, stop_after=[T02]. Round 2 (bounded re-audit, same auditor): F01 RESOLVED, no new findings, verdict PASS. Final governor: EXECUTE. Budget: 2/2 full audits (at limit), 1/3 plan revisions, 1/5 subagents. F02-F04 deferred (OPTIONAL). HANDOFF.md written. Final lint: 0 BLOCKER, 0 MAJOR, 4 MINOR (VAGUE_ACCEPTANCE heuristics, exit 0)."
+}

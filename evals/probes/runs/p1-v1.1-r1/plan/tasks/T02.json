@@ -1,0 +1,135 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Run the full test suite (tests/test_notify.py + tests/test_gateway_observed.py) and verify all 5 acceptance criteria (A1-A5) end to end. This is the e2e_closure gate (merged with final_acceptance): it owns the test paths and executes the contract acceptance. If any test fails, diagnose whether the defect is in T01's retry loop or in the test itself, and record the finding in the checkpoint.",
+  "required_context": {
+    "files": [
+      "app/notify.py",
+      "app/provider.py",
+      "app/db.py",
+      "tests/test_notify.py",
+      "tests/test_gateway_observed.py"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": [
+      "E2E closure: run the test suite and verify acceptance criteria A1-A5",
+      "failure diagnosis: if a test fails, determine whether the defect is in the retry loop (T01) or in the test assertion",
+      "seam verification: S1 (notify->provider) is verified by test fakes that count calls; S2 (notify->db) is verified by record count and status assertions"
+    ]
+  },
+  "inputs": [
+    "T01 checkpoint (checkpoints/T01.json) — changed paths, test evidence, deviations",
+    "stage-contract.json acceptance criteria A1-A5 (inlined in frozen_contracts below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "data",
+      "spec": "RetryPolicy: {max_attempts: 3, base_delay_s: 1, max_delay_s: 30, backoff_factor: 2}. Effective delay before attempt N (0-indexed) = min(base_delay_s * backoff_factor^N, max_delay_s). Total max wait = 1+2+4 = 7s. Retriable statuses: all non-2xx (including 429). Non-retriable: none (V1 treats all non-2xx as retryable; 4xx like 400 will exhaust retries and end in failed).",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:edd2a2c1bb63536107c5e9ca4e598cfc9fc6410478cba1e079883644964d456d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "send_notification(store, client, user_id, template, variables=None) -> dict. Return dict keys: user_id (str), template (str), status ('sent'|'failed'), provider_ref (str|None), error (str|None), attempts (int, actual number of attempts made), created_at (int, unix timestamp). The attempts field was previously hardcoded to 1; now reflects actual attempts.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:dd91dcddd63e0015ffdce981f3469ddb95781b02d1cb93351719a29eb874444e"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse(status: int, body: dict, headers: dict). Unchanged interface. The retry loop calls this method up to 3 times with the same payload. The client does not know about retries.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:eccc75df05f40b8512fdfa9d6d042419be04da0fc2dc90ddc38fb13e1fb24486"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_notify.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "Modified app/notify.py (retry loop) and tests/test_notify.py (new test methods). T02 runs these tests and may patch test assertions if a defect is found, but must not modify app/notify.py."
+    }
+  ],
+  "non_goals": [
+    "Do NOT modify app/notify.py (T01's owned path; T02 records defects, T01 fixes them)",
+    "Do NOT modify app/provider.py or app/db.py (frozen interfaces)",
+    "Do NOT add new test files — all tests are in tests/test_notify.py",
+    "Do NOT modify tests/test_gateway_observed.py (read-only reference)"
+  ],
+  "implementation_constraints": [
+    "Run: pytest tests/ -v (all tests, both files)",
+    "Verify each acceptance criterion A1-A5 has a passing test that maps to it",
+    "If a test fails, diagnose: is the defect in the retry loop (T01) or in the test? Record the diagnosis in the checkpoint.",
+    "If T02 must patch a test assertion (e.g., wrong expected value), record the deviation in the checkpoint with the original and corrected assertion."
+  ],
+  "deliverables": [
+    {
+      "what": "Test run evidence: pytest tests/ -v output showing all tests pass",
+      "where": "checkpoint (checkpoints/T02.json)"
+    },
+    {
+      "what": "Acceptance verification: A1-A5 each mapped to a passing test",
+      "where": "checkpoint (checkpoints/T02.json)"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "Full test suite green: pytest tests/ -v shows all tests passing (3 existing test_notify + 1 test_gateway + 3 new retry tests = 7 passed).",
+      "evidence": "pytest tests/ -v -> 7 passed"
+    },
+    {
+      "id": "AT2",
+      "case": "failure",
+      "description": "If T01's retry loop has a defect (e.g., persists record per-attempt), test_all_attempts_fail would show len(store.all())==3. T02 diagnoses this as a T01 defect.",
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_all_attempts_fail -v -> 1 failed (expected: 1 passed)"
+    },
+    {
+      "id": "AT3",
+      "case": "positive",
+      "description": "All 5 acceptance criteria (A1-A5) are covered by passing tests.",
+      "evidence": "A1: test_success_records_sent + attempts==1; A2: test_retry_succeeds_second_attempt; A3: test_all_attempts_fail; A4: test_429_is_retryable; A5: all 3 original tests pass"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "Retry loop persists the record 3 times instead of 1",
+      "expected_behavior": "test_all_attempts_fail fails on len(store.all())==3; T02 records this as a T01 defect"
+    },
+    {
+      "scenario": "429 is not retried",
+      "expected_behavior": "test_429_is_retryable fails on status=='failed' instead of 'sent'; T02 records this as a T01 defect"
+    },
+    {
+      "scenario": "An existing test breaks (backward compatibility)",
+      "expected_behavior": "T02 records the break with the specific test name and the assertion that failed"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T01 (modified app/notify.py, extended tests/test_notify.py)"],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [],
+    "notes": "This is the final gate. If all tests pass and A1-A5 are verified, the Stage is complete. If any test fails, the checkpoint records the defect and the Stage is not complete."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "10-15 min",
+    "p80": "20-30 min",
+    "compaction_risk": "low",
+    "warnings": []
+  }
+}

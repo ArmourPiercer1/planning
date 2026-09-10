@@ -1,0 +1,141 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Run the E2E closure over seams S1/S2 and execute final acceptance A1-A4 end to end: the unmodified stage-1 suite stays green, the C1 key set is asserted exact (no last_notified_at), the registration->done round-trip and the raising-dispatcher failure scenario are asserted; record evidence and return any seam defect to the owning leaf checkpoint instead of patching leaf code",
+  "required_context": {
+    "files": [
+      "tests/test_api.py",
+      "tests/test_e2e_notifications.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "E2E gates E1/E2/E3 from the integration plan (scenario + seams + evidence)",
+      "the unmodified stage-1 frozen suite is the C1/C2 consistency canary",
+      "integration-only fix ownership: T03 records deviations, never rewrites leaf modules"
+    ]
+  },
+  "inputs": [
+    "inlined frozen contracts C1/C2/C3 (below) — do not read stage-contract.json",
+    "T01 + T02 checkpoints (changed paths, verified facts)",
+    "integration-plan.json (gate definitions)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "GET /todos response: {todos: [{id: string, title: string, done: boolean, tag?: string}]} — exactly these keys per todo, in creation order; 400 {error} on malformed filter params",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:66ed5c82f1a314aeed74987303d16814529cfcb664f9b257270bfebb7ca68acf"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "todo record shape in store: {id: 't<n>', title: string, done: boolean, tag?: string, webhook_url?: string}; creation order preserved. Stage-2 additive: webhook_url (optional string) added per C2's unfreeze rule (additive-only; stage 2 proposes it in writing in this contract). last_notified_at is intentionally NOT added — it ships only if/when C1 is revised (see Q1).",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:287124605ab985c59fc9b6adfdfbf099e599f1eddeff0458a6a5f206e85172d9"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "done-notification contract: on a successful mark_done (todo exists, transition applied), exactly one webhook is dispatched to the todo's webhook_url with payload {event: 'todo.done', todo_id: string, title: string, at: ISO-8601 timestamp}; if webhook_url is absent, exactly zero dispatches. Dispatch never affects the HTTP result: POST /todos/{id}/done returns 200 {id, done: true} (404 for unknown id) regardless of dispatch outcome, and a dispatch exception is caught+logged, never raised",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f51a0767471ee406759904d4aa7889ba0e80c750a366bed3a033811fa213f84b"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_e2e_notifications.py (new)"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "registration path (store + create_todo) under test"
+    },
+    {
+      "task_id": "T02",
+      "what": "dispatch path (mark_done + dispatcher) under test"
+    }
+  ],
+  "non_goals": [
+    "patching T01/T02 leaf code — seam defects are recorded as deviations and returned to the owning checkpoint",
+    "any change to production files (test-only task)",
+    "implementing last_notified_at or touching the C1 response shape (Q1, deferred)"
+  ],
+  "implementation_constraints": [
+    "test-only task: owns tests/test_e2e_notifications.py; no production edits",
+    "the stage-1 suite tests/test_api.py runs unmodified and must pass",
+    "every seam has a failure scenario (unknown-id 404, raising dispatcher, no-URL done)",
+    "stdlib only"
+  ],
+  "deliverables": [
+    {
+      "what": "E2E gate tests E1 (round-trip + 404 edge), E2 (raising dispatcher + no-URL), E3 (frozen suite + C1 key set)",
+      "where": "tests/test_e2e_notifications.py"
+    },
+    {
+      "what": "acceptance evidence record: A1-A4 met/unmet with the commands that prove them",
+      "where": "checkpoints/T03.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "E1: create with webhook_url -> mark done -> store record keeps URL, done=true, exactly one C3 dispatch; unknown-id done returns 404 with zero dispatches",
+      "evidence": "test tests/test_e2e_notifications.py::test_e2e_registration_done_roundtrip asserts the round-trip and the 404 edge"
+    },
+    {
+      "id": "AT2",
+      "case": "failure",
+      "description": "E2: raising dispatcher -> done transition still returns status 200 and the record is done; no-URL done -> zero dispatches, status 200",
+      "evidence": "test tests/test_e2e_notifications.py::test_e2e_raising_dispatcher + ::test_e2e_no_url_done assert tolerance and zero dispatches"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "E3: the unmodified stage-1 suite passes green and the test asserts the exact GET /todos per-todo key set {id, title, done}(+tag) with no last_notified_at key present",
+      "evidence": "python -m unittest discover tests -v (frozen suite green) + test tests/test_e2e_notifications.py::test_c1_key_set_unchanged asserts the key set"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a leaf's change broke the frozen suite",
+      "expected_behavior": "gate fails; the deviation is recorded with the failing test name and returned to the owning leaf's checkpoint — T03 does not edit the leaf"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [
+      "T01: registration path",
+      "T02: dispatch path"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "stage-completing checkpoint: acceptance_status per A1-A4, gate evidence, any returned deviations; the stage-checkpoint is written from it by the orchestrator"
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

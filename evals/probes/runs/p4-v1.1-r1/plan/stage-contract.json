@@ -1,0 +1,165 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "p4-audit-log",
+  "objective": "Add a tamper-evident hash-chain audit log to the event service: every POST /events appends audit data (prev-entry hash + entry hash) that stays inside the existing fixed-capacity RingBuffer, the frozen POST/GET /events contracts are unchanged, and GET /events?audit=true returns the audit chain in order for compliance verification.",
+  "in_scope": [
+    "Audit data structure and hash computation for the chain (prev_entry_hash, entry_hash, genesis marker) in a new app/audit.py module",
+    "Chain-append hooked into the existing post_event path, with audit data stored inside the existing RingBuffer",
+    "A deterministic chain verification function (recompute entry hashes, check links, report first broken link / anchor status)",
+    "GET /events?audit=true handler returning the audit chain in storage order",
+    "Tests: chain link integrity, tamper/rewrite detection, overwrite-boundary behavior, frozen-contract regression"
+  ],
+  "out_of_scope": [
+    { "item": "External compliance reporting / export formats (PDF, CSV, audit trails beyond the chain query)", "reason": "not requested; GET /events?audit=true is the compliance interface per requirement 3" },
+    { "item": "Any change to RingBuffer internals or capacity, or any second storage structure", "reason": "platform constraint (README, Platform constraints): the allocator is sized for exactly one store instance, capacity 1024, fixed this release cycle" },
+    { "item": "File/disk persistence of the event or audit data", "reason": "the current store is in-memory by design; the platform constraint scopes all persisted data to the existing RingBuffer; adding file I/O is a platform change, not a service change" },
+    { "item": "Hashing performance work (batching, incremental, parallel)", "reason": "not requested; stdlib hashlib over small dicts is negligible at this scale" },
+    { "item": "An externally anchored root (known latest hash / entry counter held outside the chain)", "reason": "would require a second persisted structure, which the platform constraint forbids; see open question OQ1" }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-CHAIN-WINDOW",
+      "statement": "The audit chain is verifiable over the window of entries currently held in the RingBuffer: anchored at the genesis marker before the first overwrite; after an overwrite, the oldest surviving entry is the chain head and its prev_entry_hash is unanchored (points at an evicted entry) — verification reports head anchor status, and all links between surviving entries are checkable.",
+      "rationale": "The platform constraint (README) fixes storage to one 1024-slot RingBuffer that overwrites the oldest entry when full; a full-history chain is unbuildable and a second structure (e.g. an external anchor) is forbidden. The windowed reading is the only interpretation compatible with the fixed storage; the task's literal requirement 1 (full history, any truncation detectable) conflicts with the constraint — see OQ1. This assumption is invalidated if the user/compliance confirms the literal reading is mandatory: then the task is infeasible under the constraint and must be re-scoped via request_contract_revision."
+    },
+    {
+      "id": "A-AUDIT-IN-ITEM",
+      "statement": "Audit data is stored inside each event's stored item in the RingBuffer (the stored item gains audit fields); a separate audit item stream in the same buffer is not used.",
+      "rationale": "The buffer's 1024 slots are shared; a separate audit stream would halve event retention (1 item per event today, 2 per event with a parallel stream) and would leak audit items into the frozen GET /events response (test_ring_overwrites_oldest and the frozen list shape would break). Storing audit fields in the event item keeps event retention at 1024 and keeps the API response exact (audit fields stripped at the API boundary — C2)."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-SINGLE-STORE",
+      "decision": "All new persisted data lives inside the existing single RingBuffer instance; no second store, no replacement, no capacity change.",
+      "rationale": "README Platform constraints (fixed): the embedded platform allocator is sized for exactly one store instance and the platform team confirmed no change is possible this release cycle.",
+      "seams_affected": ["S1"]
+    },
+    {
+      "id": "DA-CHAIN-IN-EVENTS",
+      "decision": "The audit chain is carried by the event items themselves (each stored item extends with prev_entry_hash + entry_hash); the EventAPI computes the chain at append time and strips audit fields from API responses to keep the frozen response shape byte-exact.",
+      "rationale": "Keeps the frozen GET /events?since= response shape exact (external clients depend on it), keeps event retention at the buffer capacity, and needs no second structure — the only layout compatible with DA-SINGLE-STORE and the frozen API contract.",
+      "seams_affected": ["S1"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "data",
+      "spec": "Audit entry data stored inside each event item in the RingBuffer: the stored item is {id: 'e<n>', <event payload fields>, prev_entry_hash: str, entry_hash: str} where prev_entry_hash = entry_hash of the previously appended item (or GENESIS = sha256(b'genesis').hexdigest() for the first item ever appended) and entry_hash = sha256(canonical_json({id, prev_entry_hash})).hexdigest() with canonical_json = json.dumps(obj, sort_keys=True, separators=(',', ':')). Chain order = RingBuffer storage order (oldest surviving first). The API layer never exposes prev_entry_hash/entry_hash outside the C3 query.",
+      "logical_owner": "storage/persistence (app/audit.py hash + verification module, app/storage.py buffer)",
+      "frozen": true
+    },
+    {
+      "id": "C2",
+      "kind": "api",
+      "spec": "FROZEN, unchanged: POST /events -> 201 {'id': 'e<n>'}; GET /events?since=<id> -> 200 {'events': [...]} where each item has EXACTLY the keys the client posted plus 'id' (audit fields stripped at the API boundary — no prev_entry_hash/entry_hash in the response); unknown since id -> 404 {'error': 'unknown since id: <id>'}. Existing tests in tests/test_events.py stay green against this contract.",
+      "logical_owner": "api (app/events.py)",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "api",
+      "spec": "New: GET /events?audit=true -> 200 {'audit_chain': [{'event_id': str, 'prev_entry_hash': str, 'entry_hash': str}, ...]} in storage order (oldest surviving first); empty buffer -> 200 {'audit_chain': []}. This is the only API surface that exposes audit fields.",
+      "logical_owner": "api (app/events.py)",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "Chain integration seam: where the pure chain core (app/audit.py side) meets the EventAPI's buffer operations (app/events.py side). The item list the API side presents from the RingBuffer (storage order, C1-extended items) is exactly what verify() consumes; the append the API side performs (read newest -> hash per C1 -> append extended item) must maintain the C1 link invariant. The RingBuffer itself is frozen platform storage — context for both sides, not a participant that changes.",
+      "participants": ["chain-core", "api"],
+      "contract_ids": ["C1", "C2", "C3"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "Tamper-evident chain over the stored window: verification recomputes every entry_hash from the stored item fields and checks every link (entry[i].prev_entry_hash == entry[i-1].entry_hash); verify() returns status 'ok' for an unmodified chain and status 'broken' with first_broken_link set for a rewritten or mid-removed stored entry.",
+      "positive_case": "capacity=5, post 3 events: verify() returns status 'ok', anchored at GENESIS, 0 broken links; GET /events?audit=true returns 3 entries in order with matching hashes",
+      "negative_case": "rewrite one middle stored item's payload in memory, then verify(): returns status 'broken' with first_broken_link at that entry's index (its entry_hash no longer matches, and/or the next link dangles)",
+      "failure_behavior": "verify() returns a structured result {status: 'ok'|'broken'|'unanchored_head', first_broken_link: int|null, head: {event_id, anchored: bool}} — never raises for a broken chain",
+      "evidence": "tests/test_audit_core.py::test_chain_verifies_ok, ::test_rewrite_detected, ::test_mid_truncation_detected"
+    },
+    {
+      "id": "A2",
+      "description": "Overwrite-boundary behavior: after the buffer wraps, the oldest surviving entry becomes the chain head with an unanchored prev pointer; links between surviving entries still verify and still detect rewrites; verify() returns 'unanchored_head' rather than 'broken' for the head alone.",
+      "positive_case": "capacity=3, post 5 events: verify() over the 3 surviving entries returns status 'unanchored_head', head anchored=false, 0 broken links among surviving entries",
+      "negative_case": "same setup, then rewrite the head's payload: verify() returns status 'broken' (head entry_hash mismatch) — the rewrite is still detected",
+      "failure_behavior": "the wrap itself is silent (platform behavior, asserted today by test_ring_overwrites_oldest); only explicit verify() reports the anchor status",
+      "evidence": "tests/test_audit_boundary.py::test_wrap_unanchored_head, ::test_wrap_head_rewrite_detected"
+    },
+    {
+      "id": "A3",
+      "description": "Frozen API contract unchanged: POST /events and GET /events?since= behave exactly as today, response shapes byte-exact (no audit fields leak into C2 responses); existing suite exits 0 unchanged.",
+      "positive_case": "post 2 events, GET /events?since=<first>: 200, exactly 1 event; assert item keys == {id} ∪ posted payload keys (no prev_entry_hash/entry_hash present)",
+      "negative_case": "GET /events?since=unknown: 404, assert body {'error': 'unknown since id: unknown'} — unchanged",
+      "failure_behavior": "no new failure modes on the frozen surface; audit computation failure must not change the frozen status codes (out of scope for alpha: see constraints)",
+      "evidence": "python -m unittest discover tests -v -> all tests in tests/test_events.py pass, plus tests/test_audit_boundary.py::test_frozen_contract_unchanged"
+    },
+    {
+      "id": "A4",
+      "description": "Existing test suite stays green (requirement 4).",
+      "positive_case": "python -m unittest discover tests -v exits 0 with 4 pre-existing tests passing plus the new tests passing",
+      "negative_case": "any pre-existing test failing is a stage failure, not a known issue",
+      "failure_behavior": "stop and report; do not 'fix' a failing pre-existing test by weakening it — a red pre-existing test fails the stage",
+      "evidence": "python -m unittest discover tests -v"
+    }
+  ],
+  "constraints": [
+    { "kind": "resource", "rule": "Platform memory cap is fixed: exactly one RingBuffer instance, capacity 1024, overwrites oldest when full (README, Platform constraints). No second store, no new persisted structure, no capacity change." },
+    { "kind": "process", "rule": "The frozen API contract C2 must not change — three external clients depend on POST /events -> 201 {'id': ...} and the GET /events?since= list shape." },
+    { "kind": "dependency", "rule": "stdlib only (the repo uses stdlib; hashing via hashlib, no third-party additions)." },
+    { "kind": "style", "rule": "Existing test suite stays green (tests/test_events.py); new tests go in tests/test_audit.py, pre-existing tests are not weakened." }
+  ],
+  "resource_budget": {
+    "leaf_p50": "2h",
+    "leaf_p80_max": "4h",
+    "max_compactions_per_leaf": 1,
+    "stage_estimate": "0.5-1 dev-day"
+  },
+  "allowed_replan": ["split", "reorder", "defer", "reduce_scope", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "OQ1",
+      "question": "Requirement 1's literal reading — 'the FULL history forms a verifiable chain, verifiable end-to-end at ANY time, any truncation or rewrite breaks it' — is infeasible under the fixed platform constraint (single 1024-slot RingBuffer that overwrites the oldest entry when full; no second store): (a) history beyond the buffer window is overwritten by design (asserted today by test_ring_overwrites_oldest), so a full-history chain cannot be held; (b) a hash chain without an externally anchored root cannot detect tail truncation or a head re-anchored at GENESIS, and an external anchor would require the forbidden second structure. Does compliance accept the feasible semantics in A1/A2 (windowed chain: anchored at genesis until first wrap; internal rewrites and mid-truncation detected; head unanchored after wrap; tail truncation and head re-anchoring undetectable)?",
+      "blocking": false,
+      "owner": "user",
+      "resolution": "Plan proceeds under A-CHAIN-WINDOW (the only reading compatible with the fixed constraint); A1/A2 encode the feasible semantics and are the acceptance the stage commits to. If the user/compliance answers that the literal full-history/any-truncation reading is mandatory, the task is infeasible under the platform constraint and must be re-scoped via request_contract_revision (relax the single-store constraint, allow an external anchor, or reduce requirement 1) before execution. Flagged for the auditor as a potential core-acceptance conflict between input.md requirement 1 and what this stage can deliver under the frozen constraint."
+    }
+  ],
+  "delivery_profile": { "level": "alpha" },
+  "planning_budget": {
+    "max_full_audits": 2,
+    "max_plan_revisions": 3,
+    "max_planning_subagents": 5,
+    "soft_wall_fraction": 0.3
+  },
+  "horizons": {
+    "commitment": { "tasks": ["T01"] },
+    "detailed_stage": {
+      "objective": "Tamper-evident hash-chain audit log for events, carried inside the fixed RingBuffer per C1/C2/C3, with the frozen API surface unchanged (A1-A4).",
+      "tasks": ["T01", "T02", "T03"]
+    },
+    "forecast": {
+      "stages": [
+        {
+          "objective": "Re-scope decision if OQ1 is answered against the windowed semantics (full-history requirement 1 is mandatory): choose between relaxing the platform constraint, allowing an external anchor, or reducing requirement 1 — then re-plan.",
+          "depends_on_evidence": ["user/compliance answer to OQ1 (full-history vs windowed chain semantics)"]
+        }
+      ]
+    }
+  },
+  "stage_boundary": {
+    "stop_after": ["T03"],
+    "because": "After T03, the stage acceptance A1-A4 is verifiable end-to-end, including the frozen-contract regression and the overwrite-boundary behavior — an independently verifiable capability increment (the compliance chain query works against the fixed storage). The stage ends here because the only remaining uncertainty (OQ1, compliance semantics) is a user decision, not more implementation evidence.",
+    "expected_new_evidence": ["overwrite-boundary test results (chain behavior at the wrap point)", "user/compliance answer to OQ1 if it arrives mid-stage"],
+    "decisions_deferred_until_then": ["full-history vs windowed compliance semantics (OQ1) — if the user requires the literal reading, acceptance A1/A2 must be revised via request_contract_revision before execution"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified", "core_seam_blocker", "route_changing_evidence", "budget_envelope_threatened"],
+    "not_triggers": ["first_worker_failure", "optional_bug", "mechanical_merge_conflict"]
+  }
+}

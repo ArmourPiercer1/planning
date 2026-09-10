@@ -1,0 +1,103 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+  "scope_root": ".",
+  "scanned_at": "2026-09-10T12:15:32+00:00",
+  "files": [
+    {
+      "path": "app/api.py",
+      "layer": "api",
+      "role": "HTTP surface (framework-agnostic handler functions).",
+      "imports": [
+        "app/notify.py"
+      ],
+      "exports": [
+        "handle_list",
+        "handle_notify"
+      ]
+    },
+    {
+      "path": "app/db.py",
+      "layer": "persistence",
+      "role": "JSON-file persistence for notification records.",
+      "imports": [],
+      "exports": [
+        "NotificationStore"
+      ]
+    },
+    {
+      "path": "app/notify.py",
+      "layer": "service",
+      "role": "Core notification send path. No retry today: first non-2xx -> failed.",
+      "imports": [
+        "app/db.py",
+        "app/provider.py"
+      ],
+      "exports": [
+        "_record_status",
+        "send_notification"
+      ]
+    },
+    {
+      "path": "app/provider.py",
+      "layer": "service",
+      "role": "Notification delivery provider client.",
+      "imports": [],
+      "exports": [
+        "ProviderClient",
+        "ProviderResponse"
+      ]
+    },
+    {
+      "path": "tests/test_gateway_observed.py",
+      "layer": "e2e",
+      "role": "Observed provider behavior (gateway capture, unannotated by vendor).",
+      "imports": [
+        "app/provider.py"
+      ],
+      "exports": [
+        "FakeGatewayClient",
+        "TestObservedGateway"
+      ]
+    },
+    {
+      "path": "tests/test_notify.py",
+      "layer": "e2e",
+      "role": "Tests for the send path. These must stay green after the retry work.",
+      "imports": [
+        "app/db.py",
+        "app/notify.py",
+        "app/provider.py"
+      ],
+      "exports": [
+        "FailClient",
+        "OkClient",
+        "TestSendPath"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_gateway_observed.py",
+    "tests/test_notify.py"
+  ],
+  "known_shared_files": [
+    "app/db.py",
+    "app/notify.py",
+    "app/provider.py"
+  ],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [
+    "app/db.py (imported across layers: e2e, service)",
+    "app/notify.py (imported across layers: api, e2e)"
+  ],
+  "scan_boundary": [
+    "app",
+    "tests"
+  ],
+  "dependency_expansions": [],
+  "unknown_areas": [
+    "README.md",
+    "TASK.md"
+  ]
+}

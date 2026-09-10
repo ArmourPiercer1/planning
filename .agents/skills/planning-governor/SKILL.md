@@ -12,11 +12,20 @@ meta-task, and stops "not sure yet" from blocking execution.
 
 Vocabulary: `../../references/glossary.md`.
 
+## Role boundary
+
+The governor is the **single decision point** between planning and
+execution. It runs after every audit (PASS or FAIL). The auditor finds,
+describes, and grounds; the governor decides what happens next. No other
+skill, step, or loop triggers a plan revision.
+
 ## Trigger
 
 - **Use:**
-  - (a) After initial plan + audit complete, before execution dispatch
-  - (b) After a targeted revision round
+  - (a) After initial plan + audit complete, before execution dispatch —
+    regardless of verdict (PASS or FAIL)
+  - (b) After a bounded re-audit following a `TARGETED_PATCH` or `SPIKE`
+    round
   - (c) At a stage checkpoint when deciding whether to continue/replan
 - **Do NOT use:**
   - After every worker completes (use `checkpoint-handoff` instead)
@@ -161,6 +170,13 @@ exists. The governor may trigger this when:
 - At most 2 findings
 - Each affects exactly one artifact
 - No EXECUTION_BLOCKER or SPIKE_REQUIRED
+
+**TARGETED_PATCH constraints:** only findings that are **specific, local,
+with a known fix, and not requiring Stage redesign**. Anything broader is
+`HUMAN_BLOCKER` (user decision), not a patch. After the patch: bounded
+re-audit with the **same** auditor (`revision_round` incremented), then back
+to the governor. Spawning a fresh planning reviewer for a targeted patch is
+forbidden — that is the runaway this design kills.
 
 ### Step 5 — Schedule feasibility
 

@@ -1,0 +1,49 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    { "id": "S1", "description": "service -> provider: the retry loop wraps client.send; every provider call is observable via the client's .calls list; 429/5xx/4xx branching happens here", "contract_ids": ["C1", "C3"], "covered_by": ["T03"] },
+    { "id": "S2", "description": "service -> store: exactly one record per send_notification call, written after the retry window resolves; record shape per C2 with meaningful attempts", "contract_ids": ["C2"], "covered_by": ["T03"] }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "e2e_closure",
+      "merged_kinds": ["final_acceptance"],
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A5"
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "contract_consistency",
+      "reason": "This 2-leaf Stage freezes three small contracts (C1 retry policy, C2 record shape, C3 provider interface); gates E1-E3 exercise all three end to end against the real modules, and C3 is frozen with zero modifications (no task touches app/provider.py) — a separate read-only consistency sweep would add a serial hop with no new coverage",
+      "evidence": ["E1", "E2", "E3", "C1", "C2", "C3"]
+    },
+    {
+      "kind": "seam_integration",
+      "reason": "No new production wiring: T01's only file (docs/429-behavior-verification.md) lands in a fresh docs/ directory, and T02's only new file (tests/test_retry.py) lands in tests/ next to T02's own existing test files — no leaf creates files beside another leaf's code, and the retry loop is consumed through the existing send_notification call path",
+      "evidence": ["S1", "S2", "repo-context-snapshot.json (no docs/ dir exists; tests/ files all owned by T02)"]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "retry-call accounting against the real client seam: a provider failing 500,500,202 makes exactly 3 .calls entries and yields status sent/attempts 3; a provider always returning 400 makes exactly 1 call and yields failed/attempts 1 (non-retryable); a provider returning 429 three times makes exactly 3 calls and yields failed (retry-exhaustion failure scenario)",
+      "covers": ["S1"],
+      "evidence": "tests/test_e2e_retry.py::test_call_count_and_status"
+    },
+    {
+      "id": "E2",
+      "scenario": "one-record-per-call through the store seam: after a 3-attempt failure the store holds exactly 1 record (not one per attempt) with attempts 3 and the last error; a first-attempt success holds exactly 1 record with attempts 1 (failure scenario: an intermediate record write fails this test)",
+      "covers": ["S2"],
+      "evidence": "tests/test_e2e_retry.py::test_one_record_per_call"
+    },
+    {
+      "id": "E3",
+      "scenario": "final acceptance A5: the full suite is green — existing tests/test_notify.py and tests/test_gateway_observed.py unchanged and passing, plus new tests/test_retry.py and tests/test_e2e_retry.py",
+      "covers": ["S1", "S2"],
+      "evidence": "python -m unittest discover tests -v -> all pass"
+    }
+  ]
+}

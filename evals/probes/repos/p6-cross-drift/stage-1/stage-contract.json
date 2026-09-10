@@ -1,0 +1,71 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "stage-1",
+  "objective": "Add list filtering to the todo service: GET /todos?done=true|false&tag=<t> returns only matching todos, with stable ordering and a deterministic 400 on malformed filter parameters.",
+  "in_scope": [
+    "filter parameters on GET /todos (done, tag)",
+    "tag support on todos (string field, set at creation)",
+    "stable ordering by creation order"
+  ],
+  "out_of_scope": [
+    { "item": "notification of any kind (webhooks, email, in-app)", "reason": "deferred to stage 2 — needs its own contract work" },
+    { "item": "multi-user auth / per-user todo isolation", "reason": "not part of this engagement" },
+    { "item": "bulk operations (delete-all, mark-all)", "reason": "no request; API surface stays minimal" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A1", "statement": "the service runs single-process with the in-memory store; no persistence layer is involved", "rationale": "store.py holds everything in memory; the platform runs one replica" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA1", "decision": "TodoAPI is the only writer to the store; handlers never mutate store state directly", "rationale": "keeps the API layer testable and the store the single source of truth", "seams_affected": ["S1"] }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "api",
+      "spec": "GET /todos response: {todos: [{id: string, title: string, done: boolean, tag?: string}]} — exactly these keys per todo, in creation order; 400 {error} on malformed filter params",
+      "logical_owner": "todo API layer (app/api.py)",
+      "frozen": true,
+      "unfreeze_rule": "only via a contract change request with product sign-off; external clients depend on the exact key set"
+    },
+    {
+      "id": "C2",
+      "kind": "data",
+      "spec": "todo record shape in store: {id: 't<n>', title: string, done: boolean, tag?: string}; creation order preserved",
+      "logical_owner": "todo store (app/store.py)",
+      "frozen": true,
+      "unfreeze_rule": "additive-only until stage 2 proposes otherwise in writing"
+    }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "handler -> store boundary: every read/write goes through TodoStore methods", "participants": ["app/api.py", "app/store.py"], "contract_ids": ["C1", "C2"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "GET /todos?done=true returns only done todos; ?done=false only undone; both in creation order", "positive_case": "3 todos (2 done, 1 open): ?done=true yields exactly the 2 done todos in creation order", "negative_case": "?done=maybe returns 400 with {error}", "failure_behavior": "malformed param -> 400, store untouched", "evidence": "tests/test_filter.py::test_filter_done" },
+    { "id": "A2", "description": "tag filter matches exact tag; todos without a tag never match a tag filter", "positive_case": "todos with tag=work and one untagged: ?tag=work yields only the tagged ones", "negative_case": "?tag=work when no todo has that tag yields {todos: []}", "failure_behavior": "no match is a valid empty result, not an error", "evidence": "tests/test_filter.py::test_filter_tag" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "stdlib only; no new third-party imports" },
+    { "kind": "style", "rule": "handlers stay framework-agnostic (path_params, body dicts)" }
+  ],
+  "resource_budget": { "leaf_p50": "45m", "leaf_p80_max": "90m", "max_compactions_per_leaf": 1, "stage_estimate": "4h" },
+  "allowed_replan": ["split", "reorder", "defer"],
+  "open_questions": [],
+  "delivery_profile": { "level": "alpha" },
+  "planning_budget": { "max_full_audits": 2, "max_plan_revisions": 3, "max_planning_subagents": 5 },
+  "horizons": {
+    "commitment": { "tasks": ["T01"] },
+    "detailed_stage": { "objective": "filtering on GET /todos", "tasks": ["T01", "T02"] },
+    "forecast": { "stages": [ { "objective": "stage 2: notifications on completion (see product ticket)", "depends_on_evidence": ["stage-1 acceptance met", "webhook URL registration design decision"] } ] }
+  },
+  "stage_boundary": {
+    "stop_after": ["T02"],
+    "because": "filtering is acceptance-verifiable end to end after T02; notifications are a separate stage with its own contract work",
+    "expected_new_evidence": ["stage-1 tests green under the frozen suite"],
+    "decisions_deferred_until_then": ["webhook URL registration surface", "notification failure policy"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified"],
+    "not_triggers": ["first_worker_failure"]
+  }
+}

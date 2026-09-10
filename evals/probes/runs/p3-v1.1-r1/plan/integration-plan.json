@@ -1,0 +1,65 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "LogWriter ↔ rotation module: __init__ and append() trigger points in app/logger.py call rotate() then apply_retention() in app/rotation.py. Consistency risks: wrong argument (live file vs its parent dir), hook placed after the write instead of before, missing apply_retention call, import cycle (rotation importing logger), timestamp-parse vs mtime-fallback disagreement between writer and module.",
+      "contract_ids": ["C1", "C3"],
+      "covered_by": ["T03"]
+    },
+    {
+      "id": "S2",
+      "description": "LogWriter ↔ consumers (serve loop + pre-existing tests): the C2 public interface must stay byte-compatible so app/server.py and tests/test_log.py run unmodified. Consistency risks: append() signature or per-line behavior drift, live file path/naming change breaking the server's 'logs/app.log' reference.",
+      "contract_ids": ["C2"],
+      "covered_by": ["T03"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "e2e_closure",
+      "merged_kinds": ["seam_integration", "final_acceptance"],
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A6"
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "contract_consistency",
+      "reason": "A separate read-only diff pass would duplicate what the two small leaves already assert against the frozen specs: T01's unit tests execute C1/C3 signatures and semantics line-by-line, T02's wiring tests execute C2, and T03 re-asserts the observable contract surface (A5 runs the unmodified pre-existing suite; A6 asserts the C3 file layout end-to-end) — for a 2-leaf alpha plan a fourth task adds no independent check.",
+      "evidence": [
+        "A5: python -m unittest tests.test_log -v passes unmodified (C2 surface)",
+        "A6: e2e asserts app-YYYYMMDD.log / .gz layout per C3",
+        "T01 outputs tests/test_rotation.py asserting C1/C3 behavior",
+        "T02 outputs tests/test_log_rotation.py asserting C1 hook wiring per C2"
+      ]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Happy-path midnight crossing through serve(): clock pinned at 23:59:50, 23:59:59, 00:00:01 on consecutive ticks — first two lines end up in app-<day1>.log, third in app.log, total line count preserved, and the retention pass ran after the rotation (oldest rotated file deleted when 8+ existed beforehand).",
+      "covers": ["S1", "S2"],
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_midnight_crossing -q"
+    },
+    {
+      "id": "E2",
+      "scenario": "Restart failure scenario (S1): process restarts mid-history with a stale live log (last line dated before today); LogWriter construction rotates the stale file before any append, then same-day appends stay in the fresh live file; no line lost across the restart.",
+      "covers": ["S1"],
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_restart_rotates_stale_log -q"
+    },
+    {
+      "id": "E3",
+      "scenario": "Bad-input failure scenario (S1): live log's last line has no parseable timestamp (corrupt line); rotation falls back to the mtime date per C1, append still succeeds, no crash, no line lost, and the corrupt file is archived whole (not truncated or dropped).",
+      "covers": ["S1"],
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_corrupt_last_line_fallback -q"
+    },
+    {
+      "id": "E4",
+      "scenario": "Existing-consumer failure scenario (S2): the pre-existing test suite runs unmodified and green, and tests/test_log.py is byte-identical to the snapshot revision — any failure or diff means the C2 seam broke in T02.",
+      "covers": ["S2"],
+      "evidence": "python -m unittest tests.test_log -v (exit 0) and tests/test_log.py unchanged vs repo revision 790b314d1d8780b679c7f585d95c5eb3d2b6640d"
+    }
+  ]
+}

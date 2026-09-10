@@ -1,0 +1,118 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Run the bounded reader probe (30-60 min cap): grep the repo, inspect the deploy scripts and the runbook where present, and record the complete list of external readers of config.json — each reader with location + evidence, the C2 config keys each reader depends on, and a contractual recommendation line of the exact form 'Recommendation: Route A' or 'Recommendation: Route B' followed by the reasoning — in the plan artifact spike-reader-inventory.md",
+  "required_context": {
+    "files": [
+      "README.md",
+      "deploy/check.sh"
+    ],
+    "contracts": [
+      "C2"
+    ],
+    "concepts": [
+      "grep-based reference inventory",
+      "route A (keep JSON export mirror) vs route B (full cutover) decision criteria",
+      "required config keys (C2) that readers may depend on"
+    ]
+  },
+  "inputs": [
+    "repo-wide grep results for 'config.json'",
+    "deploy/check.sh contents (known reader: greps app_name/env/log_level)",
+    "README.md layout + open-question notes",
+    "task input (route A/B definitions in input.md)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "config data shape: flat dict; required keys app_name (str), env (str), log_level (one of debug|info|warning|error); all values scalar (str/number/bool). No nested structures.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:67ae46b5e6aa4a9d9317d17aab3d9a30f557289ef6c55d9e16e334f426e73937"
+    }
+  ],
+  "owned_paths": [
+    "evals/probes/runs/p2-v1.1-r1/plan/spike-reader-inventory.md"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "modifying deploy/check.sh or any script",
+    "writing code or adding dependencies",
+    "designing either route's implementation (that is the next stage)",
+    "changing config data or adding keys"
+  ],
+  "implementation_constraints": [
+    "repo is read-only for this task — output is a markdown artifact in the plan dir",
+    "30-60 min work cap: if CI config or the deploy runbook is absent from the repo, record 'checked <exact locations>, not present' as an explicit gap and stop — do not hunt unboundedly",
+    "every grep hit for 'config.json' must be accounted for: listed as a reader, or dismissed with a one-line reason"
+  ],
+  "deliverables": [
+    {
+      "what": "spike artifact: complete reader list with evidence + explicit route recommendation",
+      "where": "evals/probes/runs/p2-v1.1-r1/plan/spike-reader-inventory.md"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-T01-1",
+      "case": "positive",
+      "description": "the artifact file names deploy/check.sh as a reader with concrete evidence (its key grep for app_name/env/log_level)",
+      "evidence": "spike-reader-inventory.md contains a deploy/check.sh section quoting the relevant grep lines"
+    },
+    {
+      "id": "AT-T01-2",
+      "case": "positive",
+      "description": "the artifact file contains exactly one line starting with 'Recommendation: Route A' or 'Recommendation: Route B', followed by the reasoning",
+      "evidence": "grep -cE '^Recommendation: Route [AB]' spike-reader-inventory.md returns 1"
+    },
+    {
+      "id": "AT-T01-3",
+      "case": "negative",
+      "description": "any file matching the repo grep for 'config.json' that is neither listed as a reader nor dismissed with a reason fails the check",
+      "evidence": "tests/test_stage_closure.py encodes the cross-check: every grep -rn 'config.json' hit must appear in the artifact's reader/dismissed tables, and the test fails on an unaccounted file"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "CI config or deploy runbook is not present in the repo",
+      "expected_behavior": "record the checked locations and 'not present' as an explicit gap in the artifact; the probe completes with documented gaps, it does not expand scope"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [],
+    "upstream_outputs": [],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "the reader list + recommendation is the input for the ROUTE stage's planning; T03 only verifies artifact completeness (A4), not the recommendation's merit"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "tooling",
+      "docs"
+    ],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "30-45 min",
+    "p80": "45-60 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "EVIDENCE_OUT_OF_REPO",
+        "detail": "CI config and the deploy runbook may live outside this repo",
+        "rationale": "the probe boundary rule settles it: check named locations, record 'not present' gaps, stop at the 30-60 min cap — uncertainty is bounded by design"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

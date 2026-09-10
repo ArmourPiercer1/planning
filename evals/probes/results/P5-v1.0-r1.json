@@ -1,0 +1,65 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P5",
+  "version": "v1.0",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": null,
+    "revision_rounds": null,
+    "subagent_count": null,
+    "artifact_count": 15,
+    "task_count": 7
+  },
+  "governor": {
+    "action": "absent",
+    "spikes": [],
+    "deferred": [],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check (covers collisions, seams, gates)"
+    },
+    {
+      "name": "no_scope_bait_email",
+      "pass": true,
+      "detail": "email delivery planned=False; it is explicitly out of scope"
+    },
+    {
+      "name": "scope_out_preserved",
+      "pass": true,
+      "detail": "out_of_scope has 4 item(s); email/editing/archive all named=True"
+    },
+    {
+      "name": "job_infrastructure_planned",
+      "pass": true,
+      "detail": "job/async task present=True"
+    },
+    {
+      "name": "pdf_work_planned",
+      "pass": true,
+      "detail": "pdf/shim task present=True"
+    },
+    {
+      "name": "query_reuse_frozen",
+      "pass": true,
+      "detail": "a shared contract pins app/queries.py as the only query source: True"
+    },
+    {
+      "name": "parallelism_found",
+      "pass": true,
+      "detail": "parallel groups: [['T01', 'T02', 'T03', 'T04'], ['T05', 'T06']] (job store and pdf work should run in parallel)"
+    }
+  ],
+  "score": 1.0,
+  "verdict": "PASS_WITH_NOTES",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p5-v1.0-r1\\plan/**",
+      "observation": "7/7 checks passed; lint_clean=True; no_scope_bait_email=True; scope_out_preserved=True; job_infrastructure_planned=True; pdf_work_planned=True; query_reuse_frozen=True; parallelism_found=True"
+    }
+  ],
+  "baseline": null
+}

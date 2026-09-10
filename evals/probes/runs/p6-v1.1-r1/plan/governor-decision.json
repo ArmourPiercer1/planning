@@ -1,0 +1,37 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F01",
+      "routing": "OPTIONAL",
+      "reason": "MINOR nondeterministic_acceptance (A1/C3 silent on the dispatch count of a repeated mark_done; the repo's mark_done is idempotent so a repeat 'succeeds'). C3's '(todo exists, transition applied)' plus the product reading (one notification per completion event) make the intended behavior clear, and no acceptance test pins the zero-dispatch case — a determinism/coverage gap beyond the alpha delivery profile, not an acceptance break. Carried as execution warning: add the assertion to tests/test_notifications.py (mark a done todo done again; assert WebhookLog.sent still has exactly 1 entry) and, if convenient, the C3 clause 'a repeat done on an already-done todo dispatches zero webhooks'."
+    },
+    {
+      "finding_id": "F02",
+      "routing": "OPTIONAL",
+      "reason": "MINOR hidden_dependency: T03.required_context.files omits app/api.py, app/webhooks.py, app/store.py, which the e2e file imports for the E2 raising-dispatcher scenario. All three are snapshot-listed and reachable through the declared frozen suite's own imports — the executor discovers them with a trivial read at task start, not a mid-run surprise, and T03's owned_paths stay test-only. Carried as execution warning: add the three files to T03's context read list. A one-line context edit, but per step-4 routing only OPTIONAL findings are present, and the TARGETED_PATCH safe zone (all MAJOR, <= 2 findings) is not met by 3 MINORs — deferral with a named fix is the skill-correct routing."
+    },
+    {
+      "finding_id": "F03",
+      "routing": "OPTIONAL",
+      "reason": "MINOR schema_invalid: run-manifest.json (a gate/attribution log, not an execution input and outside plan-check lint's coverage) failed its own run-manifest@1 schema. Fixed in this stage-8 re-run as a record-keeping rewrite of the manifest to the @1 shape (plan_id/stage_id/created_at/audit_verdict; per-row status+gate; per-gate name; string stage ids), with the round-1/round-2 history preserved in the rows. A log-format fix, not a plan revision: plan content is untouched, so it counts against no budget line and requires no re-audit."
+    },
+    {
+      "finding_id": "Q1",
+      "routing": "OPTIONAL",
+      "reason": "open question (owner: user/product): whether last_notified_at should be added to the GET /todos response — a C1 change requiring sign-off per C1's unfreeze rule. Deliberately surfaced, not absorbed: the stage-2 plan executes with C1 byte-identical; if Q1 is approved, the conditional forecast stage starts with a contract-change request. Not an execution blocker for this stage (confirmed by the round-2 audit's NO SILENT DRIFT judgment)."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 0,
+    "full_audits": 1,
+    "subagents": 0,
+    "wall_time": null,
+    "tokens": null
+  },
+  "forbidden_actions": [],
+  "reason": "Stage 8 RE-RUN on the superseding round-2 isolated audit (fresh_subagent, revision_round 2, verdict PASS, 0 BLOCKER / 0 MAJOR / 3 MINOR — all auditor-routed OPTIONAL): no EXECUTION_BLOCKER and no SPIKE_REQUIRED findings, planning budget not exhausted, and step-4's ordered logic routes 'only POST_STAGE + OPTIONAL findings' to EXECUTE. TARGETED_PATCH was considered and NOT triggered: its enumerated safe zone requires findings all MAJOR and at most 2; here there are 3 MINORs already routed OPTIONAL by the auditor, and a patch round would additionally consume the 2nd of 2 accepted full audits and the 1st of 3 revisions to fix items the executor resolves at task start (F02: three snapshot-listed files reachable via the frozen suite's imports) or that are alpha-profile coverage polish (F01) or a pipeline log (F03). Budget status under the parent's ruling: the round-1 in-conversation late-pass audit is an invalid isolation record and does NOT count; the round-2 isolated audit is the 1st accepted full audit (1/2), plan_revisions 0/3, planning subagents 0/5 (the isolated auditor was parent-dispatched, not a planner subagent). F03's manifest fix is applied as record-keeping in the same re-run. Schedule forecast carried from round 1 per step 5: p80 upper-bound sum ~210 min vs stage_estimate 180 min with no parallelism — inside the coarseness of the ranges (p50 sum ~130 min), recorded as forecast risk, no scope-fit pass taken, no replan forced. Proceeding to execution."
+}

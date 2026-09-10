@@ -1,0 +1,171 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Create tests/e2e/test_rotation_e2e.py executing the four E2E gates — midnight crossing through serve() (E1), restart-rotates-stale-log (E2), corrupt-last-line fallback (E3), unmodified pre-existing suite byte-identical (E4) — and, only if a gate fails due to a seam defect, patch the defect inside owns_fixes_for [T01, T02] and record the deviation — observable: pytest tests/e2e/test_rotation_e2e.py -q green, python -m unittest tests.test_log -v green with no diff on tests/test_log.py, and A1–A6 evidence recorded in checkpoints/T03.json.",
+  "required_context": {
+    "files": [
+      "app/server.py",
+      "app/logger.py",
+      "app/rotation.py (new)",
+      "tests/test_log.py",
+      "tests/test_log_rotation.py (new)",
+      "tests/e2e/test_rotation_e2e.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "serve(writer, requests) drives one append per request — the rotation trigger point; its code stays unmodified",
+      "Fake clock: one controllable clock patched onto app.logger.datetime (hook clock) and app.server.time (line timestamps) — no wall-clock midnight in any test",
+      "Seam-defect ownership: integration-only fixes may land in app/rotation.py and app/logger.py only, and must be recorded as checkpoint deviations"
+    ]
+  },
+  "inputs": [
+    "app/rotation.py (T01 output)",
+    "app/logger.py with rotation hooks (T02 output)",
+    "checkpoints/T01.json and checkpoints/T02.json (upstream handoff notes, patch targets, test style)",
+    "Frozen contracts C1, C2, C3 (inlined below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "app/rotation.py exposes exactly: rotation_name(d: date) -> str — returns 'app-' + d.strftime('%Y%m%d') + '.log'; needs_rotation(last_date: date | None, now: datetime) -> bool — True iff last_date is not None and last_date < now.date(); rotate(log_dir: Path, now: datetime) -> Path | None — live file is log_dir/'app.log'; determine its date from the ISO timestamp prefix of its last line (fallback: file mtime date; empty/missing file: no rotation); if that date < now.date(), rename the live file to rotation_name(that date) and return the new Path, else None; apply_retention(log_dir: Path, now: datetime, keep: int = 7) -> list[Path] — for each rotated file app-YYYYMMDD.log with date D < now.date() - 1 day: gzip it to app-YYYYMMDD.log.gz and delete the plain file; then over all dated rotated files (plain and gz, one slot per date) sorted by date descending, delete everything beyond the first `keep` and return the deleted paths. The module imports only stdlib (pathlib, datetime, gzip, re) and nothing from app/ or tests/.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:07362093681ba680d5b6bd8e9a2678de563cab35dcb8d95c3167a346259c27e0"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "LogWriter public interface is unchanged: LogWriter(path: str | Path) constructor (creates parent dirs and an empty live file as today); .append(line: str) -> None appends exactly one newline-terminated line to the live log file; .lines() -> list[str] returns the live file's lines. append() additionally performs the rotation hook (rotate + apply_retention) before writing when the date changed; __init__ performs the same hook at startup. Observable per-request behavior for same-day lines is byte-identical to today.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:ce779727baeb01c23a3b6e0afc5345ee2f7d6cb0cd9b5747660cc69f8249635c"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "data",
+      "spec": "Log file naming and retention policy: live file = logs/app.log; rotated file = logs/app-YYYYMMDD.log named after the completed day (date of the live log's last line); compressed = logs/app-YYYYMMDD.log.gz; at most 7 dated rotated files retained (a gz file occupies the same date slot as its plain file; after successful compression the plain file is deleted, so at most one artifact per date); a rotated file with date D is compressed when D < now.date() - 1 day (today's rotated file and yesterday's stay plain-text).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:1e12c145d2c6ddeab24a4dd6f37c23a8aca72e3df63d9ad0005aeaf41e857f9b"
+    }
+  ],
+  "owned_paths": [
+    "tests/e2e/test_rotation_e2e.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "app/rotation.py — e2e asserts its observable behavior (naming, retention, compression) through LogWriter; a seam defect here may be patched (owns_fixes_for) with the deviation recorded"
+    },
+    {
+      "task_id": "T02",
+      "what": "app/logger.py with rotation hooks plus checkpoints/T01.json and checkpoints/T02.json (handoff notes, patch targets, documented monkeypatch seams: app.logger.datetime)"
+    }
+  ],
+  "non_goals": [
+    "No new production code beyond seam-defect fixes inside app/rotation.py and app/logger.py (owns_fixes_for)",
+    "Do not modify app/server.py or tests/test_log.py (S2/A5: both stay byte-identical)",
+    "Do not add third-party test dependencies (unittest + stdlib only)",
+    "Do not expand acceptance beyond A1–A6 / gates E1–E4 — a gate that fails for a reason outside a seam defect is a reportable failure, not a scope expansion",
+    "Do not silently rewrite a leaf's logic: a seam fix is the minimal change that restores the frozen contract, recorded as a checkpoint deviation"
+  ],
+  "implementation_constraints": [
+    "E2E tests drive serve(writer, requests) from app/server.py unmodified — no patching of serve internals",
+    "Fake clock: a single controllable clock patched onto app.logger.datetime (hook) and app.server.time (line timestamps); every assertion uses explicit dates, never wall-clock midnight",
+    "Log directory for e2e: tempfile.TemporaryDirectory; the real logs/ is never written by tests",
+    "Any seam fix lands only in app/rotation.py or app/logger.py, is minimal, and is recorded in the checkpoint deviations with the gate that exposed it",
+    "UTF-8 explicit encoding on all test file I/O"
+  ],
+  "deliverables": [
+    {
+      "what": "E2E test file with gates E1–E4 (midnight crossing, restart, corrupt-line fallback, unmodified-suite check)",
+      "where": "tests/e2e/test_rotation_e2e.py"
+    },
+    {
+      "what": "A1–A6 evidence record + any seam-fix deviations",
+      "where": "checkpoints/T03.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "tests/e2e/test_rotation_e2e.py::test_midnight_crossing",
+      "case": "positive",
+      "description": "A6/E1: serve() with the fake clock at 23:59:50, 23:59:59, 00:00:01 across the tick boundary — first two lines in app-<day1>.log, third in app.log, total line count preserved; with 8 pre-existing rotated files, the oldest is deleted after the rotation.",
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_midnight_crossing -q → passed"
+    },
+    {
+      "id": "tests/e2e/test_rotation_e2e.py::test_single_day_no_rotation",
+      "case": "negative",
+      "description": "A6 negative: all ticks on one day — everything lands in app.log, no dated file created, no retention action.",
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_single_day_no_rotation -q → passed"
+    },
+    {
+      "id": "tests/e2e/test_rotation_e2e.py::test_restart_rotates_stale_log",
+      "case": "failure",
+      "description": "E2: restart scenario — a second LogWriter constructed over a stale live log (last line dated before the clock's today) rotates before any append; then serve() same-day appends stay in the fresh live file; no line lost across the restart.",
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_restart_rotates_stale_log -q → passed"
+    },
+    {
+      "id": "tests/e2e/test_rotation_e2e.py::test_corrupt_last_line_fallback",
+      "case": "failure",
+      "description": "E3: live log's last line has no parseable timestamp; with the clock one day later, the hook falls back to the mtime date (set via os.utime to the stale day), rotates the whole file intact, and the subsequent append succeeds — no crash, no line lost.",
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_corrupt_last_line_fallback -q → passed"
+    },
+    {
+      "id": "tests/test_log.py (unmodified) via python -m unittest",
+      "case": "positive",
+      "description": "A5/E4: pre-existing suite passes 2/2 and tests/test_log.py is byte-identical to the snapshot revision — S2 held end to end.",
+      "evidence": "python -m unittest tests.test_log -v → OK (2 tests); git diff --exit-code 790b314d1d8780b679c7f585d95c5eb3d2b6640d -- tests/test_log.py → exit 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "A gate fails because of a seam defect in T01's module (e.g. wrong dir passed by the hook, retention not called)",
+      "expected_behavior": "T03 applies the minimal fix in app/rotation.py or app/logger.py (owns_fixes_for), re-runs the failing gate plus the full e2e file, and records the deviation (gate, file, change) in checkpoints/T03.json."
+    },
+    {
+      "scenario": "A gate fails for a reason outside the seam (e.g. C1 spec ambiguity, environment limitation)",
+      "expected_behavior": "No fix attempt beyond diagnosis; record the failure and the suspected contract/assumption in checkpoints/T03.json as a blocker for the governor — do not invent new acceptance behavior."
+    },
+    {
+      "scenario": "Fake clock patching leaks between tests (patch not restored)",
+      "expected_behavior": "Each test patches within a context manager (unittest.mock.patch / patch.object) so restoration is guaranteed; a leak is a test defect fixed in the e2e file only."
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [
+      "app/rotation.py (T01)",
+      "app/logger.py with rotation hooks (T02)",
+      "checkpoints/T01.json",
+      "checkpoints/T02.json"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "Final stage task: carries seam_integration (owns_fixes_for T01, T02) and final_acceptance merged into e2e_closure. Records A1–A6 evidence, any seam-fix deviations, and the full-suite result. After this task the stage boundary (stop_after T03) is reached — no further tasks are planned."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "e2e",
+      "service"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "45-75 min",
+    "p80": "90-120 min",
+    "compaction_risk": "low",
+    "warnings": []
+  }
+}

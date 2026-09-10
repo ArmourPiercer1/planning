@@ -1,0 +1,153 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Implement app/services/pdf_export.py exposing render_report_pdf(customer_id, lang) per C3: one PDF page per report of the customer (customer header + period/title/metric/value rows), report data fetched exclusively through app/queries.py, all label strings from the C4 tables, drawing through the C5 shim (injected; stubbed in this task's tests), plus unit tests including a page-count assertion.",
+  "required_context": {
+    "files": [
+      "app/queries.py",
+      "app/models.py"
+    ],
+    "contracts": [
+      "C3",
+      "C4",
+      "C5"
+    ],
+    "concepts": [
+      "report data shape from report_with_rows/reports_for_customer (id, customer_id, period, title, rows[{metric, value}])",
+      "page-per-report layout",
+      "dependency injection of the shim so tests stub it"
+    ]
+  },
+  "inputs": [
+    "frozen contract C3 (own signature)",
+    "frozen contract C4 (label tables)",
+    "frozen contract C5 (shim doc API)",
+    "app/queries.py (read-only data source)",
+    "app/models.py (read-only, one hop from queries.py)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "render_report_pdf(customer_id: str, lang: str) -> bytes — renders one PDF page per report of the customer, fetching report data exclusively via app/queries.py, labels from the C4 label tables for the given lang; returns a non-empty byte string starting with b'%PDF'.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f61551c901bb7c83ce338b454792d331dbc85033ecbc9454e9878b2e6d210451"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "data",
+      "spec": "label tables for pdf generation: LABELS = {'en': {customer, period, title, metric, value}, 'de': {Kunde, Periode, Titel, Kennzahl, Wert}} — exact key set {customer, period, title, metric, value}; renderer must not hardcode label strings outside these tables.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:b22a9a904497d96fff65cfc822fbd8c835f8562b564b56902b1aaf74b407699c"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "api",
+      "spec": "vendored pdflib_shim module at app/services/pdflib_shim.py exposing: open() -> doc, doc.add_page(), doc.add_text(x, y, text, size=10), doc.save() -> bytes — a ~40-line pure-stdlib wrapper producing a minimal valid PDF (header %PDF-1.4, pages, xref, trailer).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:932db265f01ae878e5402c4e3c6078370b8b2f4c2c0000dbb62a63d65656c58a"
+    }
+  ],
+  "owned_paths": [
+    "app/services/pdf_export.py",
+    "tests/test_pdf_render.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no reading of _REPORTS / models.get_report directly (queries.py is the only data path)",
+    "no job/worker/API code",
+    "no hardcoded label strings outside the C4 tables",
+    "no changes to app/queries.py or app/models.py"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only",
+    "the public signature stays exactly the frozen 2-arg render_report_pdf(customer_id, lang); a private helper _render(customer_id, lang, shim) accepts the shim so tests call the helper with a recording stub implementing the C5 API",
+    "every label emitted must come from LABELS[lang][key] — a missing key must raise, not default",
+    "customer with zero reports -> raise LookupError (the API rejects such enqueues upstream per C1/A3)"
+  ],
+  "deliverables": [
+    {
+      "what": "PDF renderer module",
+      "where": "app/services/pdf_export.py"
+    },
+    {
+      "what": "unit tests (stub shim)",
+      "where": "tests/test_pdf_render.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "render for customer c1 with a recording stub: exactly 2 add_page calls (one per report) and the page texts contain both report titles",
+      "evidence": "python -m unittest tests.test_pdf_render.TestRender.test_one_page_per_report -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "positive",
+      "description": "lang='de' -> recorded texts contain the German labels (Kunde, Periode, Titel, Kennzahl, Wert); lang absent -> 'en' default with English labels",
+      "evidence": "python -m unittest tests.test_pdf_render.TestRender.test_labels_follow_lang -> test passes"
+    },
+    {
+      "id": "AT03",
+      "case": "failure",
+      "description": "customer with no reports raises LookupError before any page is drawn",
+      "evidence": "python -m unittest tests.test_pdf_render.TestRender.test_no_reports_raises -> test passes"
+    },
+    {
+      "id": "AT04",
+      "case": "positive",
+      "description": "a report with zero rows still renders its page (the test asserts a title-only page, no metric rows)",
+      "evidence": "python -m unittest tests.test_pdf_render.TestRender.test_empty_report_rows -> test passes"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "report with zero rows",
+      "expected_behavior": "the page renders customer/period/title only (the test asserts title-only text)"
+    },
+    {
+      "scenario": "label key missing from the table",
+      "expected_behavior": "a KeyError is raised loudly (the test asserts no silent default text is drawn)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T02",
+      "T05",
+      "T06",
+      "T07"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [
+      "T02",
+      "T05",
+      "T06",
+      "T07"
+    ],
+    "notes": "tests use a recording stub of the C5 API (counts add_page, records add_text args); real-shim byte verification happens in the T07 e2e gates."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "service"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

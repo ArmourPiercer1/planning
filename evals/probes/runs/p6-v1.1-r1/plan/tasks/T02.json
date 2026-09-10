@@ -1,0 +1,153 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement the C3 done-notification dispatch in mark_done: after a successful transition, send exactly one webhook via the existing WebhookDispatcher with the C3 payload ({event:'todo.done', todo_id, title, at}); zero dispatches when webhook_url is absent; a no-escape exception boundary (DA-2) enforces that a raising dispatcher never breaks the done transition (200 + done state intact)",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/webhooks.py",
+      "app/store.py",
+      "tests/test_api.py",
+      "tests/test_notifications.py (new)"
+    ],
+    "contracts": [
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "fire-and-forget dispatch: WebhookDispatcher.send records/returns a status and never raises by design (A-2)",
+      "DA-2 boundary: dispatch strictly after the store mutation, exception caught+logged, never propagated",
+      "idempotent done transition: repeated done still returns 200",
+      "frozen done-transition HTTP behavior (200 {id, done:true}, 404 unknown id) — unchanged"
+    ]
+  },
+  "inputs": [
+    "inlined frozen contracts C2/C3 (below) — do not read stage-contract.json",
+    "T01 checkpoint: webhook_url present on records; store behavior verified"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "todo record shape in store: {id: 't<n>', title: string, done: boolean, tag?: string, webhook_url?: string}; creation order preserved. Stage-2 additive: webhook_url (optional string) added per C2's unfreeze rule (additive-only; stage 2 proposes it in writing in this contract). last_notified_at is intentionally NOT added — it ships only if/when C1 is revised (see Q1).",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:287124605ab985c59fc9b6adfdfbf099e599f1eddeff0458a6a5f206e85172d9"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "done-notification contract: on a successful mark_done (todo exists, transition applied), exactly one webhook is dispatched to the todo's webhook_url with payload {event: 'todo.done', todo_id: string, title: string, at: ISO-8601 timestamp}; if webhook_url is absent, exactly zero dispatches. Dispatch never affects the HTTP result: POST /todos/{id}/done returns 200 {id, done: true} (404 for unknown id) regardless of dispatch outcome, and a dispatch exception is caught+logged, never raised",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f51a0767471ee406759904d4aa7889ba0e80c750a366bed3a033811fa213f84b"
+    }
+  ],
+  "owned_paths": [
+    "app/api.py",
+    "tests/test_notifications.py (new)"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "the webhook_url field on the todo record (C2 additive) that the dispatch reads"
+    }
+  ],
+  "non_goals": [
+    "store registration / create_todo behavior (T01's closure)",
+    "app/webhooks.py — reuse only, never modify (frozen infra)",
+    "the GET /todos response shape (C1 frozen; last_notified_at is Q1, deferred)",
+    "webhook retry, delivery history, or management endpoints"
+  ],
+  "implementation_constraints": [
+    "reuse the existing WebhookDispatcher as the only dispatch seam — no new HTTP client, worker, or queue",
+    "stdlib only; no new third-party imports",
+    "dispatch strictly after the store mutation, inside a try/except that logs and swallows (DA-2)",
+    "done-transition HTTP behavior unchanged: 200 {id, done:true}, 404 unknown id",
+    "frozen stage-1 suite tests/test_api.py stays green"
+  ],
+  "deliverables": [
+    {
+      "what": "mark_done dispatches per C3 (exactly one / exactly zero) with the no-escape boundary",
+      "where": "app/api.py"
+    },
+    {
+      "what": "unit tests: one-dispatch, no-URL zero-dispatch, raising-dispatcher tolerance, C1 key-set unchanged",
+      "where": "tests/test_notifications.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "todo with webhook_url marked done: WebhookLog.sent has exactly 1 entry with the C3 payload {event:'todo.done', todo_id, title, at} and the response status is 200",
+      "evidence": "test tests/test_notifications.py::test_done_dispatches_one_webhook asserts exactly 1 entry in WebhookLog.sent"
+    },
+    {
+      "id": "AT2",
+      "case": "negative",
+      "description": "todo without webhook_url marked done: WebhookLog.sent stays empty, response status 200, no default URL invented",
+      "evidence": "test tests/test_notifications.py::test_done_without_url_dispatches_nothing asserts an empty dispatch log"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "dispatcher whose send() raises RuntimeError: mark done still returns status 200, the store record is done=true, no exception reaches the caller",
+      "evidence": "test tests/test_notifications.py::test_done_survives_raising_dispatcher asserts status 200 and done=true"
+    },
+    {
+      "id": "AT4",
+      "case": "negative",
+      "description": "after the dispatch work, GET /todos per-todo keys are exactly {id, title, done}(+tag) and no last_notified_at key appears — the test asserts the exact key set",
+      "evidence": "test tests/test_notifications.py::test_get_todos_key_set_unchanged asserts the exact per-todo key set"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "dispatcher.send raises (any exception)",
+      "expected_behavior": "the exception is caught at the DA-2 boundary, a log entry is written, and it is swallowed: response status 200, todo done, no half-state"
+    },
+    {
+      "scenario": "webhook_url absent on the todo",
+      "expected_behavior": "zero dispatches; the transition proceeds normally with status 200"
+    },
+    {
+      "scenario": "mark_done called with an unknown todo id",
+      "expected_behavior": "returns 404 {error} status before any dispatch — the test asserts zero dispatches for a failed transition"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [
+      "T01: webhook_url field on the todo record"
+    ],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "checkpoint must record: dispatch count assertions passed (one/zero), raising-dispatcher tolerance asserted by test, C1 key set verified unchanged, webhooks.py untouched"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "api",
+      "service"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "medium",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "50-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

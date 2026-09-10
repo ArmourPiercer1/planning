@@ -9,6 +9,32 @@ A checkpoint is **how the next agent avoids re-reading your work**. If the
 downstream agent still has to open your changed files to know what is true,
 the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
 
+## Two levels — do not confuse them
+
+| | `planning/checkpoint@2` (this skill) | `planning/stage-checkpoint@1` (stage completion) |
+|---|---|---|
+| Granularity | one per task / stable subgoal | one per stage |
+| Written by | the executing agent, as it goes | the orchestrator at stage end, from the task checkpoints |
+| Consumer | the next task's executor | the **next stage's planner** |
+| Content | revision, contracts satisfied, changed paths, tests, verified facts, deviations, issues, blockers, remaining DAG | compressed: completed tasks, contracts satisfied, verified/falsified assumptions, scope drift, acceptance status, next-stage inputs, stop reason |
+| NOT | a stage-completion artifact | a replacement for task checkpoints |
+
+`checkpoint@2` is **task-level**. It is not, by itself, evidence that a
+stage is complete. Stage completion is the stage-checkpoint: at the end of
+the stage (after the last task checkpoint exists and the stage acceptance
+gate passes), the orchestrator writes `<plan-dir>/stage-checkpoint.json`
+(schema `planning/stage-checkpoint@1`) — a thin compression of everything the
+**next stage's planner** must know, so the next stage never has to re-read
+every task checkpoint to start. Required content is defined by the schema:
+`completed_tasks`, `satisfied_contracts`, `falsified_assumptions`,
+`scope_drift`, `acceptance_status` (met/unmet/deferred),
+`next_stage_inputs`, `stop_reason`, `downstream_notes`.
+
+The recursive-plannability checks below gate the stage-checkpoint: if any
+answer is "no", the stage-checkpoint is written with `status: "blocked"` (or
+`replan_required`) instead of `complete`, and the next stage does not start
+on top of it.
+
 ## Trigger
 
 - Use: (a) at every **stable subgoal** inside a task (a point where another
@@ -104,8 +130,10 @@ At stage completion, the checkpoint set must answer:
    project's acceptance criteria are still achievable (possibly with scope
    adjustment — that's the replan controller's job).
 
-If any answer is "no", the stage is not plannable-recursive. Set
-`status: "blocked"` and report which check failed.
+If any answer is "no", the stage is not plannable-recursive. The
+stage-checkpoint is then written with `status: "blocked"` (or
+`replan_required`) recording which check failed — the next stage does not
+plan on top of a failed gate.
 
 ## Heuristics
 

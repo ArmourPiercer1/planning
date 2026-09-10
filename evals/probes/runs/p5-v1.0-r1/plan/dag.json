@@ -1,0 +1,105 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    { "from": "T01", "to": "T05", "type": "verification", "reason": "contract_consistency diffs T01's shim/labels against frozen C4/C5" },
+    { "from": "T02", "to": "T05", "type": "verification", "reason": "contract_consistency diffs T02's job store against frozen C2" },
+    { "from": "T03", "to": "T05", "type": "verification", "reason": "contract_consistency diffs T03's renderer against frozen C3/C4/C5" },
+    { "from": "T04", "to": "T05", "type": "verification", "reason": "contract_consistency diffs T04's handlers against frozen C1" },
+    { "from": "T01", "to": "T06", "type": "data", "reason": "the composition wiring imports the real shim + labels modules T01 owns" },
+    { "from": "T02", "to": "T06", "type": "data", "reason": "the composition wiring instantiates the JobStore and starts T02's worker loop" },
+    { "from": "T03", "to": "T06", "type": "data", "reason": "the composition wiring passes the real renderer into the worker" },
+    { "from": "T04", "to": "T06", "type": "data", "reason": "the composition wiring exposes T04's handlers bound to the real JobStore" },
+    { "from": "T05", "to": "T07", "type": "verification", "reason": "e2e runs only after the consistency diff has certified the frozen specs" },
+    { "from": "T06", "to": "T07", "type": "data", "reason": "e2e exercises the wired composition T06 produces" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02", "T03", "T04"],
+    ["T05", "T06"],
+    ["T07"]
+  ],
+  "critical_path": ["T01", "T05", "T07"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T07", "seams": ["S1", "S2"], "acceptance_ref": "A1" },
+    { "gate_id": "G2", "task_id": "T07", "seams": ["S2", "S3"], "acceptance_ref": "A2" },
+    { "gate_id": "G3", "task_id": "T07", "seams": ["S2", "S3"], "acceptance_ref": "A3" },
+    { "gate_id": "G4", "task_id": "T07", "seams": ["S1"], "acceptance_ref": "A4" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C2", "unlocks": ["T04"] },
+    { "contract_id": "C3", "unlocks": ["T02"] },
+    { "contract_id": "C4", "unlocks": ["T03"] },
+    { "contract_id": "C5", "unlocks": ["T03"] }
+  ],
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T04",
+      "consumer_tasks": [],
+      "rationale": "the three new endpoint handlers in app/api.py implement C1; the consumer is the external polling client"
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T02",
+      "consumer_tasks": ["T04"],
+      "rationale": "app/jobs.py (JobStore) implements the C2 record shape and API; T04 codes against the frozen spec with a stub store"
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T03",
+      "consumer_tasks": ["T02"],
+      "rationale": "app/services/pdf_export.py implements render_report_pdf; the worker consumes the frozen signature via a stub"
+    },
+    {
+      "contract_id": "C4",
+      "owner_task": "T01",
+      "consumer_tasks": ["T03"],
+      "rationale": "app/services/labels.py holds the EN/DE label tables the renderer must not hardcode"
+    },
+    {
+      "contract_id": "C5",
+      "owner_task": "T01",
+      "consumer_tasks": ["T03"],
+      "rationale": "app/services/pdflib_shim.py is the vendored PDF writer; the renderer drives its doc API"
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T04", "T02"],
+      "rationale": "api role = T04 (handlers call JobStore.create/get); runtime role = T02 (job store + worker consume next_queued)"
+    },
+    {
+      "seam_id": "S2",
+      "participant_tasks": ["T02", "T03"],
+      "rationale": "runtime worker role = T02 (calls render_report_pdf, stores bytes via mark_done); service renderer role = T03"
+    },
+    {
+      "seam_id": "S3",
+      "participant_tasks": ["T03", "T01"],
+      "rationale": "renderer role = T03 (drives the doc API); shim role = T01 (owns the vendored pdflib_shim)"
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T01",
+        "to": "T03",
+        "why_not_real": "C5 is frozen: T03's unit tests drive a stub shim and count add_page calls; real-shim page bytes are asserted by the e2e closure (stage 4), not inside T03 — no data edge needed"
+      },
+      {
+        "from": "T02",
+        "to": "T04",
+        "why_not_real": "C2 is frozen: T04 codes against the JobStore spec with a stub store; no T04 test imports app/jobs.py — no data edge needed"
+      },
+      {
+        "from": "T03",
+        "to": "T02",
+        "why_not_real": "C3 is frozen: the worker stubs the renderer in its tests; the real render is wired only in the e2e closure"
+      }
+    ],
+    "collisions_handled": [],
+    "free_parallelism_trades": [
+      "all four leaves are fully parallel because every cross-boundary interface (C2, C3, C4, C5) is frozen and each leaf tests against stubs; all real-bytes verification is concentrated in the stage-4 e2e closure, which is the single place the DAG pays for the parallelism"
+    ]
+  }
+}

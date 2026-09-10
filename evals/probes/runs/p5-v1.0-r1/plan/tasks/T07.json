@@ -1,0 +1,167 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T07",
+  "objective": "Execute the e2e closure against the composed ServiceApp (T06): gates E1-E5 from the integration plan (enqueue->poll->download happy path, renderer-failure->failed, not-found/premature-download errors, real-shim page count + DE labels in bytes, full-suite regression) and record final-acceptance evidence for A1-A4; own the e2e test paths and fix nothing inside the leaves.",
+  "required_context": {
+    "files": [
+      "app/service_app.py",
+      "app/api.py",
+      "app/jobs.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C4"
+    ],
+    "concepts": [
+      "e2e drives only the ServiceApp public surface (handlers), never internals",
+      "failure scenarios are first-class gates, not optional extras",
+      "evidence = named tests, deterministic (no real-time sleeps beyond the composition's own pacing)"
+    ]
+  },
+  "inputs": [
+    "T06 output (ServiceApp composition)",
+    "integration plan gates E1-E5 (scenarios + seam coverage)",
+    "T05 report (all-contracts MATCH is the precondition)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf body {lang?: 'en'|'de'} -> 202 {job_id}; 404 {error} for unknown report; 400 {error} for lang not in {en,de}. GET /jobs/{job_id} -> 200 {job_id, status: 'queued'|'running'|'done'|'failed', created_at: int, error: string|null}; 404 {error} for unknown job. GET /jobs/{job_id}/download -> 200 with the raw PDF bytes as the response body (the bytes start with b'%PDF'; content-type application/pdf) when status is done; 409 {error: 'job not done'} while status is queued or running; 404 {error} for unknown job.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:3e92c685f9f21e6cd00c0b7efe6e7f131153b10ec933974e80029090523869e9"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:7be93ba195cca2c1715deba19d73ea11d18bd7a596a98541877236c3e67a0793"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "data",
+      "spec": "label tables for pdf generation: LABELS = {'en': {customer, period, title, metric, value}, 'de': {Kunde, Periode, Titel, Kennzahl, Wert}} — exact key set {customer, period, title, metric, value}; renderer must not hardcode label strings outside these tables.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:b22a9a904497d96fff65cfc822fbd8c835f8562b564b56902b1aaf74b407699c"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_pdf_export.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T06",
+      "what": "the composed ServiceApp used as the only entry point of every e2e test"
+    }
+  ],
+  "non_goals": [
+    "no changes to leaf modules or to app/service_app.py (e2e owns its test file only)",
+    "no new test doubles of frozen contracts (the composition provides the real implementations)",
+    "no email/delivery testing (out of scope)"
+  ],
+  "implementation_constraints": [
+    "every e2e test constructs ServiceApp, starts it, drives handlers, stops it (fixture)",
+    "page-count check inspects the downloaded bytes (count page objects), not internal state",
+    "DE-label check asserts the German C4 strings are present in the downloaded bytes",
+    "regression gate runs the whole test directory, including the pre-existing tests/test_export.py CSV suite",
+    "a failing gate is reported with the gate id; fixes route to T06 (seam) or the owning leaf — never silently applied here"
+  ],
+  "deliverables": [
+    {
+      "what": "e2e test suite for gates E1-E5",
+      "where": "tests/test_pdf_export.py"
+    },
+    {
+      "what": "final acceptance evidence for A1-A4",
+      "where": "checkpoints/T07.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "E1: enqueue r1 -> 202 {job_id}; poll reaches 'done'; download returns bytes starting b'%PDF' (A1)",
+      "evidence": "python -m unittest tests.test_pdf_export.test_enqueue_poll_download -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "failure",
+      "description": "E2: injected renderer failure -> the job record reaches status 'failed' with the error text; the enqueue response was 202 (A1 failure behavior)",
+      "evidence": "python -m unittest tests.test_pdf_export.test_renderer_failure_marks_failed -> test passes"
+    },
+    {
+      "id": "AT03",
+      "case": "negative",
+      "description": "E3: unknown report -> 404 (the store records no job); unknown job -> 404 on poll and download; download before done -> 409 (A1 negatives)",
+      "evidence": "python -m unittest tests.test_pdf_export.TestErrors -> test passes (cases: unknown report 404, unknown job 404, download before done 409)"
+    },
+    {
+      "id": "AT04",
+      "case": "positive",
+      "description": "E4: c1 export (2 reports) through the real shim -> the bytes contain 2 page objects; lang='de' -> the bytes contain Kunde/Periode/Titel/Kennzahl/Wert (A2, A3)",
+      "evidence": "python -m unittest tests.test_pdf_export.TestRealBytes -> test passes (cases: one page per report, de labels in bytes)"
+    },
+    {
+      "id": "AT05",
+      "case": "positive",
+      "description": "E5: full suite (the existing CSV test file + all new test files) passes with status 0; handle_export_csv shape unchanged (A4)",
+      "evidence": "python -m unittest discover tests -q -> test run passes, status 0, 0 failed cases"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a gate fails due to a seam defect",
+      "expected_behavior": "record gate id + failing assertion + suspected owner (T06 or leaf); do not patch the leaf"
+    },
+    {
+      "scenario": "worker slower than the test's polling patience",
+      "expected_behavior": "test polls in a bounded loop (max ~10s); a timeout is a test failure with the last observed status as evidence"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T06 ServiceApp composition",
+      "T05 consistency report"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T07.json",
+    "downstream_consumers": [],
+    "notes": "this is the final task; its checkpoint carries the A1-A4 acceptance evidence (test name + observed outcome per item) and the E1-E5 gate results."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "30-60 min",
+    "p80": "60-120 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      {
+        "code": "SPLIT_RECHECK_REQUIRED",
+        "detail": "p80 (60-120 min) can exceed the stage leaf_p80_max of 90 min",
+        "rationale": "the e2e task is not splittable in any useful way (gates share the ServiceApp fixture); if it exceeds p80 the scope to reduce is the gate count (E5 full-suite rerun can be delegated to CI), not the closure semantics"
+      },
+      {
+        "code": "TIMING_SENSITIVITY",
+        "detail": "worker pacing is in-process; e2e uses bounded polling, not fixed sleeps",
+        "rationale": "real threads make fixed-sleep e2e flaky; the bounded poll loop keeps it deterministic enough for a gate"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

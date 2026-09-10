@@ -1,0 +1,85 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement the new stdlib-only rotation module app/rotation.py exposing the frozen C1 interface — rotation_name(d), needs_rotation(last_date, now), rotate(log_dir, now), apply_retention(log_dir, now, keep=7) — plus unit tests in tests/test_rotation.py covering naming, the rotation decision, 7-file retention, and the compress-older-than-yesterday rule, all driven by an injected now: datetime.",
+      "required_context": {
+        "files": [
+          "app/logger.py",
+          "tests/test_log.py",
+          "app/rotation.py (new)",
+          "tests/test_rotation.py (new)"
+        ],
+        "contracts": ["C1", "C3"],
+        "concepts": [
+          "ISO timestamp prefix parsing (%Y-%m-%dT%H:%M:%S) for the live log's last line",
+          "date math with datetime.date: yesterday = now.date() - timedelta(days=1); compress iff D < now.date() - 1",
+          "gzip module for compression; one retention slot per dated file (plain or gz)"
+        ]
+      },
+      "owned_paths": [
+        "app/rotation.py",
+        "tests/test_rotation.py"
+      ],
+      "forbidden_scope": [
+        "app/logger.py (owned by T02 — the rotation module must not import it either way, per C1)",
+        "app/server.py (out of scope: serve loop unchanged)",
+        "tests/test_log.py (must stay unmodified per A5)",
+        "logs/ (live data; tests use tmpdir only)"
+      ],
+      "touched_layers": ["service", "e2e"],
+      "inputs": [
+        "stage-contract.json C1 (exact function signatures and semantics)",
+        "stage-contract.json C3 (naming + retention + compression policy)"
+      ],
+      "outputs": [
+        "app/rotation.py implementing C1 (stateless, stdlib only: pathlib, datetime, gzip, re)",
+        "tests/test_rotation.py — unit tests for C1/C3 behaviors A3 and A4 (plus naming/decision cases), tmpdir-based, injected now"
+      ],
+      "downstream_consumers": ["T02", "T03"],
+      "split_rationale": "Pure rotation policy is one context closure: a single new module + its unit tests, bounded by the frozen C1/C3 contracts; it shares no mutable state with the LogWriter wiring closure, and keeping it disjoint from the shared file app/logger.py prevents two leaves from owning the same high-contention file."
+    },
+    {
+      "id": "T02",
+      "objective": "Wire rotation into LogWriter in app/logger.py: add a startup hook in __init__ and a pre-write date-change hook in append() that call app/rotation.py rotate() then apply_retention() when rotation occurs, keeping the C2 public interface and same-day append behavior byte-identical; add wiring tests in tests/test_log_rotation.py covering acceptance A1 and A2 without touching tests/test_log.py.",
+      "required_context": {
+        "files": [
+          "app/logger.py",
+          "app/server.py",
+          "tests/test_log.py",
+          "app/rotation.py (new)",
+          "tests/test_log_rotation.py (new)"
+        ],
+        "contracts": ["C1", "C2", "C3"],
+        "concepts": [
+          "Live-file date = date of last line's ISO timestamp (A-TS), with mtime fallback per C1",
+          "Trigger points: __init__ after dir/file setup; append() before the write — no timer (DA-NO-TIMER)",
+          "Retention runs only on rotation events (DA-RETENTION-TRIGGER); append stays O(1) date comparison"
+        ]
+      },
+      "owned_paths": [
+        "app/logger.py",
+        "tests/test_log_rotation.py"
+      ],
+      "forbidden_scope": [
+        "app/server.py (S2: serve loop and its log-line format must stay unmodified)",
+        "app/rotation.py (T01 owns it; its C1 interface is frozen — a fix there goes back to T01)",
+        "tests/test_log.py (A5: existing tests stay green and unmodified)",
+        "logs/ (live data; tests use tmpdir only)"
+      ],
+      "touched_layers": ["service", "e2e"],
+      "inputs": [
+        "stage-contract.json C2 (LogWriter interface invariant)",
+        "app/rotation.py implementing C1 (T01 output)",
+        "stage-contract.json C3 (naming/retention policy the hooks must honor)"
+      ],
+      "outputs": [
+        "app/logger.py with rotation hooks in __init__ and append() (interface unchanged per C2)",
+        "tests/test_log_rotation.py — wiring tests for A1 (date-change rotation) and A2 (startup rotation), tmpdir-based, injected now"
+      ],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "The shared high-contention file app/logger.py (known seam, imported by lifecycle + e2e layers) is the stable boundary: one leaf owns the wiring into it against the frozen C1/C2 interfaces, so the policy closure (T01) never mutates a shared file and the two closures stay independently testable."
+    }
+  ]
+}

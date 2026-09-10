@@ -1,0 +1,110 @@
+{
+  "schema": "planning/audit@3",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Round-2 ISOLATED re-audit replacing the round-1 audit, which ran as same_session_late_pass (orchestrator-mandated for this probe run; recorded honestly there and self-reported as F05). This auditor is a fresh subagent that never saw the planning conversation; inputs were the plan directory artifacts, the plan-auditor skill, and read-only spot checks of the three snapshot-listed repo files. Findings F01-F05 carry the round-1 ids for traceability with the existing governor-decision.json; F06 is new to this round (evidence-runner inconsistency missed in round 1)."
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/logger.py",
+      "app/server.py",
+      "tests/test_log.py"
+    ],
+    "notes": "Read-only spot checks of all three snapshot-listed code files: app/server.py:12 writes every request line with an ISO %Y-%m-%dT%H:%M:%S prefix (validates A-TS), serve() appends exactly once per request (validates the append-driven trigger in A-DRIVE), and server.py:22 passes the live path logs/app.log into the constructor (S2 consumer side). app/logger.py matches the C2 baseline exactly (constructor: mkdir parents + touch-if-missing; append: rstrip + single newline, utf-8; lines(): read+splitlines) and imports nothing from app/ (no S1 import cycle, as C1 requires). tests/test_log.py contains exactly the two baseline tests named in A5 (test_append_and_read, test_creates_parent_dirs) via unittest + TemporaryDirectory, so the A5 2/2 baseline is real. No plan claim conflicts with the repo — no 'repo moved under the plan' condition. Platform-constraint claims (stdlib-only, no scheduler) are grounded in plan-dir input.md (the verbatim task: 'stdlib is fine'), not in README/TASK which live in unknown_areas; no code claim depends on those docs beyond what input.md states."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "task_id": null,
+      "routing": "OPTIONAL",
+      "acceptance_ref": null,
+      "evidence": "Carried from round 1, re-verified this round: plan-check lint flags 5 stage-contract.json acceptance texts for missing an observable-evidence marker (regex-level): A3 negative_case ('Fewer than 7 rotated files: nothing is deleted; returned list is empty.'), A4 negative_case ('Rotated files dated today-1 and today (if present) remain plain...'), A5 positive_case (named tests + 'passes both pre-existing tests'), A5 negative_case ('Any diff to tests/test_log.py is a contract violation of C2.'), A5 failure_behavior (named owner of the fix).",
+      "suggested_fix": "Confirmed deterministic as written: exact counts, named tests, exact file-diff outcome, named fix owner. Marker-regex limitation, not genuine vagueness. No change required; optionally add an explicit 'exit 0' marker to A5 positive_case."
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "task_id": "T01",
+      "routing": "OPTIONAL",
+      "acceptance_ref": null,
+      "evidence": "Carried from round 1, re-verified: 2 tasks/T01.json acceptance texts flagged — the needs_rotation truth-table ('needs_rotation(D, now on D) is False; needs_rotation(D, now on D+1) is True; needs_rotation(None, now) is False for any now.') and the A4-negative file-state assertion.",
+      "suggested_fix": "Confirmed deterministic as written (exact truth-table values; exact file-state assertion). No change required."
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "task_id": "T02",
+      "routing": "OPTIONAL",
+      "acceptance_ref": null,
+      "evidence": "Carried from round 1, re-verified: 2 tasks/T02.json acceptance texts flagged — the A5 2/2 named-test count with byte-identical test file, and the rotate-failure propagation assertion (exception propagates; line not silently dropped; no half-renamed state).",
+      "suggested_fix": "Confirmed deterministic as written (named tests + counts; exact propagation and file-state behavior). No change required."
+    },
+    {
+      "id": "F04",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "task_id": "T03",
+      "routing": "OPTIONAL",
+      "acceptance_ref": null,
+      "evidence": "Carried from round 1, re-verified: 1 tasks/T03.json acceptance text flagged — the A5/E4 gate ('pre-existing suite passes 2/2 and tests/test_log.py is byte-identical to the snapshot revision 790b314d...')."
+      ,
+      "suggested_fix": "Confirmed deterministic as written (count + byte-identical assertion against a concrete revision hash). No change required."
+    },
+    {
+      "id": "F05",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "task_id": null,
+      "routing": "OPTIONAL",
+      "acceptance_ref": null,
+      "evidence": "Round 1 ran as same_session_late_pass (orchestrator-mandated for this probe run), which made plan-check report AUDIT_NOT_ISOLATED (BLOCKER) against the round-1 audit.json and forced its verdict to FAIL on process grounds. This round-2 audit runs as fresh_subagent with planner_conversation_isolated=true and REPLACES the round-1 artifact: the lint condition no longer holds against the current audit.json (post-replacement re-lint: exit 0, 10 findings, all MINOR).",
+      "suggested_fix": "Resolved by this isolated re-audit. No further action; the round-1 deviation remains in the run record (run-manifest stage-7 fallbacks) as an honest process note. The governor's existing POST_STAGE deferral of F05 remains accurate."
+    },
+    {
+      "id": "F06",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "routing": "OPTIONAL",
+      "acceptance_ref": "A1",
+      "evidence": "Evidence-runner inconsistency missed in round 1: acceptance/evidence commands use `pytest` (stage-contract A1, A3, A4, A6; integration-plan E1-E3; tasks/T01.json and tasks/T03.json acceptance tests, e.g. 'pytest tests/test_rotation.py -q'), while the plan itself constrains the repo to stdlib-only ('no third-party imports anywhere in the change' — stage-contract constraints; 'Do not add third-party test dependencies (unittest + stdlib only)' — tasks/T03.json non_goals) and the existing suite is unittest (verified: tests/test_log.py). In an environment faithful to the plan's own constraints, pytest may not be installed, so several evidence commands would fail for environmental reasons rather than behavioral ones — a third party verifying A1/A3/A4/A6 could not run the evidence as written.",
+      "suggested_fix": "Swap the pytest invocations for the suite's actual runner, matching the existing style: 'python -m unittest tests.test_rotation -v', 'python -m unittest tests.test_log_rotation -v', 'python -m unittest tests.e2e.test_rotation_e2e -v' (or explicitly declare pytest an allowed runner in the contract constraints). Cheap, executor-discoverable in minutes; plan structure and criteria are unaffected."
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 1,
+    "finding_count": 11
+  },
+  "checks_performed": [
+    "deterministic layer: plan-check.py lint run FIRST (recorded: exit 1, 11 findings — 10 MINOR VAGUE_ACCEPTANCE marker-misses + 1 BLOCKER AUDIT_NOT_ISOLATED against the round-1 audit artifact itself); after this round-2 audit replaced that file, re-lint = exit 0, 10 MINOR findings (marker-misses only)",
+    "grounding pass: all 3 snapshot-listed code files spot-checked read-only at repo_revision 790b314d1d8780b679c7f585d95c5eb3d2b6640d (A-TS, A-DRIVE trigger, S2 consumer, C2 baseline, S1 no-import-cycle, A5 2-test baseline all verified against actual code)",
+    "scope_creep: in_scope is exactly the task's three requirements (date rotation, 7-file retention, gzip-older-than-yesterday); no unrequested capability added",
+    "insufficient_non_goals: 6 out-of-scope items each with a grounded reason (size-based, timer/cron, server refactor, third-party libs, remote shipping, concurrent writers); no missing obvious non-goal",
+    "late_contract_freeze: C1/C2/C3 all frozen at stage 1 with function-level specs and inlined with source hashes into all 3 task packages (hashes match stage-contract specs)",
+    "hidden_dependency: T02's only upstream is T01 via a real data edge (production import + tests execute the real module); snapshot import graph consistent with plan edges",
+    "fake_serialization: the single leaf edge T01->T02 is a genuine data dependency; doc-order fake ordering considered and rejected with rationale in dag.json notes",
+    "ownership_collision: the snapshot's only shared file (app/logger.py) has exactly one owner (T02); T01's forbidden_scope excludes it; owned_paths disjoint across T01/T02/T03",
+    "oversized_leaf: footprints S/M/M, each one coherent closure; p80 sum 315 min within the 4-6h stage estimate; no leaf exceeds leaf_p80_max",
+    "broad_context_loading: every required_context file is snapshot-listed or explicitly new; 4-6 files per task",
+    "hidden_integration_work: both seams (S1 LogWriter<->rotation, S2 LogWriter<->consumers) explicit with 4 E2E gates including 3 failure scenarios; contract_consistency omission structurally justified (2 small leaves asserting against frozen specs in their own tests)",
+    "nondeterministic_acceptance: criteria themselves are deterministic (exact counts, named tests, exact file states, byte-identical diff vs a concrete revision); one runner-consistency issue found (F06, MINOR/OPTIONAL)",
+    "lack_of_local_recoverability: each task independently testable (tmpdir + injected now, zero wall-clock dependence); per-task checkpoints required",
+    "replan_only_by_append: allowed_replan names 6 explicit actions; no append-only growth pattern",
+    "communication_overhead: 3 tasks, explicit downstream_consumers, T02 documents the clock-patch target for T03's e2e",
+    "over_planning: 3 tasks for a ~2-3h job, single stage, commitment == detailed_stage, empty forecast, stop_after T03 justified by self-contained capability + in-stage validation of both risk-bearing assumptions",
+    "missing_spike_route: no open empirical unknown — A-TS verified in code; A-DRIVE is a product assumption with an explicit invalidation condition and is validated in-stage (E2 restart scenario); A-SINGLE grounded in the single-process fixture",
+    "delivery-profile gate (alpha): no finding demands migration/crash matrices, multi-review, or UI polish; requires_full_edge_cases met by negative+failure cases in every task and the E2E failure scenarios",
+    "budget accounting note: this round-2 pass re-ran the deterministic layer + full semantic checklist as an isolated-path replacement of the round-1 audit (not a governor-directed targeted-patch re-audit); whether it counts against planning_budget.max_full_audits=2 is the governor's accounting decision"
+  ],
+  "revision_round": 2,
+  "delivery_profile_applied": "alpha"
+}

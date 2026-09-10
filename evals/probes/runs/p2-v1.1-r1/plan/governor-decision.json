@@ -1,0 +1,27 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F01",
+      "routing": "POST_STAGE",
+      "reason": "CONTEXT_FILE_NOT_IN_SNAPSHOT on README.md (MAJOR): independently re-verified in rounds 2 and 3 — the file exists, is listed in snapshot.unknown_areas, is declared in T01's required_context, and is unreachable by the .py-scoped stage-0 scan by design. No hidden dependency, no execution impact on A4. Carried as a handoff warning; the route stage's stage-0 scan should note that scan-observed non-Python files live in unknown_areas so declared context files are not re-flagged."
+    },
+    {
+      "finding_id": "F04",
+      "routing": "OPTIONAL",
+      "reason": "Phrasing-level MINOR introduced by revision 2: AT-T02-6's description lacks an observable-evidence marker word (its companion evidence field is a fully deterministic unittest invocation, so executor behavior is unaffected). One-clause fix noted for the next planning pass — deliberately NOT spending revision 3 of 3 plus an audit on it: accepted full audits are now exactly 2/2 and the governor's purpose is to stop planning/review/replan from becoming an unbounded meta-task."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 2,
+    "full_audits": 2,
+    "subagents": 2,
+    "wall_time": null,
+    "tokens": null
+  },
+  "forbidden_actions": ["launch_another_full_audit"],
+  "reason": "Round-3 bounded re-audit (fresh isolated subagent, revision_round 3) VERDICT PASS, zero BLOCKER findings; deterministic final lint exit 0 with 2 non-blocking findings (F01 MAJOR carried, F04 MINOR new). Both patch rounds' fixes verified by the re-auditor: F02 (A1 5-item parity matrix now has a named owning test per item — AT-T02-5 as_dict copy semantics, AT-T02-6 REQUIRED_KEYS parity; E1/AT-T03-1 enumerate all 5 items) and F03 (contractual 'Recommendation: Route A|B' line agreed across T01 objective/AT-T01-2, stage-contract A4.positive_case, integration-plan E3, T03 AT-T03-3 — self-check and closure check cannot disagree). No EXECUTION_BLOCKER, no SPIKE_REQUIRED; remaining findings are POST_STAGE + OPTIONAL -> EXECUTE per decision logic. BUDGET (per parent-orchestrator accounting ruling, consistent with P3/P5/P6): the round-1 in-conversation audit was an INVALID isolation record (the plan-auditor isolation requirement does not permit it; plan-check's AUDIT_NOT_ISOLATED gate enforces this) and invalid audits do not count as accepted full audits — accepted full audits are round-2 isolated (1/2) + round-3 bounded re-audit (2/2, exactly met -> launch_another_full_audit forbidden); plan_revisions 2/3; planning subagents 2/5 (the two isolated auditor passes). All within limits -> proceed to execution: HANDOFF.md written, plan frozen at stage_boundary.stop_after [T01, T02]; the next planning trigger (stage_acceptance_reached or early triggers) starts the route stage, whose planning input is the spike artifact's recommendation line."
+}

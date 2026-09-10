@@ -1,0 +1,53 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "notify -> provider: the retry loop in app/notify.py calls ProviderClient.send() up to 3 times. Internal to T01 (single leaf).",
+      "contract_ids": ["C3"],
+      "covered_by": ["T02"]
+    },
+    {
+      "id": "S2",
+      "description": "notify -> db: after the retry loop completes, the final record is persisted via store.put(). Internal to T01 (single leaf).",
+      "contract_ids": ["C2"],
+      "covered_by": ["T02"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T02",
+      "kind": "e2e_closure",
+      "merged_kinds": ["final_acceptance"],
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": ["T01"],
+      "acceptance_ref": "A5"
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "contract_consistency",
+      "reason": "Single-leaf plan: T01 is the only task that reads or writes contracts C1/C2/C3. There is no second task to cross-check against. The contracts are verified by T02's e2e gates (the test assertions directly encode the contract specs).",
+      "evidence": ["candidate-tasks.json contains only T01", "T02 gates E1/E2 assert C1 retry policy and C2 return shape directly"]
+    },
+    {
+      "kind": "seam_integration",
+      "reason": "Both seams (S1, S2) are internal to T01: the retry loop and the persistence call are in the same function (send_notification in app/notify.py). T01 creates no new files — it modifies only app/notify.py and tests/test_notify.py, both of which already exist in the snapshot. No wiring between separate components is added.",
+      "evidence": ["repo-context-snapshot.json: app/notify.py and tests/test_notify.py are existing files", "T01 owned_paths: [app/notify.py, tests/test_notify.py] — no new files"]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Full test suite runs green: all existing tests in tests/test_notify.py and tests/test_gateway_observed.py pass, plus the 3 new retry tests (test_retry_succeeds_second_attempt, test_all_attempts_fail, test_429_is_retryable). Failure scenario: if the retry loop persists the record per-attempt instead of once, test_all_attempts_fail would see len(store.all())==3 instead of 1.",
+      "covers": ["S1", "S2"],
+      "evidence": "pytest tests/ -v -> 7 passed (3 existing test_notify + 1 existing test_gateway + 3 new retry tests)"
+    },
+    {
+      "id": "E2",
+      "scenario": "Retry exhaustion: 3 consecutive 500 responses from the provider. The record is persisted exactly once with status='failed', attempts=3, error from the last response. The provider client was called exactly 3 times. Failure scenario: if the loop continues past 3 attempts, the provider would be called 4+ times and the test would fail on the call count.",
+      "covers": ["S1"],
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_all_attempts_fail -v -> 1 passed"
+    }
+  ]
+}

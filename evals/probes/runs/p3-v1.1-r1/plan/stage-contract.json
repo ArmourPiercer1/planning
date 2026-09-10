@@ -1,0 +1,226 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "p3-log-rotation",
+  "objective": "Add date-based log rotation to the logservice fixture: midnight-boundary rotation to logs/app-YYYYMMDD.log, 7-file retention, and gzip compression of rotated files older than yesterday — without changing existing append behavior or breaking existing tests.",
+  "in_scope": [
+    "New stateless rotation module app/rotation.py (naming, rotation decision, rotation, retention, compression; all functions take an explicit now: datetime)",
+    "Rotation trigger points in app/logger.py: LogWriter.__init__ (startup check) and LogWriter.append (date-change check before write)",
+    "New unit tests for the rotation policy (tests/test_rotation.py) and for the LogWriter wiring (tests/test_log_rotation.py)",
+    "New e2e test simulating a midnight crossing through serve() (tests/e2e/test_rotation_e2e.py)",
+    "Retention pass (7 most recent rotated files kept) and compression pass (rotated files older than yesterday gzipped) run on each rotation event"
+  ],
+  "out_of_scope": [
+    { "item": "Size-based rotation", "reason": "Task specifies date-based rotation only" },
+    { "item": "Background thread / timer / cron-driven rotation", "reason": "README platform note: no scheduler dependency available; rotation must be driven from the service loop or at startup" },
+    { "item": "Refactoring app/server.py handle() or the request model", "reason": "Not needed; the serve loop already appends one line per request and is the driving mechanism" },
+    { "item": "Third-party logging libraries or rotation libraries", "reason": "Python 3.11 stdlib only (README platform note; task says stdlib is fine)" },
+    { "item": "Remote/archived log shipping, log indexing, or log UI", "reason": "Not requested; no such territory exists in the repo" },
+    { "item": "Concurrent-writer safety for logs/app.log", "reason": "Fixture is a single-process service; frozen assumption A-SINGLE covers this" }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-STD",
+      "statement": "Python 3.11, stdlib only — no third-party packages may be imported.",
+      "rationale": "README platform notes; task statement says 'stdlib is fine'."
+    },
+    {
+      "id": "A-DRIVE",
+      "statement": "The service appends at least once per day or restarts at least daily, so an append-driven check plus a startup check covers every midnight boundary.",
+      "rationale": "README: no scheduler available, rotation must be driven from the service loop or at startup; serve() appends one line per request, and LogWriter.__init__ covers the restart case.",
+      "invalidated_by": "Product requirement that logs rotate even during multi-day zero-traffic periods without restart (would need a timer — new stage)."
+    },
+    {
+      "id": "A-TS",
+      "statement": "Every line in app.log begins with an ISO timestamp %Y-%m-%dT%H:%M:%S written by the server loop, so the live file's date is the date of its last line.",
+      "rationale": "app/server.py serve() writes writer.append(f\"{time.strftime('%Y-%m-%dT%H:%M:%S')} {req}\") for every request.",
+      "invalidated_by": "A writer emitting timestamp-less lines (fallback defined in C1: mtime date of the live file)."
+    },
+    {
+      "id": "A-SINGLE",
+      "statement": "At most one process appends to logs/app.log at any time.",
+      "rationale": "Fixture is a single-process service; rename-based rotation is not safe under concurrent writers, and concurrency is not in the task.",
+      "invalidated_by": "Multi-worker deployment of the fixture (would need atomic rename+lock — new stage)."
+    },
+    {
+      "id": "A-NAME",
+      "statement": "A rotated file is named after the completed day — the date of the last line in the live log — not the current date.",
+      "rationale": "Task: 'each day's lines end up in logs/app-YYYYMMDD.log'; the archived lines belong to the completed day."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-MODULE",
+      "decision": "Rotation policy (naming, decision, rotation, retention, compression) lives in a new stateless module app/rotation.py whose functions take an explicit now: datetime; LogWriter owns only the trigger points and delegates all file operations to the module.",
+      "rationale": "Pure policy is testable in a tmpdir with an injected clock without a live writer; keeps the diff in the shared file app/logger.py minimal.",
+      "seams_affected": ["S1"]
+    },
+    {
+      "id": "DA-NO-TIMER",
+      "decision": "No background thread, timer, or cron: rotation runs synchronously inside LogWriter.append (before the write) and in LogWriter.__init__ (startup).",
+      "rationale": "README platform note forbids scheduler dependencies; the task allows driving from the service loop or at startup.",
+      "seams_affected": ["S1"]
+    },
+    {
+      "id": "DA-RETENTION-TRIGGER",
+      "decision": "The retention+compression pass runs exactly when a rotation occurs (append-driven or startup), never on every append.",
+      "rationale": "A rotation happens at most once per day; running the directory scan + possible gzip only on rotation keeps append O(1).",
+      "seams_affected": ["S1"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "service",
+      "spec": "app/rotation.py exposes exactly: rotation_name(d: date) -> str — returns 'app-' + d.strftime('%Y%m%d') + '.log'; needs_rotation(last_date: date | None, now: datetime) -> bool — True iff last_date is not None and last_date < now.date(); rotate(log_dir: Path, now: datetime) -> Path | None — live file is log_dir/'app.log'; determine its date from the ISO timestamp prefix of its last line (fallback: file mtime date; empty/missing file: no rotation); if that date < now.date(), rename the live file to rotation_name(that date) and return the new Path, else None; apply_retention(log_dir: Path, now: datetime, keep: int = 7) -> list[Path] — for each rotated file app-YYYYMMDD.log with date D < now.date() - 1 day: gzip it to app-YYYYMMDD.log.gz and delete the plain file; then over all dated rotated files (plain and gz, one slot per date) sorted by date descending, delete everything beyond the first `keep` and return the deleted paths. The module imports only stdlib (pathlib, datetime, gzip, re) and nothing from app/ or tests/.",
+      "logical_owner": "rotation module (new file, service layer)",
+      "frozen": true
+    },
+    {
+      "id": "C2",
+      "kind": "service",
+      "spec": "LogWriter public interface is unchanged: LogWriter(path: str | Path) constructor (creates parent dirs and an empty live file as today); .append(line: str) -> None appends exactly one newline-terminated line to the live log file; .lines() -> list[str] returns the live file's lines. append() additionally performs the rotation hook (rotate + apply_retention) before writing when the date changed; __init__ performs the same hook at startup. Observable per-request behavior for same-day lines is byte-identical to today.",
+      "logical_owner": "logging (app/logger.py, service layer)",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "data",
+      "spec": "Log file naming and retention policy: live file = logs/app.log; rotated file = logs/app-YYYYMMDD.log named after the completed day (date of the live log's last line); compressed = logs/app-YYYYMMDD.log.gz; at most 7 dated rotated files retained (a gz file occupies the same date slot as its plain file; after successful compression the plain file is deleted, so at most one artifact per date); a rotated file with date D is compressed when D < now.date() - 1 day (today's rotated file and yesterday's stay plain-text).",
+      "logical_owner": "planner (from user requirement; agreed by rotation module and e2e)",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "LogWriter ↔ rotation module: LogWriter.__init__ (after dir setup) and LogWriter.append (before the write) call app/rotation.py rotate() then apply_retention() when rotation occurs; the rotation module must NOT import app.logger or app.server (no import cycle).",
+      "participants": ["service", "lifecycle"],
+      "contract_ids": ["C1", "C3"]
+    },
+    {
+      "id": "S2",
+      "description": "LogWriter ↔ consumers (server loop + existing tests): the public LogWriter interface (C2) is unchanged, so app/server.py and tests/test_log.py compile and pass unmodified.",
+      "participants": ["lifecycle", "e2e"],
+      "contract_ids": ["C2"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "Date-change rotation: with a live log whose last line is dated D and now = D+1 day, the rotation hook renames the live file to app-<D>.log and the new line lands in a fresh app.log.",
+      "positive_case": "Write line dated 2026-09-08 to live log; call append with now=2026-09-09T00:00:05; assert logs/app-20260908.log contains the old line and logs/app.log contains only the new line.",
+      "negative_case": "Now still on the same date D: append does not rotate; the line is appended to the existing live file.",
+      "failure_behavior": "If rotation raises (e.g. missing dir), the exception propagates from append() — no silent drop of the line.",
+      "evidence": "pytest tests/test_log_rotation.py::test_rotation_on_date_change -q"
+    },
+    {
+      "id": "A2",
+      "description": "Startup rotation: constructing LogWriter over a stale live log (last line dated before today) rotates before any append.",
+      "positive_case": "Pre-create logs/app.log with a line dated today-3; LogWriter(logs/app.log) with now=today; assert app-<today-3>.log exists and app.log is empty.",
+      "negative_case": "Live log's last line dated today: construction does not rotate.",
+      "failure_behavior": "Empty or missing live file at construction: no rotation, normal file creation as today.",
+      "evidence": "pytest tests/test_log_rotation.py::test_startup_rotation -q"
+    },
+    {
+      "id": "A3",
+      "description": "7-file retention: apply_retention keeps the 7 most recent dated rotated files and deletes older ones, returning the deleted paths.",
+      "positive_case": "Create rotated files dated today-1 .. today-9 (9 files); apply_retention(now=today, keep=7) deletes today-8 and today-9; exactly 7 files remain.",
+      "negative_case": "Fewer than 7 rotated files: nothing is deleted; returned list is empty.",
+      "failure_behavior": "A file whose name does not match app-YYYYMMDD.log(.gz) is ignored by the retention pass, never deleted.",
+      "evidence": "pytest tests/test_rotation.py::test_retention_keeps_seven -q"
+    },
+    {
+      "id": "A4",
+      "description": "Compression rule: a rotated file older than yesterday is gzipped (plain file deleted, gz holds original bytes); yesterday's rotated file stays plain.",
+      "positive_case": "Rotated file dated today-2 exists as plain; apply_retention(now=today) produces app-<today-2>.log.gz, deletes the plain file, and gunzip of the gz equals the original content.",
+      "negative_case": "Rotated files dated today-1 and today (if present) remain plain after apply_retention.",
+      "failure_behavior": "If the gz already exists, apply_retention deletes the plain file without rewriting the gz (idempotent).",
+      "evidence": "pytest tests/test_rotation.py::test_compress_older_than_yesterday -q"
+    },
+    {
+      "id": "A5",
+      "description": "Existing behavior unchanged: the pre-existing test suite passes unmodified and same-day append behavior is byte-identical.",
+      "positive_case": "python -m unittest tests.test_log -v passes both pre-existing tests (test_append_and_read, test_creates_parent_dirs) with no changes to tests/test_log.py.",
+      "negative_case": "Any diff to tests/test_log.py is a contract violation of C2.",
+      "failure_behavior": "A failure indicates the C2 seam broke; the integration task owns the fix in app/logger.py only.",
+      "evidence": "python -m unittest tests.test_log -v"
+    },
+    {
+      "id": "A6",
+      "description": "E2E midnight crossing: a simulated serve() run whose injected clock crosses midnight writes pre-midnight lines to the dated file and post-midnight lines to the live file, with retention running after the rotation.",
+      "positive_case": "serve(writer, requests) with clock pinned to 23:59:50, 23:59:59, 00:00:01 on consecutive ticks: the first two lines end up in app-<day1>.log, the third in app.log; if 8+ rotated files existed beforehand, the oldest is gone afterwards.",
+      "negative_case": "All ticks on one day: everything lands in app.log, no dated file created.",
+      "failure_behavior": "A line is never lost across the crossing: total line count across app.log + dated files equals the number of ticks.",
+      "evidence": "pytest tests/e2e/test_rotation_e2e.py::test_midnight_crossing -q"
+    }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "Python 3.11 stdlib only; no third-party imports anywhere in the change." },
+    { "kind": "process", "rule": "No scheduler, cron, timer, or background thread: rotation is driven from the service loop (append) or at startup (README platform note)." },
+    { "kind": "style", "rule": "tests/test_log.py must remain green and unmodified; new tests go in new files." },
+    { "kind": "performance", "rule": "append() adds at most one date comparison per call; the retention/compression scan runs only on rotation events (at most once per day)." },
+    { "kind": "process", "rule": "All rotation functions receive an explicit now: datetime; tests never depend on wall-clock midnight." }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-60 min",
+    "leaf_p80_max": "90-120 min",
+    "max_compactions_per_leaf": 2,
+    "stage_estimate": "4-6 dev-hours total (2 leaves + 1 integration task, mostly serial due to the C1 dependency)"
+  },
+  "allowed_replan": ["split", "merge", "reorder", "change_dependency", "defer", "reduce_scope", "replace_route", "checkpoint_and_split", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does the 7-file retention count a compressed file as the same dated slot as its plain counterpart, or as a separate file?",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "Resolved by C3: one slot per date; after compression the plain file is deleted, so exactly one artifact per date and the slot count equals the number of distinct rotated dates."
+    },
+    {
+      "id": "Q2",
+      "question": "What date is used when the live log's last line has no parseable timestamp (corrupt or empty file)?",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "Resolved by C1 fallback: parse failure → file mtime date; empty or missing file → no rotation."
+    }
+  ],
+  "delivery_profile": {
+    "level": "alpha",
+    "assurance_overrides": {
+      "requires_migration": false,
+      "requires_full_edge_cases": true,
+      "requires_crash_matrix": false,
+      "requires_multi_review": false,
+      "requires_ui_polish": false
+    }
+  },
+  "planning_budget": {
+    "max_full_audits": 2,
+    "max_plan_revisions": 3,
+    "max_planning_subagents": 5,
+    "soft_wall_fraction": 0.3
+  },
+  "horizons": {
+    "commitment": {
+      "tasks": ["T01", "T02", "T03"]
+    },
+    "detailed_stage": {
+      "objective": "Ship date-based log rotation (midnight rotation, 7-file retention, gzip of files older than yesterday) with unit + e2e tests, existing tests untouched and green.",
+      "tasks": ["T01", "T02", "T03"]
+    },
+    "forecast": {
+      "stages": []
+    }
+  },
+  "stage_boundary": {
+    "stop_after": ["T03"],
+    "because": "Log rotation is a self-contained capability increment: after the e2e closure proves the midnight crossing, retention, and compression end-to-end, no new route-changing evidence will be produced — the task statement scopes out future rotation policies (size-based, remote shipping), the route is a straightforward stdlib implementation, and both risk-bearing assumptions (A-DRIVE, A-TS) are validated by the stage's own tests.",
+    "expected_new_evidence": [],
+    "decisions_deferred_until_then": []
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified", "core_seam_blocker", "route_changing_evidence", "budget_envelope_threatened"],
+    "not_triggers": ["first_worker_failure", "optional_bug", "mechanical_merge_conflict"]
+  }
+}

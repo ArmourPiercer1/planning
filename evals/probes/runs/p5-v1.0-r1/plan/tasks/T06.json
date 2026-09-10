@@ -1,0 +1,168 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T06",
+  "objective": "Create the composition module app/service_app.py with a ServiceApp factory that wires the real JobStore, the worker (running the real renderer with the real shim), and the C1 handlers into one in-process service, so e2e can drive enqueue -> poll -> download without framework glue; own seam-defect fixes for T01-T04 (recorded as deviations).",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/jobs.py",
+      "app/services/worker.py",
+      "app/services/pdf_export.py",
+      "app/services/pdflib_shim.py",
+      "app/services/labels.py",
+      "app/queries.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "composition root: the single place where frozen interfaces meet real implementations",
+      "lifecycle: start (spawn worker thread) / stop (join thread) must be deterministic for tests",
+      "integration-only fix ownership: patch a leaf for a seam defect only when the defect is on the seam, record every such patch"
+    ]
+  },
+  "inputs": [
+    "outputs of T01, T02, T03, T04 (the four leaf modules)",
+    "frozen contracts C1-C3 (wired surfaces)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf body {lang?: 'en'|'de'} -> 202 {job_id}; 404 {error} for unknown report; 400 {error} for lang not in {en,de}. GET /jobs/{job_id} -> 200 {job_id, status: 'queued'|'running'|'done'|'failed', created_at: int, error: string|null}; 404 {error} for unknown job. GET /jobs/{job_id}/download -> 200 with the raw PDF bytes as the response body (the bytes start with b'%PDF'; content-type application/pdf) when status is done; 409 {error: 'job not done'} while status is queued or running; 404 {error} for unknown job.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:3e92c685f9f21e6cd00c0b7efe6e7f131153b10ec933974e80029090523869e9"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:7be93ba195cca2c1715deba19d73ea11d18bd7a596a98541877236c3e67a0793"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "render_report_pdf(customer_id: str, lang: str) -> bytes — renders one PDF page per report of the customer, fetching report data exclusively via app/queries.py, labels from the C4 label tables for the given lang; returns a non-empty byte string starting with b'%PDF'.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f61551c901bb7c83ce338b454792d331dbc85033ecbc9454e9878b2e6d210451"
+    }
+  ],
+  "owned_paths": [
+    "app/service_app.py",
+    "tests/test_service_app.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "real shim + labels (passed into the renderer)"
+    },
+    {
+      "task_id": "T02",
+      "what": "JobStore + worker loop (instantiated by the factory)"
+    },
+    {
+      "task_id": "T03",
+      "what": "real render_report_pdf (passed into the worker)"
+    },
+    {
+      "task_id": "T04",
+      "what": "C1 handlers (exposed bound to the real JobStore)"
+    }
+  ],
+  "non_goals": [
+    "no re-implementing leaf logic (wiring only)",
+    "no fixes for non-seam defects (record and escalate to the owning leaf)",
+    "no persistence, no config files, no framework server"
+  ],
+  "implementation_constraints": [
+    "ServiceApp() returns an object with .handle_export_pdf(path, body), .handle_get_job(path), .handle_download_job(path), .start(), .stop()",
+    ".stop() joins the worker thread and must return within the test's patience (no hung thread)",
+    "any patch applied inside a leaf module for a seam defect is recorded in the checkpoint as a deviation with the leaf task id",
+    "Python 3.11 stdlib only"
+  ],
+  "deliverables": [
+    {
+      "what": "composition module",
+      "where": "app/service_app.py"
+    },
+    {
+      "what": "composition smoke tests",
+      "where": "tests/test_service_app.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "ServiceApp().start(); handle_export_pdf({'report_id': 'r1'}, {}) -> 202; repeated handle_get_job reaches status 'done'; handle_download_job returns bytes starting b'%PDF'",
+      "evidence": "python -m unittest tests.test_service_app.TestServiceApp.test_full_path -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "failure",
+      "description": "ServiceApp().stop() after start returns within 5s (thread joined, no leak); a second start() works",
+      "evidence": "python -m unittest tests.test_service_app.TestServiceApp.test_stop_joins -> test passes"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "seam defect in a leaf (e.g. worker expects renderer keyword 'lang' but C3 says positional)",
+      "expected_behavior": "minimal patch on the seam line in the leaf; the checkpoint records the deviation with the leaf task id; the leaf's owned paths stay otherwise untouched"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T01 modules",
+      "T02 modules",
+      "T03 module",
+      "T04 handlers"
+    ],
+    "consumers": [
+      "T07"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T06.json",
+    "downstream_consumers": [
+      "T07"
+    ],
+    "notes": "the checkpoint must list every deviation (leaf patched, line, why) — T07 and the auditor read it; zero deviations is the expected green case."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "service",
+      "runtime",
+      "api"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "high",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "45-75 min",
+    "p80": "75-120 min",
+    "compaction_risk": "medium",
+    "warnings": [
+      {
+        "code": "SPLIT_RECHECK_REQUIRED",
+        "detail": "p80 (75-120 min) can exceed the stage leaf_p80_max of 90 min",
+        "rationale": "seam defects discovered at wiring time are open-ended; if execution exceeds p80 the correct move is checkpoint_and_split around the single defect (the composition module itself is thin and stable)"
+      },
+      {
+        "code": "SEAM_FIX_RIGHTS",
+        "detail": "owns_fixes_for spans all four leaves; unbounded patching would defeat local recoverability",
+        "rationale": "fix rights are limited to seam lines by constraint and recorded per deviation"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

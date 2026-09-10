@@ -1,0 +1,26 @@
+{
+  "schema": "planning/stage-checkpoint@1",
+  "stage_id": "v1.1",
+  "status": "complete",
+  "completed_tasks": ["T01","T02","T03","T04","T05","T06","T07"],
+  "satisfied_contracts": ["C1","C2","C3","C4","C5","C6","C7"],
+  "falsified_assumptions": [],
+  "scope_drift": {
+    "requirements_removed": [],
+    "scope_added": [],
+    "frozen_decisions_changed": [],
+    "acceptance_changed": [],
+    "budget_envelope_changed": false
+  },
+  "acceptance_status": {
+    "met": ["A1","A2","A3","A4","A5","A6"],
+    "unmet": [],
+    "deferred": []
+  },
+  "next_stage_inputs": [
+    { "input": "contract-closed v1.1 candidate (schemas + skills + deterministic checks)", "artifact": ".agents/skills/ + .agents/schemas/planning/ + .agents/scripts/plan-check.py" },
+    { "input": "probe fixture contracts M-Q", "artifact": "evals/long-task-planning/fixtures/case-m-meta-runaway/ ... case-q-cross-drift/" }
+  ],
+  "stop_reason": "all 7 implementation packages complete, deterministic closure checks pass, candidate frozen for probe validation",
+  "downstream_notes": "probe stage must use only this candidate; any probe failure triggers targeted patch + re-run of failed probe, not a redesign"
+}

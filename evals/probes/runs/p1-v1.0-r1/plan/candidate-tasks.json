@@ -1,0 +1,37 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Verify the gateway's observed 429 behavior and freeze the retry-on-429 decision: confirm from the staging-capture test and client docstring that 429 carries no Retry-After header and that the immediate next call succeeds, then record the decision (confirm or falsify A-429-RETRYABLE) with the exact evidence, so the retry design rests on observed behavior instead of assumption.",
+      "required_context": {
+        "files": ["app/provider.py", "tests/test_gateway_observed.py"],
+        "contracts": ["C1", "C3"],
+        "concepts": ["the frozen retry policy C1 and its unfreeze_rule", "ProviderResponse shape (status/body/headers)"]
+      },
+      "owned_paths": ["docs/429-behavior-verification.md"],
+      "forbidden_scope": ["app/notify.py (no retry code in this task — that is T02's)", "app/provider.py (frozen interface, no edits)", "app/db.py", "tests/test_notify.py", "any retry implementation"],
+      "touched_layers": ["docs", "service"],
+      "inputs": ["staging-capture test (tests/test_gateway_observed.py)", "provider client docstring (app/provider.py)", "contract C1 unfreeze_rule"],
+      "outputs": ["docs/429-behavior-verification.md: observed behavior (status/body/headers), retryability decision, evidence list, and a CONFIRMED/FALSIFIED verdict on A-429-RETRYABLE"],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "the 429 semantics is an empirical unknown that the task says must be resolved before the retry design; its closure is only the provider boundary + the capture test + a decision document — cutting it out keeps T02 from interleaving verification with implementation"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the retry loop with exponential backoff in app/notify.py per frozen contract C1 (3 attempts, delays 1s/2s capped 30s, retryable = 429 + 5xx, injectable delay callable), keep the record shape C2 with meaningful `attempts`, and add the unit tests that prove acceptance A1-A4 (transient recovery, permanent failure, 429 retried, non-retryable 4xx, injected schedule).",
+      "required_context": {
+        "files": ["app/notify.py", "app/provider.py", "app/db.py", "tests/test_notify.py", "tests/test_gateway_observed.py"],
+        "contracts": ["C1", "C2", "C3"],
+        "concepts": ["exponential backoff with cap", "injectable delay callable for testability", "ProviderClient.calls as call-counting observability"]
+      },
+      "owned_paths": ["app/notify.py", "tests/test_retry.py"],
+      "forbidden_scope": ["app/provider.py (frozen interface — retry wraps it, never modifies it)", "app/db.py (record store unchanged; only the record content changes per C2)", "app/api.py (handlers untouched)", "docs/429-behavior-verification.md (T01 owns it)"],
+      "touched_layers": ["service", "e2e"],
+      "inputs": ["frozen contracts C1/C2/C3 (inlined in the task package)", "existing suite (must stay green)"],
+      "outputs": ["app/notify.py with retry loop + updated header comment", "tests/test_retry.py (A1-A4 evidence tests)", "green existing test_notify.py + test_gateway_observed.py"],
+      "downstream_consumers": [],
+      "split_rationale": "one closure: the service file that owns the send path + its unit tests + the two read-only boundary files (provider interface, store format); 3 contracts, 2 layers, ~5 files — a single 30-60 min leaf per the merge rule"
+    }
+  ]
+}

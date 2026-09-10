@@ -1,0 +1,97 @@
+{
+  "$id": "planning/dag@2",
+  "title": "Execution DAG (v2: adds explicit logical->concrete contract/seam bindings)",
+  "type": "object",
+  "required": ["schema", "edges", "parallel_groups", "critical_path", "integration_gates", "unlock_contracts", "contract_bindings", "seam_bindings", "notes"],
+  "properties": {
+    "schema": { "const": "planning/dag@2" },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "type", "reason"],
+        "properties": {
+          "from": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "to": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "type": { "enum": ["contract", "data", "ownership", "verification"] },
+          "reason": { "type": "string", "minLength": 10 }
+        }
+      }
+    },
+    "parallel_groups": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" }, "minItems": 1 }
+    },
+    "critical_path": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+      "minItems": 1
+    },
+    "integration_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "task_id", "seams", "acceptance_ref"],
+        "properties": {
+          "gate_id": { "type": "string", "pattern": "^G[0-9]+$" },
+          "task_id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "seams": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]+$" } },
+          "acceptance_ref": { "type": "string", "pattern": "^A[0-9]+$" }
+        }
+      }
+    },
+    "unlock_contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["contract_id", "unlocks"],
+        "properties": {
+          "contract_id": { "type": "string", "pattern": "^C[0-9]+$" },
+          "unlocks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" }, "minItems": 1 }
+        }
+      }
+    },
+    "contract_bindings": {
+      "type": "array",
+      "description": "Concrete binding of each logical contract owner to a real task id. Every shared contract in stage-contract.json MUST appear exactly once. owner_task is the leaf whose owned_paths implement the contract.",
+      "items": {
+        "type": "object",
+        "required": ["contract_id", "owner_task"],
+        "properties": {
+          "contract_id": { "type": "string", "pattern": "^C[0-9]+$" },
+          "owner_task": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "consumer_tasks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "seam_bindings": {
+      "type": "array",
+      "description": "Concrete binding of each seam's logical participants to real task ids. Every integration seam in stage-contract.json MUST appear exactly once, with >= 2 distinct participant tasks.",
+      "items": {
+        "type": "object",
+        "required": ["seam_id", "participant_tasks"],
+        "properties": {
+          "seam_id": { "type": "string", "pattern": "^S[0-9]+$" },
+          "participant_tasks": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" }, "minItems": 2 },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "required": ["fake_serialization_removed", "collisions_handled"],
+      "properties": {
+        "fake_serialization_removed": {
+          "type": "array",
+          "items": { "type": "object", "required": ["from", "to", "why_not_real"],
+            "properties": {
+              "from": { "type": "string" }, "to": { "type": "string" }, "why_not_real": { "type": "string" }
+            } }
+        },
+        "collisions_handled": { "type": "array", "items": { "type": "string" } },
+        "free_parallelism_trades": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

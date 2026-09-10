@@ -1,0 +1,159 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement YamlConfigStore in app/yaml_store.py (get/set/save/as_dict, REQUIRED_KEYS, ConfigError('config file missing: <path>')) over a vendored YAML-subset parser for flat scalar maps (stdlib only), and add tests/test_yaml_store.py with the full A1 5-item parity matrix (the tests/test_config.py matrix mirrored 1:1, plus as_dict copy semantics and REQUIRED_KEYS parity); loader.py and cli.py stay on JSON (DA-1).",
+  "required_context": {
+    "files": [
+      "app/config_store.py",
+      "app/loader.py",
+      "tests/test_config.py",
+      "app/yaml_store.py (new)",
+      "tests/test_yaml_store.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2"
+    ],
+    "concepts": [
+      "YAML-subset parse/serialize for flat scalar maps",
+      "interface parity testing against a reference implementation"
+    ]
+  },
+  "inputs": [
+    "C1 store interface spec (inlined in frozen_contracts)",
+    "C2 data shape (inlined in frozen_contracts)",
+    "JsonConfigStore reference implementation (app/config_store.py, read-only)",
+    "existing test matrix (tests/test_config.py) to mirror"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "ConfigStore interface: get(key, default=None) -> value; set(key, value) -> None (persists immediately); save() -> None (persists current state); as_dict() -> dict (shallow copy). Class attribute REQUIRED_KEYS = ('app_name', 'env', 'log_level'). Constructor takes a file path; missing file raises ConfigError('config file missing: <path>'). Both JsonConfigStore and YamlConfigStore satisfy this interface identically.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:9bda27cf32054d9e44e7bc14e6a43e3b7c938a4669c995d6a4697230d1825b9d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "config data shape: flat dict; required keys app_name (str), env (str), log_level (one of debug|info|warning|error); all values scalar (str/number/bool). No nested structures.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:67ae46b5e6aa4a9d9317d17aab3d9a30f557289ef6c55d9e16e334f426e73937"
+    }
+  ],
+  "owned_paths": [
+    "app/yaml_store.py",
+    "tests/test_yaml_store.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "wiring loader.py/cli.py to the YAML store (DA-1 — that is the route stage)",
+    "modifying app/config_store.py (read-only reference)",
+    "supporting nested YAML structures (A-1: flat scalar maps only)",
+    "migrating the live config.json",
+    "changing CLI flags or loader error message shapes"
+  ],
+  "implementation_constraints": [
+    "stdlib only — the YAML subset parser is vendored inside yaml_store.py (no third-party yaml package)",
+    "parser scope: flat map of scalar values (str/number/bool); anything outside the subset raises ConfigError with a documented message (state the subset in the module docstring)",
+    "class attribute REQUIRED_KEYS and constructor missing-file behavior identical to JsonConfigStore per C1",
+    "test style: unittest, covering the A1 5-item parity matrix (tests/test_config.py mirrored 1:1 + as_dict copy semantics + REQUIRED_KEYS parity) so parity is structural, not ad hoc"
+  ],
+  "deliverables": [
+    {
+      "what": "YamlConfigStore + vendored YAML-subset parser",
+      "where": "app/yaml_store.py"
+    },
+    {
+      "what": "parity test matrix (A1 5-item matrix: tests/test_config.py mirrored 1:1 + as_dict copy semantics + REQUIRED_KEYS parity)",
+      "where": "tests/test_yaml_store.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-T02-1",
+      "case": "positive",
+      "description": "set('feature_x', True) then reload from file: get returns True and as_dict contains all keys (C1 roundtrip)",
+      "evidence": "python -m unittest tests.test_yaml_store.TestYamlStoreParity.test_set_get_roundtrip -v → exit 0"
+    },
+    {
+      "id": "AT-T02-2",
+      "case": "negative",
+      "description": "YamlConfigStore on a nonexistent path raises ConfigError with the 'config file missing:' prefix (C1)",
+      "evidence": "python -m unittest tests.test_yaml_store.TestYamlStoreParity.test_missing_file_raises -v → exit 0"
+    },
+    {
+      "id": "AT-T02-3",
+      "case": "positive",
+      "description": "save-then-reload of a C2-shape config file returns an identical dict (A2 roundtrip fidelity)",
+      "evidence": "python -m unittest tests.test_yaml_store.test_yaml_roundtrip -v → exit 0"
+    },
+    {
+      "id": "AT-T02-4",
+      "case": "failure",
+      "description": "nested input to the subset parser raises ConfigError with the documented message — no silent partial parse",
+      "evidence": "python -m unittest tests.test_yaml_store.test_nested_rejected -v → exit 0"
+    },
+    {
+      "id": "AT-T02-5",
+      "case": "positive",
+      "description": "as_dict() returns a shallow copy: mutating the returned dict leaves the store's state unchanged (a subsequent as_dict() returns values equal to the pre-mutation dict)",
+      "evidence": "python -m unittest tests.test_yaml_store.TestYamlStoreParity.test_as_dict_shallow_copy -v → exit 0"
+    },
+    {
+      "id": "AT-T02-6",
+      "case": "positive",
+      "description": "REQUIRED_KEYS parity: YamlConfigStore.REQUIRED_KEYS == ('app_name', 'env', 'log_level') and equals JsonConfigStore.REQUIRED_KEYS",
+      "evidence": "python -m unittest tests.test_yaml_store.TestYamlStoreParity.test_required_keys_parity -v → exit 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "parser encounters a value type outside str/number/bool (e.g. a list)",
+      "expected_behavior": "raise ConfigError('yaml subset unsupported: <kind>') — never a partial parse"
+    },
+    {
+      "scenario": "config file uses CRLF line endings or a UTF-8 BOM",
+      "expected_behavior": "the parse returns data equal to the clean-UTF8 parse (whitespace/encoding tolerated, values unchanged)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "the parity matrix in tests/test_yaml_store.py is the seam S1 proof; the closure task re-runs it (gate E1) — do not trim the matrix to save time"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "45-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "VENDORED_PARSER",
+        "detail": "the YAML subset parser is new code with no reference implementation in the repo",
+        "rationale": "the 1:1 parity matrix against JsonConfigStore is the control; the parser is kept strictly at flat scalar maps (A-1), and p80 sits exactly at leaf_p80_max — if execution exceeds it, checkpoint_and_split around the parser"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

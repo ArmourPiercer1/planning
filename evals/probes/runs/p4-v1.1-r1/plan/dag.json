@@ -1,0 +1,70 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T02",
+      "type": "data",
+      "reason": "T02's app/events.py imports app/audit.py at runtime: the chain-append path calls T01's hash functions and the audit query presents buffer items to T01's verify() — C1 freezes the spec, but the import of the concrete module cannot be frozen away."
+    },
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 exists to verify T01's chain core through the integrated system (gates E1/E3/E4 exercise verify() end to end against the buffer)."
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03 verifies T02's seam wiring (item presentation order, C2 stripping, append path) via the e2e gates and owns the boundary test file."
+    }
+  ],
+  "parallel_groups": [
+    ["T01"],
+    ["T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T01", "T02", "T03"],
+  "integration_gates": [
+    {
+      "gate_id": "G1",
+      "task_id": "T03",
+      "seams": ["S1"],
+      "acceptance_ref": "A2"
+    }
+  ],
+  "unlock_contracts": [],
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T01",
+      "consumer_tasks": ["T02"],
+      "rationale": "app/audit.py (T01) is the concrete implementation of C1's entry shape, hash spec, GENESIS marker, and verify(); T02 consumes it on the append and query paths."
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T02",
+      "consumer_tasks": [],
+      "rationale": "The frozen POST /events + GET /events?since= surface lives in app/events.py (T02); T02 holds the byte-exact response discipline by stripping audit fields at the API boundary. Regression verification binds to the integration task in stage 4."
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T02",
+      "consumer_tasks": [],
+      "rationale": "The GET /events?audit=true handler is implemented in app/events.py (T02); end-to-end verification binds to the integration task in stage 4."
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "The chain core (T01, app/audit.py) fixes what verify() expects (C1-extended items, storage order, link invariant); the API side (T02, app/events.py) must present exactly that from the RingBuffer and maintain it on append. The frozen RingBuffer is context, not a modified participant."
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": [],
+    "free_parallelism_trades": ["Only one candidate pair exists (T01, T02) and it carries a real data edge (T02 imports T01's module); no fake serialization was removed and no free-parallelism trade exists — the two-leaf plan is inherently serial. A fake of app/audit.py was considered for T02 and rejected: the module is ~1h of pure logic and a fake would add an integration swap-out for no schedule gain."]
+  }
+}

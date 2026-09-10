@@ -1,0 +1,85 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "config-migration-probe",
+  "objective": "Produce the complete list of external readers of config.json (bounded probe) and deliver a route-independent YAML config store (same interface as JsonConfigStore, parity-tested), so the next stage can implement either route (A: YAML primary + JSON export mirror, B: full YAML cutover) without re-planning the foundation.",
+  "in_scope": [
+    "bounded probe: inventory every external reader of config.json (repo grep, CI config, deploy scripts, deploy runbook) with a recorded route recommendation",
+    "YamlConfigStore implementing the frozen store interface (get/set/save/as_dict, REQUIRED_KEYS, ConfigError on missing file) over a vendored YAML-subset parser (flat dict of scalars, stdlib-only)",
+    "parity test suite proving YamlConfigStore behaves exactly like JsonConfigStore on the existing test matrix"
+  ],
+  "out_of_scope": [
+    { "item": "Route A implementation: JSON export mirror regenerated on save + keeping uncontrolled readers working", "reason": "route depends on probe evidence (the reader list) that does not exist yet" },
+    { "item": "Route B implementation: full YAML cutover, updating owned readers, deleting config.json", "reason": "route depends on probe evidence (the reader list) that does not exist yet" },
+    { "item": "wiring loader.py / cli.py to the YAML store", "reason": "wiring is route-specific (Route A keeps JSON readers alive; Route B updates them); decided by the next stage" },
+    { "item": "behavior changes to deploy/check.sh", "reason": "the probe must first establish the complete set of external readers; check.sh handling is route-specific" },
+    { "item": "config schema changes (new keys, nested structures, new validation rules)", "reason": "not requested; the data shape is frozen (C2)" },
+    { "item": "migration tooling for existing config.json files", "reason": "migration strategy follows the route decision; planned in the next stage" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "the config data shape is a flat dict of scalar values (str/number/bool)", "rationale": "all current usages (JsonConfigStore get/set, cli set, deploy/check.sh key grep) deal in flat scalar keys; invalidation: the probe or store work encounters nested structures — the YAML-subset scope must then be widened" },
+    { "id": "A-2", "statement": "the platform constraint is stdlib-only, so YAML parsing must be a small vendored subset parser, not a third-party dependency", "rationale": "README Platform notes; invalidation: subset proves infeasible for real configs — escalate a dependency request at the route stage, do not silently add one" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "loader.py and cli.py stay on JsonConfigStore in this stage; YamlConfigStore is additive and unwired (existing behavior and tests untouched until the route is chosen)", "rationale": "keeps startup validation and CLI behavior byte-identical while the route is unknown; the swap is the next stage's job behind seam S1", "seams_affected": ["S1"] }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "service",
+      "spec": "ConfigStore interface: get(key, default=None) -> value; set(key, value) -> None (persists immediately); save() -> None (persists current state); as_dict() -> dict (shallow copy). Class attribute REQUIRED_KEYS = ('app_name', 'env', 'log_level'). Constructor takes a file path; missing file raises ConfigError('config file missing: <path>'). Both JsonConfigStore and YamlConfigStore satisfy this interface identically.",
+      "logical_owner": "config store layer (app/config_store.py, new app/yaml_store.py)",
+      "frozen": true,
+      "unfreeze_rule": "only via contract change request; the route stage wires the loader/cli against this interface, so changing it invalidates that wiring"
+    },
+    {
+      "id": "C2",
+      "kind": "data",
+      "spec": "config data shape: flat dict; required keys app_name (str), env (str), log_level (one of debug|info|warning|error); all values scalar (str/number/bool). No nested structures.",
+      "logical_owner": "config store layer (app/config_store.py)",
+      "frozen": true,
+      "unfreeze_rule": "route stage may only add keys (additive), never change required-key semantics"
+    }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "store parity boundary: YamlConfigStore (new) must be a drop-in replacement for JsonConfigStore (reference) at the C1 interface; the integration task runs the shared parity matrix (mirroring tests/test_config.py) against both implementations", "participants": ["config_store", "test_suite"], "contract_ids": ["C1", "C2"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "YamlConfigStore passes the same test matrix as JsonConfigStore: get/set roundtrip, save persistence, as_dict shallow copy, missing file raises ConfigError, REQUIRED_KEYS present on both classes", "positive_case": "set('feature_x', true) then reload from file: get('feature_x') is true; as_dict() contains all keys", "negative_case": "YamlConfigStore on a nonexistent path raises ConfigError with 'config file missing:' prefix", "failure_behavior": "any matrix mismatch is a test failure in tests/test_yaml_store.py", "evidence": "tests/test_yaml_store.py::TestYamlStoreParity (new file, parity matrix mirrors tests/test_config.py)" },
+    { "id": "A2", "description": "YAML roundtrip fidelity: save then reload from file returns identical data for the C2 shape", "positive_case": "store a valid C2 config in a temp file, reload from disk, as_dict() returns a dict equal to the original", "negative_case": "a config file with a nested value is rejected: the parser raises ConfigError with the documented subset message (stated in the parser module docstring)", "failure_behavior": "roundtrip inequality is a test failure", "evidence": "tests/test_yaml_store.py::test_yaml_roundtrip" },
+    { "id": "A3", "description": "existing suite stays green: the full test suite exits 0, proving loader/cli are still on JSON in this stage", "positive_case": "python -m unittest discover tests exits 0 with all pre-existing tests passing", "negative_case": "any pre-existing test failing means DA-1 was violated", "failure_behavior": "non-zero discover exit", "evidence": "python -m unittest discover tests -v (full suite, including new tests)" },
+    { "id": "A4", "description": "probe deliverable: the plan artifact file records the complete external-reader list of config.json with a route recommendation, naming at minimum deploy/check.sh", "positive_case": "the artifact file contains each reader with location + evidence (grep hit / runbook reference) and a 'Recommendation: Route A' or 'Recommendation: Route B' line followed by reasoning", "negative_case": "a reader list that omits deploy/check.sh or contains no recommendation fails the gate", "failure_behavior": "the closure test fails on a missing or incomplete artifact; the stage is then not acceptance-complete and the normal planning trigger cannot fire", "evidence": "spike deliverable file in the plan dir (e.g. spike-reader-inventory.md) referenced by the stage checkpoint" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "stdlib only; the YAML subset parser is vendored code inside the store module — no third-party package" },
+    { "kind": "process", "rule": "probe is bounded to 30-60 minutes of work (repo grep + CI config + deploy scripts + runbook read); it does not become a research project" },
+    { "kind": "dependency", "rule": "loader.py and cli.py are NOT modified in this stage (DA-1); their current behavior — CLI flags (--path, show, set) with the 'set <key> = <value>' success message, and the loader's ConfigError message shapes (config file missing / missing required config key / invalid log_level) — is an unchanged behavioral baseline that the route stage re-freezes as its own contracts" }
+  ],
+  "resource_budget": { "leaf_p50": "45m", "leaf_p80_max": "90m", "max_compactions_per_leaf": 1, "stage_estimate": "3-4h" },
+  "allowed_replan": ["split", "defer", "replace_route", "checkpoint_and_split", "request_contract_revision"],
+  "open_questions": [
+    { "id": "Q1", "question": "does any real config in use contain nested values (which would break the A-1 flat-shape assumption)?", "blocking": false, "owner": "planner", "resolution": "the probe (T01) checks the actual config.json in the repo plus the deploy runbook examples; if nested data is found, A-1 is falsified and the YAML-subset scope widens at the next planning trigger" }
+  ],
+  "delivery_profile": { "level": "alpha" },
+  "planning_budget": { "max_full_audits": 2, "max_plan_revisions": 3, "max_planning_subagents": 5, "soft_wall_fraction": 0.3 },
+  "horizons": {
+    "commitment": { "tasks": ["T01", "T02"] },
+    "detailed_stage": { "objective": "reader-inventory evidence + route-independent YAML store, both certain under either route", "tasks": ["T01", "T02"] },
+    "forecast": {
+      "stages": [
+        { "objective": "Route A: YAML becomes primary store, config.json regenerated as an export mirror on every save so uncontrolled external readers keep working; loader/cli wired behind S1; deploy/check.sh left untouched", "depends_on_evidence": ["reader inventory shows external readers beyond owned tooling"] },
+        { "objective": "Route B: full YAML cutover — loader/cli wired to YamlConfigStore, owned readers (deploy/check.sh etc.) updated, config.json deleted; migration step for the live file", "depends_on_evidence": ["reader inventory shows only owned, updatable readers"] }
+      ]
+    }
+  },
+  "stage_boundary": {
+    "stop_after": ["T01", "T02"],
+    "because": "the stage ends at new evidence that can change the route (the complete external-reader list from the probe) and at the route-independent foundation being built and parity-proven (YamlConfigStore); route-specific work (JSON mirror vs reader updates + deletion) cannot be designed before the reader list exists",
+    "expected_new_evidence": ["complete list of external readers of config.json (repo grep + CI config + deploy scripts + runbook) with a route recommendation"],
+    "decisions_deferred_until_then": ["route A vs route B", "whether config.json is kept as a regenerated export", "how deploy/check.sh is handled", "how and when loader/cli switch to the YAML store", "migration step for the live config.json"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["route_changing_evidence", "frozen_assumption_falsified", "core_seam_blocker", "budget_envelope_threatened"],
+    "not_triggers": ["first_worker_failure", "optional_bug", "mechanical_merge_conflict"]
+  }
+}

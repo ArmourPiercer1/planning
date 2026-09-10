@@ -1,0 +1,115 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement app/services/pdf_export.py (PdfExportService using pdflib_shim, one page per report from queries.report_with_rows), app/services/i18n.py (EN/DE label dictionaries with lookup function), and vendor app/services/pdflib_shim.py (40-line PDF wrapper), plus tests/test_pdf_export.py covering PDF generation and i18n label selection",
+  "required_context": {
+    "files": [
+      "app/queries.py",
+      "app/models.py",
+      "app/services/pdf_export.py (new)",
+      "app/services/i18n.py (new)",
+      "app/services/pdflib_shim.py (new)",
+      "tests/test_pdf_export.py (new)"
+    ],
+    "contracts": ["C2"],
+    "concepts": ["report data structure from report_with_rows", "PDF page rendering via shim", "i18n label lookup by lang code"]
+  },
+  "inputs": ["C2 PDF export service spec (inlined below)", "app/queries.py (report data source — read-only)"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a92f1005d7e84f03c1aab8342660945187f692e0ee6ba22729b36ca663aaa3d7"
+    }
+  ],
+  "owned_paths": [
+    "app/services/pdf_export.py",
+    "app/services/i18n.py",
+    "app/services/pdflib_shim.py",
+    "tests/test_pdf_export.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not modify app/queries.py, app/models.py, app/api.py, or app/services/export.py",
+    "Do not add report creation or editing — only export of existing reports via report_with_rows",
+    "Do not add email delivery or file storage — return bytes only",
+    "Do not add languages beyond 'en' and 'de'",
+    "Do not add a database or persistence layer for PDFs"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only — pdflib_shim is a vendored file, not a pip package",
+    "All report data access must go through app/queries.report_with_rows — never import _REPORTS or _CUSTOMERS directly",
+    "i18n labels: dict of dicts {lang: {key: text}} with 'en' and 'de' as top-level keys",
+    "export_pdf must validate lang is in {'en', 'de'} before doing any work; raise ValueError for unknown lang",
+    "PdfExportError is a custom exception class defined in pdf_export.py"
+  ],
+  "deliverables": [
+    {"what": "PdfExportService class with export_pdf method", "where": "app/services/pdf_export.py"},
+    {"what": "i18n label module with get_label(key, lang) function", "where": "app/services/i18n.py"},
+    {"what": "Vendored pdflib_shim module (PDF rendering wrapper)", "where": "app/services/pdflib_shim.py"},
+    {"what": "Unit tests for PDF generation, i18n, and error cases", "where": "tests/test_pdf_export.py"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT05",
+      "case": "positive",
+      "description": "export_pdf('c1', 'r1', 'en') returns bytes starting with %PDF",
+      "evidence": "pytest tests/test_pdf_export.py::test_export_returns_pdf_bytes -> passed"
+    },
+    {
+      "id": "AT06",
+      "case": "positive",
+      "description": "export_pdf with lang='de' produces different label text than lang='en'",
+      "evidence": "pytest tests/test_pdf_export.py::test_i18n_de_labels -> passed"
+    },
+    {
+      "id": "AT07",
+      "case": "negative",
+      "description": "export_pdf with lang='fr' raises ValueError",
+      "evidence": "pytest tests/test_pdf_export.py::test_unknown_lang_raises -> passed"
+    },
+    {
+      "id": "AT08",
+      "case": "failure",
+      "description": "export_pdf with unknown report_id raises PdfExportError",
+      "evidence": "pytest tests/test_pdf_export.py::test_unknown_report_raises -> passed"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "report_with_rows returns None (unknown report)", "expected_behavior": "Raise PdfExportError with message containing the report_id"},
+    {"scenario": "lang not in {'en', 'de'}", "expected_behavior": "Raise ValueError before any PDF generation work"},
+    {"scenario": "pdflib_shim rendering fails", "expected_behavior": "Raise PdfExportError wrapping the underlying exception"}
+  ],
+  "integration_dependency": {
+    "seams": ["S2"],
+    "upstream_outputs": [],
+    "consumers": ["T01", "T04", "T05", "T06"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": ["T01", "T04", "T05", "T06"],
+    "notes": "PdfExportService.export_pdf is the only public method T01's worker calls. i18n.get_label(key, lang) is used internally by pdf_export.py. pdflib_shim is a self-contained 40-line wrapper with no external deps."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service"],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "medium",
+    "uncertainty": "medium",
+    "p50": "30-45 min",
+    "p80": "60-75 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "UNCERTAINTY_DOMINANT",
+        "detail": "pdflib_shim API surface is not yet known — the 40-line wrapper is provided by the platform team",
+        "rationale": "The shim's exact method names and behavior are unknown until vendored; if the API differs from assumptions, the export service needs adjustment"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

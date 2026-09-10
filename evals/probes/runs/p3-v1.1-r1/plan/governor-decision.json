@@ -1,0 +1,47 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F01",
+      "routing": "OPTIONAL",
+      "reason": "Round-2 isolated audit re-verified the 5 stage-contract acceptance texts flagged by the evidence-marker regex are deterministic as written (exact counts, named tests, exact file-diff outcome, named fix owner). Marker-regex limitation, not genuine vagueness; no execution impact; optionally add an explicit 'exit 0' marker to A5 positive_case later."
+    },
+    {
+      "finding_id": "F02",
+      "routing": "OPTIONAL",
+      "reason": "Two T01 acceptance texts flagged by the marker regex; isolated auditor confirmed deterministic (exact truth-table values; exact file-state assertion). No execution impact."
+    },
+    {
+      "finding_id": "F03",
+      "routing": "OPTIONAL",
+      "reason": "Two T02 acceptance texts flagged by the marker regex; isolated auditor confirmed deterministic (named tests + counts; exact propagation and file-state behavior). No execution impact."
+    },
+    {
+      "finding_id": "F04",
+      "routing": "OPTIONAL",
+      "reason": "One T03 acceptance text flagged by the marker regex; isolated auditor confirmed deterministic (count + byte-identical assertion against concrete revision 790b314d...). No execution impact."
+    },
+    {
+      "finding_id": "F05",
+      "routing": "POST_STAGE",
+      "reason": "The round-1 same-session audit deviation (AUDIT_NOT_ISOLATED BLOCKER against the round-1 artifact) is RESOLVED: round 2 ran as fresh_subagent with planner_conversation_isolated=true and replaced the round-1 artifact; the isolated auditor's post-replacement re-lint is exit 0, so the lint condition no longer holds. Kept POST_STAGE (the round-1 routing the auditor says 'remains accurate') purely as the run-record process note: the deviation stays documented in run-manifest, and any FUTURE re-audit after a targeted revision must use the isolated fresh-subagent path per the plan-auditor skill. No execution impact."
+    },
+    {
+      "finding_id": "F06",
+      "routing": "OPTIONAL",
+      "reason": "Evidence-runner inconsistency (new in round 2): acceptance/evidence commands say 'pytest' (stage-contract A1/A3/A4/A6, integration-plan E1-E3, tasks/T01+T03) while the plan's own constraints are stdlib-only and the existing suite is unittest, so a faithful environment may lack pytest and the evidence commands would fail for environmental reasons. NOT an execution blocker: the acceptance CRITERIA themselves are deterministic and unaffected, the fix is a known trivial runner swap, and it is executor-discoverable in minutes (the first evidence run in a stdlib environment makes it obvious). NOT TARGETED_PATCH material: MINOR (not MAJOR) and multi-artifact in character (spanning contract, integration plan, and two packages) — deferring as OPTIONAL with an executor note is consistent with how the P1/P5 probe runs treated multi-artifact MINORs. EXECUTOR NOTE (carried here in place of an artifact edit): where any evidence command says 'pytest <path> -q', run the suite's actual runner instead — 'python -m unittest <dotted.module> -v' (e.g. python -m unittest tests.test_rotation -v, python -m unittest tests.test_log_rotation -v, python -m unittest tests.e2e.test_rotation_e2e -v); treat that substitution as satisfying the evidence. No re-audit spawned: the isolated auditor confirmed plan structure and criteria are unaffected, and budget preservation applies (1/2 accepted audits used)."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 0,
+    "full_audits": 1,
+    "subagents": 0,
+    "wall_time": null,
+    "tokens": null
+  },
+  "forbidden_actions": [],
+  "reason": "EXECUTE. Re-run of stage 8 on the round-2 ISOLATED audit (fresh_subagent, planner_conversation_isolated=true, revision_round 2, verdict PASS) — this decision supersedes and voids the round-1 decision that was issued on the rejected in-conversation audit. Findings: 0 BLOCKER, 0 MAJOR, 6 MINOR (F01–F04 marker-regex misses confirmed deterministic by the isolated auditor; F05 resolved process deviation kept as run-record note; F06 pytest-vs-unittest evidence-runner inconsistency, criteria unaffected, executor-discoverable, multi-artifact). Routing: 0 EXECUTION_BLOCKER (none cites an acceptance criterion that cannot be met or a hard invariant — F06's criteria are deterministic and only the runner naming is at issue), 0 SPIKE_REQUIRED (no empirical unknown remains: F06 has a known fix, not a probe; A-TS/A-DRIVE/A-SINGLE grounded in code or documented with invalidation conditions). Budget: full_audits=1/2 (the round-1 in-conversation audit was rejected at the isolation gate and does not count as an accepted full audit; round 2 is the 1st accepted), plan_revisions=0/3, subagents=0/5 spawned by this planning session (the isolated auditor was launched by the parent orchestrator outside this session's telemetry; run-level total ≤1, far under the cap). No forbidden actions. Schedule unchanged: aggregate P80 = 75+120+120 = 315 min ≈ 5.25 h within the 4–6 dev-hour stage estimate; F06 adds at most minutes (runner substitution at execution time). Proceed to execution per HANDOFF.md; the executor reads spikes=[] (none) and the deferrals above — in particular the F06 executor note substituting 'python -m unittest … -v' for every 'pytest …' evidence command."
+}

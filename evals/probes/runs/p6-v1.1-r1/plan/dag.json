@@ -1,0 +1,78 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T02",
+      "type": "data",
+      "reason": "T02's dispatch reads the webhook_url field that T01 adds to the todo record; T02 also touches app/api.py (mark_done) where T01 works (create_todo), so the ordering resolves the shared-file overlap as well"
+    },
+    {
+      "from": "T01",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03's E2E gates exercise the registration write path end to end and can only run after T01's store/API change exists"
+    },
+    {
+      "from": "T02",
+      "to": "T03",
+      "type": "verification",
+      "reason": "T03's E2E gates exercise the dispatch boundary (including the raising-dispatcher failure scenario) and can only run after T02's mark_done change exists"
+    }
+  ],
+  "parallel_groups": [
+    ["T01"],
+    ["T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T01", "T02", "T03"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T03", "seams": ["S1", "S2"], "acceptance_ref": "A4" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C1", "unlocks": ["T01", "T02"], "rationale": "frozen in stage 1 and carried forward: both leaves build against the exact GET /todos key set without waiting on each other" },
+    { "contract_id": "C2", "unlocks": ["T01", "T02"], "rationale": "frozen (additive) at stage-2 contract time: T02 can code against the webhook_url field spec before T01's store change lands" },
+    { "contract_id": "C3", "unlocks": ["T02"], "rationale": "frozen dispatch contract: T02's implementation is fully specified up front" }
+  ],
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T01",
+      "consumer_tasks": ["T02", "T03"],
+      "rationale": "the api layer (app/api.py) implements C1; T01 is the first owner of that file and its forbidden_scope explicitly protects list_todos' frozen response shape; T02/T03 consume the unchanged shape"
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T01",
+      "consumer_tasks": ["T02", "T03"],
+      "rationale": "T01 implements the store-side additive change (webhook_url) in app/store.py"
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T02",
+      "consumer_tasks": ["T03"],
+      "rationale": "T02 implements the done-notification dispatch in mark_done over the existing dispatcher"
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "handler->store boundary: T01 crosses it on the registration write path (create_todo -> store.add), T02 on the done read/mutate path (store.get -> transition)"
+    },
+    {
+      "seam_id": "S2",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "mark_done->dispatch boundary: its input side (webhook_url on the done record) is T01's deliverable across the shared api/store surface, and its call side (api handler -> WebhookDispatcher) is implemented by T02; the stage-4 e2e task re-verifies the seam including its failure scenario"
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": [
+      "T01 and T02 both own app/api.py (create_todo vs mark_done) — ordered T01 -> T02, which resolves the ownership overlap; no other path overlaps exist between the two leaves"
+    ],
+    "free_parallelism_trades": [
+      "no parallelism is possible with two ordered leaves; the single edge is a real data dependency (webhook_url field), not fear-based serialization — the task list is not artificially split to create groups"
+    ]
+  }
+}

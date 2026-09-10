@@ -1,0 +1,57 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P3",
+  "version": "v1.1",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": 1,
+    "revision_rounds": 0,
+    "subagent_count": 0,
+    "artifact_count": 12,
+    "task_count": 3
+  },
+  "governor": {
+    "action": "EXECUTE",
+    "spikes": [],
+    "deferred": [
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "F05",
+      "F06"
+    ],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check"
+    },
+    {
+      "name": "no_over_split",
+      "pass": true,
+      "detail": "3 tasks for a known-route 2-3h job (limit 4; anti-pattern is one task per file)"
+    },
+    {
+      "name": "no_unneeded_spike",
+      "pass": true,
+      "detail": "spikes=[], action=EXECUTE; the route is known — no probe needed"
+    },
+    {
+      "name": "single_stage",
+      "pass": true,
+      "detail": "forecast has 0 stage(s); this work is one stage"
+    }
+  ],
+  "score": 1.0,
+  "verdict": "PASS",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p3-v1.1-r1\\plan/**",
+      "observation": "4/4 checks passed; lint_clean=True; no_over_split=True; no_unneeded_spike=True; single_stage=True"
+    }
+  ],
+  "baseline": null
+}

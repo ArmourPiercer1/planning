@@ -1,0 +1,156 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T04",
+  "objective": "Add the three C1 endpoint handlers to app/api.py (amending the existing module; handle_export_csv stays intact): POST /reports/{report_id}/export-pdf -> 202 {job_id}; GET /jobs/{job_id} -> 200 C2 status shape; GET /jobs/{job_id}/download -> 200 raw PDF bytes / 409 not-done / 404 unknown, validating report existence via app/queries.py and lang against {en,de}, with unit tests against a stub JobStore.",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/queries.py",
+      "app/models.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2"
+    ],
+    "concepts": [
+      "framework-agnostic handler convention (path_params dict, body dict) -> (status_code, payload_dict) used by the existing handle_export_csv",
+      "status code discipline: 404 not-found, 400 bad input, 409 premature download"
+    ]
+  },
+  "inputs": [
+    "frozen contract C1 (own spec)",
+    "frozen contract C2 (JobStore API, consumed as a frozen stub)",
+    "app/api.py (existing pattern, handle_export_csv must stay intact)",
+    "app/queries.py (report existence check + customer id, read-only)",
+    "app/models.py (read-only, one hop from app/queries.py per the snapshot import graph — data shape only)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf body {lang?: 'en'|'de'} -> 202 {job_id}; 404 {error} for unknown report; 400 {error} for lang not in {en,de}. GET /jobs/{job_id} -> 200 {job_id, status: 'queued'|'running'|'done'|'failed', created_at: int, error: string|null}; 404 {error} for unknown job. GET /jobs/{job_id}/download -> 200 with the raw PDF bytes as the response body (the bytes start with b'%PDF'; content-type application/pdf) when status is done; 409 {error: 'job not done'} while status is queued or running; 404 {error} for unknown job.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:3e92c685f9f21e6cd00c0b7efe6e7f131153b10ec933974e80029090523869e9"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:7be93ba195cca2c1715deba19d73ea11d18bd7a596a98541877236c3e67a0793"
+    }
+  ],
+  "owned_paths": [
+    "app/api.py",
+    "tests/test_api_pdf.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no changes to handle_export_csv behavior or its response shape",
+    "no importing app/jobs.py in code or tests (stub the JobStore per C2)",
+    "no PDF rendering or worker code",
+    "no email/notification of any kind (out of scope A)",
+    "no changes to app/queries.py"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only",
+    "handler signatures follow the existing convention in app/api.py",
+    "the JobStore is injected: handlers take a store parameter (default None -> tests pass a stub); the wiring of the real store is T06's job",
+    "missing lang key defaults to 'en'; lang outside {en,de} -> 400",
+    "unknown report -> 404 BEFORE any JobStore.create call (assert in the stub)"
+  ],
+  "deliverables": [
+    {
+      "what": "three new endpoint handlers",
+      "where": "app/api.py"
+    },
+    {
+      "what": "unit tests (stub store)",
+      "where": "tests/test_api_pdf.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "POST export-pdf for report r1 (known) with stub store -> 202, body {job_id} matching the stub's create return value; the stub create call received (customer_id from queries, report_id, lang 'en' by default)",
+      "evidence": "python -m unittest tests.test_api_pdf.TestApi.test_enqueue_ok -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "negative",
+      "description": "POST export-pdf for unknown report -> 404 {error} and the stub store's create was NOT called",
+      "evidence": "python -m unittest tests.test_api_pdf.TestApi.test_unknown_report_404 -> test passes"
+    },
+    {
+      "id": "AT03",
+      "case": "negative",
+      "description": "POST with lang='fr' -> 400 {error}; lang='de' -> 202 and the stub store records lang 'de'",
+      "evidence": "python -m unittest tests.test_api_pdf.TestApi.test_lang_validation -> test passes"
+    },
+    {
+      "id": "AT04",
+      "case": "positive",
+      "description": "GET /jobs/j1 with stub returning a done record -> 200 with exactly the C2 fields {job_id, status, created_at, error} (no extra keys)",
+      "evidence": "python -m unittest tests.test_api_pdf.TestApi.test_poll_shape -> test passes"
+    },
+    {
+      "id": "AT05",
+      "case": "failure",
+      "description": "download while status 'running' -> 409 {error: 'job not done'}; unknown job on poll and download -> 404",
+      "evidence": "python -m unittest tests.test_api_pdf.TestApi.test_download_conflict_and_404 -> test passes"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "body without lang",
+      "expected_behavior": "missing lang defaults to 'en'; the handler returns 202"
+    },
+    {
+      "scenario": "report exists but has zero rows",
+      "expected_behavior": "enqueue returns 202; the renderer draws a title-only page (per T03 AT04); LookupError applies only to a customer with zero reports"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T05",
+      "T06",
+      "T07"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T04.json",
+    "downstream_consumers": [
+      "T05",
+      "T06",
+      "T07"
+    ],
+    "notes": "tests import a StubStore implementing the C2 method set — if C2's method set changed during the run, this package is stale (STALE_CONTRACT_SNAPSHOT will flag it)."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "api"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "SHARED_FILE_AMENDMENT",
+        "detail": "app/api.py is an existing shared file; the CSV handler must stay byte-compatible in behavior",
+        "rationale": "acceptance A4 requires the existing suite to stay green"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

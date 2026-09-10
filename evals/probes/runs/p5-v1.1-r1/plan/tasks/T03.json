@@ -1,0 +1,120 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Add three handler functions to app/api.py: handle_export_pdf (POST /reports/{id}/export-pdf returning 202 with job_id), handle_get_job (GET /jobs/{id} returning job state), handle_download_job (GET /jobs/{id}/download returning PDF bytes or 409/404), plus tests/test_api_pdf.py with unit tests for all three endpoints including error cases",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/queries.py",
+      "app/models.py",
+      "app/services/jobstore.py (new)",
+      "tests/test_api_pdf.py (new)"
+    ],
+    "contracts": ["C1", "C3"],
+    "concepts": ["handler function pattern from existing api.py (path_params + body -> tuple[int, dict])", "job store create/get interface", "HTTP status codes 202/404/400/409"]
+  },
+  "inputs": ["C1 job store interface (inlined below)", "C3 API contract (inlined below)"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:b68311094451d4abf959c3ad0bab29255d180763d06e4b3e495a59e4b9ac8211"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf: body {lang: str (optional, default 'en')} -> 202 {job_id: str}. 404 if report_id unknown. 400 if lang not in {en, de}. GET /jobs/{id} -> 200 {job_id, status, result_available: bool, error: str|None}. 404 if job unknown. GET /jobs/{id}/download -> 200 (application/pdf bytes) if done, 409 if not done, 404 if unknown.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:36ea071992fcc9d6e89a3e77b99ab3bce11ae959a92e4c50dd922efd6fbf839e"
+    }
+  ],
+  "owned_paths": [
+    "app/api.py",
+    "tests/test_api_pdf.py"
+  ],
+  "allowed_dependencies": [
+    {"task_id": "T01", "what": "JobStore class from app.services.jobstore (create, get methods)"}
+  ],
+  "non_goals": [
+    "Do not modify app/services/export.py, app/services/pdf_export.py, app/services/jobstore.py, app/services/i18n.py, or app/models.py",
+    "Do not add authentication or rate limiting",
+    "Do not add request validation beyond lang check and report existence",
+    "Do not modify the existing handle_export_csv function"
+  ],
+  "implementation_constraints": [
+    "Follow existing handler pattern: function(path_params: dict, body: dict) -> tuple[int, dict]",
+    "Import JobStore from app.services.jobstore",
+    "Import report_with_rows from app.queries for the 404 check on report_id",
+    "handle_export_pdf: validate lang first (400 if not en/de), then check report exists (404 if not), then create job (202)",
+    "handle_get_job: return 404 if job not found, otherwise 200 with {job_id, status, result_available, error}",
+    "handle_download_job: return 404 if job not found, 409 if status not done, 200 with PDF bytes if done"
+  ],
+  "deliverables": [
+    {"what": "Three new handler functions (handle_export_pdf, handle_get_job, handle_download_job)", "where": "app/api.py"},
+    {"what": "Unit tests for all three endpoints including error cases", "where": "tests/test_api_pdf.py"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT09",
+      "case": "positive",
+      "description": "handle_export_pdf with valid report_id returns (202, {'job_id': <non-empty string>})",
+      "evidence": "pytest tests/test_api_pdf.py::test_export_pdf_returns_202 -> passed"
+    },
+    {
+      "id": "AT10",
+      "case": "negative",
+      "description": "handle_export_pdf with unknown report_id returns (404, {'error': ...})",
+      "evidence": "pytest tests/test_api_pdf.py::test_export_pdf_unknown_report_404 -> passed"
+    },
+    {
+      "id": "AT11",
+      "case": "negative",
+      "description": "handle_export_pdf with lang='fr' returns (400, {'error': ...})",
+      "evidence": "pytest tests/test_api_pdf.py::test_export_pdf_invalid_lang_400 -> passed"
+    },
+    {
+      "id": "AT12",
+      "case": "positive",
+      "description": "handle_get_job for a known job returns (200, {'job_id': ..., 'status': ..., 'result_available': ..., 'error': ...})",
+      "evidence": "pytest tests/test_api_pdf.py::test_get_job_returns_state -> passed"
+    },
+    {
+      "id": "AT13",
+      "case": "failure",
+      "description": "handle_download_job for a pending job returns (409, {'error': ...})",
+      "evidence": "pytest tests/test_api_pdf.py::test_download_pending_409 -> passed"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "report_id not found by report_with_rows", "expected_behavior": "Return 404 with error message before creating a job"},
+    {"scenario": "lang not in {'en', 'de'}", "expected_behavior": "Return 400 with error message before creating a job"},
+    {"scenario": "job_id not found by JobStore.get", "expected_behavior": "Return 404 for get_job and download_job"},
+    {"scenario": "job status is not 'done' on download", "expected_behavior": "Return 409 with error message"}
+  ],
+  "integration_dependency": {
+    "seams": ["S1"],
+    "upstream_outputs": ["T01: JobStore (create, get methods)"],
+    "consumers": ["T04", "T05", "T06"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": ["T04", "T05", "T06"],
+    "notes": "Handlers follow the existing pattern in api.py. The JobStore is imported from app.services.jobstore — T03 uses a test fake of JobStore in unit tests (frozen C1 interface)."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["api"],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

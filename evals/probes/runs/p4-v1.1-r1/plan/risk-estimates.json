@@ -1,0 +1,47 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["service", "e2e"],
+      "cross_contracts": 1,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "40-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "M",
+      "touched_layers": ["service", "e2e"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "60-90 min",
+      "p80": "90-120 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "M",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 3,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "60-90 min",
+      "p80": "90-120 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    }
+  ]
+}

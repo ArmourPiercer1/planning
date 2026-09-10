@@ -1,0 +1,144 @@
+{
+  "schema": "planning/stage-contract@2",
+  "stage_id": "p1-retry-v1.0",
+  "objective": "Add automatic retry with exponential backoff (3 attempts max, base 1s, cap 30s) to notification delivery, with 429 treated as retryable per observed gateway behavior, without changing the public send path or record shape.",
+  "in_scope": [
+    "retry loop with exponential backoff in app/notify.py (3 attempts, base 1s, cap 30s)",
+    "429 treated as a retryable status; 5xx retryable; other 4xx fail immediately",
+    "verification task documenting the gateway's observed 429 behavior before the retry design is finalized",
+    "unit tests for the retry behavior (transient recovery, permanent failure, 429, non-retryable 4xx)",
+    "record field `attempts` now reflects the number of provider calls made (1..3)"
+  ],
+  "out_of_scope": [
+    { "item": "bulk-send API (1000 notifications per call)", "reason": "product said 'someday'; nobody asked for it this sprint; new endpoint + pagination is a separate Stage" },
+    { "item": "retry-storm / backpressure mitigation (e.g. global rate limiter, jitter policy for fleet-wide provider outage)", "reason": "task explicitly says think about it but do not block delivery this round; a single-service retry cap (3 attempts) already bounds the worst case" },
+    { "item": "changes to ProviderClient or the HTTP transport", "reason": "the client interface is the frozen seam to the third-party gateway; retry belongs in the service layer" },
+    { "item": "changes to the /notify and /notifications API surface", "reason": "public handlers stay untouched; only the internal send path changes" }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-429-RETRYABLE",
+      "statement": "A 429 from the gateway is transient rate limiting, not payload rejection: the observed staging trace (tests/test_gateway_observed.py) shows 429 with body {'error': 'rate limited'}, NO Retry-After header, and the immediate next identical call succeeds with 202. We therefore retry on 429 using the standard backoff schedule (Retry-After is not honored because it was never observed).",
+      "rationale": "only documented evidence is the staging-capture test; the vendor docs are absent. The verification task (DAG-ordered first) must confirm or falsify this before the retry code ships."
+    },
+    {
+      "id": "A-NO-NEW-DEPS",
+      "statement": "stdlib only: the backoff loop, sleep, and tests use no third-party packages.",
+      "rationale": "task hard requirement 'No new dependencies'; existing suite is plain unittest."
+    },
+    {
+      "id": "A-SYNCHRONOUS",
+      "statement": "Retries happen synchronously inside send_notification; no queue, worker, or async machinery is introduced.",
+      "rationale": "the service has no job infrastructure and the task scopes out storm mitigation; a 3-attempt bounded loop keeps the caller contract identical."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-RETRY-IN-SERVICE",
+      "decision": "The retry loop lives in app/notify.py (service layer), wrapping ProviderClient.send; the store and the API handlers are not modified except that the persisted record's `attempts` field becomes meaningful (1..3).",
+      "rationale": "keeps the frozen ProviderClient interface and the API surface untouched; single owner for retry policy",
+      "seams_affected": ["S1", "S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "service",
+      "spec": "Retry policy (single source of truth, consumed by implementation and by tests): MAX_ATTEMPTS=3; delays before attempt 2 and 3 are 1s and 2s (exponential base 1s, cap 30s); retryable statuses = {429} union [500..599]; non-retryable = any other 4xx (fail immediately on first response); a 2xx/3xx response always succeeds immediately. Delays must be injectable (a delay callable passed to the retry helper, defaulting to time.sleep) so tests never sleep for real.",
+      "logical_owner": "service (app/notify.py)",
+      "frozen": true,
+      "unfreeze_rule": "only if the verification task falsifies A-429-RETRYABLE (evidence: gateway capture showing 429 = quota/payload rejection); then request_contract_revision"
+    },
+    {
+      "id": "C2",
+      "kind": "data",
+      "spec": "Notification record shape (unchanged keys): {user_id: str, template: str, status: 'sent'|'failed', provider_ref: str|None, error: str|None, attempts: int 1..3, created_at: int epoch}. `attempts` = number of ProviderClient.send calls actually made. provider_ref taken from the final successful response; error from the final failed response (or None).",
+      "logical_owner": "persistence (app/db.py record format) / service (writer)",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "api",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse interface is FROZEN and unchanged: payload {'to','template','vars'}; response is ProviderResponse(status:int, body:dict, headers:dict). The gateway's success shape is 202 {'accepted': true, 'provider_ref': ...}; failure 4xx/5xx {'error': str} (429 observed without Retry-After).",
+      "logical_owner": "api (app/provider.py, third-party gateway boundary)",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "service -> provider boundary: the retry loop wraps client.send; every provider call the retry makes must be observable (tests count calls via the client's .calls list)",
+      "participants": ["service", "provider-client"],
+      "contract_ids": ["C1", "C3"]
+    },
+    {
+      "id": "S2",
+      "description": "service -> store boundary: exactly ONE record per send_notification call, written after the retry window resolves (sent or failed)",
+      "participants": ["service", "persistence"],
+      "contract_ids": ["C2"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "Transient provider failure recovers within the retry window",
+      "positive_case": "provider returns 500, 500, 202 -> record status 'sent', attempts 3, provider_ref set",
+      "negative_case": "provider returns 500, 400, ... -> 400 is non-retryable: record 'failed', attempts 2",
+      "failure_behavior": "after 3 attempts all failed: status 'failed', error from last response",
+      "evidence": "tests/test_retry.py::test_transient_recovers + ::test_mixed_stops_on_4xx"
+    },
+    {
+      "id": "A2",
+      "description": "Permanently failing provider ends in 'failed' exactly as today, after the retry window",
+      "positive_case": "provider always 500 -> record 'failed', attempts 3, error 'boom' (last body)",
+      "negative_case": "provider always 400 -> record 'failed', attempts 1 (no retry on 4xx)",
+      "failure_behavior": "no exception escapes send_notification",
+      "evidence": "tests/test_retry.py::test_permanent_failure_5xx + ::test_4xx_no_retry"
+    },
+    {
+      "id": "A3",
+      "description": "429 is retried with the standard backoff (no Retry-After honored)",
+      "positive_case": "provider returns 429 then 202 -> record 'sent', attempts 2, one backoff delay of 1s scheduled",
+      "negative_case": "provider returns 429 three times -> record 'failed', attempts 3",
+      "failure_behavior": "429 never fails immediately",
+      "evidence": "tests/test_retry.py::test_429_retries + ::test_429_exhausts"
+    },
+    {
+      "id": "A4",
+      "description": "Backoff schedule is exactly 1s, 2s (cap 30s) and is injectable (tests use a fake delay callable)",
+      "positive_case": "3-attempt failure records delay calls [1.0, 2.0] in the fake",
+      "negative_case": "any real time.sleep in the test path fails the test (fake records, clock never moves)",
+      "failure_behavior": "schedule change is a contract violation (C1)",
+      "evidence": "tests/test_retry.py::test_backoff_schedule_injected"
+    },
+    {
+      "id": "A5",
+      "description": "Existing behavior on success is unchanged and the whole suite is green",
+      "positive_case": "first-attempt 202 -> record 'sent', attempts 1, provider_ref set (as today)",
+      "negative_case": "n/a",
+      "failure_behavior": "n/a",
+      "evidence": "python -m unittest discover tests -v -> all pass (existing test_notify.py + test_gateway_observed.py + new test_retry.py)"
+    }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "stdlib only; no new third-party imports anywhere" },
+    { "kind": "style", "rule": "keep the module docstring/comment honesty: update app/notify.py header comment (currently says 'No retry today') to reflect the retry behavior" },
+    { "kind": "performance", "rule": "worst-case added latency per send is bounded by the backoff window (1s + 2s = 3s of delays, plus provider call time)" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "45m",
+    "leaf_p80_max": "90m",
+    "max_compactions_per_leaf": 1,
+    "stage_estimate": "3-4 dev-hours"
+  },
+  "allowed_replan": ["split", "reorder", "defer", "replace_route", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "OQ1",
+      "question": "Does the vendor's 429 carry quota consequences we cannot see (per-key quota reset, per-IP throttle)? The staging capture only proves the next call succeeded.",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "verification task documents observed behavior from tests/test_gateway_observed.py and the provider docstring; if it cannot confirm A-429-RETRYABLE, the plan replans via request_contract_revision. Vendor docs are unavailable by task premise, so 'observed behavior' is the standard of proof for this Stage."
+    }
+  ]
+}

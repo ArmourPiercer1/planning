@@ -1,0 +1,124 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Produce docs/429-behavior-verification.md documenting the gateway's observed 429 behavior (status/body/headers from the staging-capture test and the client docstring), issuing a CONFIRMED or FALSIFIED verdict on assumption A-429-RETRYABLE with an explicit evidence list, so the frozen retry policy's retry-on-429 branch rests on observed behavior.",
+  "required_context": {
+    "files": [
+      "app/provider.py",
+      "tests/test_gateway_observed.py"
+    ],
+    "contracts": [
+      "C1",
+      "C3"
+    ],
+    "concepts": [
+      "ProviderResponse shape (status/body/headers)",
+      "frozen C1 and its unfreeze_rule",
+      "staging-capture test as the standard of proof (vendor docs unavailable)"
+    ]
+  },
+  "inputs": [
+    "staging-capture test tests/test_gateway_observed.py (observed 429: body, headers, next-call outcome)",
+    "app/provider.py docstring (documented 429 unknowns)",
+    "open question OQ1 from the stage contract (quota consequences unobservable)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "Retry policy (single source of truth, consumed by implementation and by tests): MAX_ATTEMPTS=3; delays before attempt 2 and 3 are 1s and 2s (exponential base 1s, cap 30s); retryable statuses = {429} union [500..599]; non-retryable = any other 4xx (fail immediately on first response); a 2xx/3xx response always succeeds immediately. Delays must be injectable (a delay callable passed to the retry helper, defaulting to time.sleep) so tests never sleep for real.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:73a82ea9d6434d9560e1e6a2e2e3157299cbddde0af13080ae4271401dc5fdef"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse interface is FROZEN and unchanged: payload {'to','template','vars'}; response is ProviderResponse(status:int, body:dict, headers:dict). The gateway's success shape is 202 {'accepted': true, 'provider_ref': ...}; failure 4xx/5xx {'error': str} (429 observed without Retry-After).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:bfef5dfee78ba10e05342fbdc2082fa9d6280fa8977c8ae5a4b548aefe2ecdd5"
+    }
+  ],
+  "owned_paths": [
+    "docs/429-behavior-verification.md"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no retry implementation of any kind (T02's job)",
+    "no modification of app/provider.py (frozen interface), app/notify.py, app/db.py, or any test file",
+    "no bulk-send API, no retry-storm / backpressure work (stage out-of-scope)"
+  ],
+  "implementation_constraints": [
+    "read-only on app/ and tests/ — the only writable path is docs/429-behavior-verification.md",
+    "every claim cites its source (test name + observed value, or docstring line)",
+    "verdict must be exactly CONFIRMED or FALSIFIED; 'uncertain' is not a verdict — if evidence cannot confirm, the verdict is FALSIFIED with the missing evidence named"
+  ],
+  "deliverables": [
+    {
+      "what": "429 behavior verification document: observed behavior, verdict on A-429-RETRYABLE, evidence list, implications for C1",
+      "where": "docs/429-behavior-verification.md"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "document states the observed 429 exactly: status 429, body {'error': 'rate limited'}, headers without Retry-After, and the immediate next identical call returns 202 — each cited to tests/test_gateway_observed.py",
+      "evidence": "docs/429-behavior-verification.md contains the four observed values with citations (read of the doc)"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "document carries an explicit CONFIRMED or FALSIFIED verdict on A-429-RETRYABLE plus an evidence list of at least 2 items",
+      "evidence": "verdict line + evidence list present in the doc (read of the doc)"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "no code changed outside docs/: app/ and tests/ byte-identical to before the task",
+      "evidence": "git diff --stat app tests -> empty (or file-list diff against the snapshot)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "the staging-capture evidence cannot confirm A-429-RETRYABLE (e.g. the next-call success is not reproducible from the test as written)",
+      "expected_behavior": "verdict FALSIFIED with the missing evidence named; T03's integration gate then raises a request_contract_revision blocker instead of shipping the 429 retry branch"
+    },
+    {
+      "scenario": "provider docstring and capture test contradict each other",
+      "expected_behavior": "record both, verdict FALSIFIED, contradiction described — a contradiction is not confirmable evidence"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "the verdict gates C1's unfreeze_rule at the T03 integration gate (T02 runs in parallel against frozen C1/C3 and has no dependency on this task's output): CONFIRMED lets the shipped plan stand; FALSIFIED triggers a request_contract_revision blocker before anything ships, and T02's 429 branch becomes the replan target. T03 cross-checks the doc against observed call counts in E1."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "docs",
+      "service"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "25-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

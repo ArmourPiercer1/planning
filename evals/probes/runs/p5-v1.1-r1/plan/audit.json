@@ -1,0 +1,109 @@
+{
+  "schema": "planning/audit@3",
+  "audit_id": "p5-v1.1-r1-audit-1b",
+  "revision_round": 3,
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Independent isolated audit in a fresh subagent with no access to the planner conversation. Replaces the round-1 in-conversation audit (audit_id p5-v1.1-r1-audit-1), which plan-check rejected with AUDIT_NOT_ISOLATED (planner_conversation_isolated=false). Semantic pass re-run from scratch; findings are this auditor's own conclusions. Round 3 (bounded re-audit, same auditor) verifies the governor's TARGETED_PATCH for F01-F04: F01 RESOLVED - stage-contract.json re-emitted as planning/stage-contract@3 (validates ok) with horizons cross-checked: detailed_stage.tasks=[T01..T06] equals the full stage task set (3 candidate leaves + 3 integration tasks), commitment=[T01,T02,T03] is a subset of detailed, stop_after=[T06] is exactly the DAG sink (never a 'from' node), forecast carries no leaf task ids. F02 RESOLVED - run-manifest.json rewritten to run-manifest@1 shape (plan_id, stage_id, created_at, pipeline, gates, audit_verdict present; validates ok). F03 RESOLVED - DA-PDF-PER-REPORT now states export_pdf renders the single report named by report_id via report_with_rows, consistent with frozen C2. F04 RESOLVED - T01 required_context.contracts now includes C2 and C2 is inlined in T01 frozen_contracts; all 14 inlined contract entries across the six task packages have spec text byte-identical to the contract's shared_contracts specs and declared source_hashes matching recomputed sha256, confirming the re-emit did not alter any frozen spec. F05/F06 remain accepted/deferred per governor (not re-litigated). One new bookkeeping issue found and corrected in the manifest: run-manifest notes claimed 'F05: A4 label keys named' as if F05 were patched, but A4's positive_case text is unchanged in the re-emitted contract - the notes now read 'F05/F06 accepted/deferred, no patch' (log correction only, not a plan defect). Out of audit scope per dispatch: a stray 'harness-level schema fix' (stage-contract.schema.json turned into a multi-version enum) was reverted by the parent orchestrator; the re-emitted @3 contract validates against the untouched pure stage-contract-v3.schema.json."
+  },
+  "deterministic": {
+    "tool": "plan-check.py validate on touched artifacts (stage-contract.json, run-manifest.json, tasks/T01.json) + sha256 spec cross-check across all six task packages; round-2 baseline lint: plan-check.py lint (exit 1: 1 BLOCKER AUDIT_NOT_ISOLATED about the old file + 17 MINOR VAGUE_ACCEPTANCE); post-patch full-plan lint remains exit 0, 0 BLOCKER, 17 MINOR VAGUE_ACCEPTANCE",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/api.py",
+      "app/models.py",
+      "app/queries.py",
+      "app/services/export.py",
+      "tests/test_export.py"
+    ],
+    "notes": "All 5 snapshot-listed files spot-checked read-only against plan claims. Verified: api.py handler pattern is function(path_params, body) -> tuple[int, dict] (T03 implementation constraints match); queries.py exports exactly report_with_rows and reports_for_customer and its module docstring enforces the single-source rule (C2 constraint 'never read _REPORTS directly' matches repo intent); models.py is a plain dataclass module with fixture data c1:[r1,r2], c2:[r3] (T02's 'one page per report' and test fixtures r1/c1 exist); services/export.py is the only existing file under app/services/ (new-wiring rule for jobstore/pdf_export applies); tests/test_export.py asserts CSV shape and unknown-report KeyError (A5 'existing tests stay green' is concretely testable). README.md and TASK.md are in the snapshot's unknown_areas; the task requirements were checked against plan/input.md, which is the verbatim task record. No repo drift detected."
+  },
+  "delivery_profile_applied": "alpha",
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "MAJOR",
+      "check": "schema_invalid",
+      "routing": "POST_STAGE",
+      "task_id": null,
+      "evidence": "stage-contract.json declares schema 'planning/stage-contract@2' but carries all five v1.1 governance fields (delivery_profile, planning_budget, horizons, stage_boundary, next_planning_trigger). Under the v1.1 contract closure a v1.1 workflow must emit planning/stage-contract@3; emitting @2 silently bypasses the @3 required-field enforcement. The bypass matters concretely: horizons.detailed_stage.tasks=[] and horizons.commitment.tasks=[] while the stage contains six tasks (T01-T06), and stage_boundary.stop_after=[] - the @3 schema requires stop_after with minItems 1, so a proper @3 contract would have failed schema validation and forced the horizon bookkeeping to be filled. As-is the governor has an empty commitment record to enforce against.",
+      "suggested_fix": "Re-emit stage-contract.json as planning/stage-contract@3: keep all content, set horizons.detailed_stage.tasks=[T01..T06], horizons.commitment.tasks to the certain subset, and stage_boundary.stop_after=[T06]. Local contract re-emission only - no DAG, package, or acceptance redesign. Eligible for TARGETED_PATCH despite POST_STAGE routing.",
+      "acceptance_ref": null
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "schema_invalid",
+      "routing": "OPTIONAL",
+      "task_id": null,
+      "evidence": "run-manifest.json fails validation against run-manifest.schema.json (planning/run-manifest@1): 'plan-check.py validate' returns ok=false with six missing required keys (plan_id, stage_id, created_at, pipeline, gates, audit_verdict). The file instead uses ad-hoc keys (run_id, stages, final_lint, telemetry), and the on-file stage 7/8 entries claim 'validated: true'. plan-check lint does not validate this artifact, so the defect is invisible to the deterministic layer. It is a gate/attribution log, not an execution input, so it does not block execution.",
+      "suggested_fix": "Rewrite run-manifest.json to the run-manifest@1 shape: plan_id, stage_id, created_at, pipeline[] (stage/status/gate/artifact/exit_code per stage 0-8), gates[] (name/exit_code), audit_verdict, and carry the current stage/telemetry/final_lint content into notes.",
+      "acceptance_ref": null
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "check": "late_contract_freeze",
+      "routing": "OPTIONAL",
+      "task_id": "T02",
+      "evidence": "Frozen contract C2 specifies 'export_pdf(customer_id, report_id, lang) -> bytes' fetching via app/queries.report_with_rows (single report), but frozen_architecture decision DA-PDF-PER-REPORT states 'the PDF export service iterates over reports_for_customer(customer_id) and renders each'. These describe two different behaviors (per-report export vs whole-customer export). The inlined C2 spec is authoritative for T02 (it is the hashed frozen contract), and the per-report reading matches the endpoint shape POST /reports/{id}/export-pdf, so execution follows C2; the DA note is stale and could mislead T02's executor about which query to use.",
+      "suggested_fix": "Edit DA-PDF-PER-REPORT in stage-contract.json to 'export_pdf renders the single report named by report_id (one page) using report_with_rows' - or state explicitly that the endpoint exports one report per job. No contract spec change needed.",
+      "acceptance_ref": null
+    },
+    {
+      "id": "F04",
+      "severity": "MINOR",
+      "check": "hidden_dependency",
+      "routing": "OPTIONAL",
+      "task_id": "T01",
+      "evidence": "T01's objective and deliverables require the worker to 'invoke PdfExportService' / 'call PdfExportService.export_pdf', i.e. implement the call against frozen contract C2, but T01.required_context.contracts lists only ['C1'] and T01.frozen_contracts inlines only C1. The C2 interface is referenced only as a paraphrase in allowed_dependencies ('worker calls export_pdf(customer_id, report_id, lang) -> bytes'); the full C2 spec - including 'Raises PdfExportError on failure' and lang ValueError semantics that T01's failure_cases depend on - is inlined only in T02's package.",
+      "suggested_fix": "Add C2 to T01.required_context.contracts and inline the full C2 spec (with source_hash) into T01.frozen_contracts so the T01 executor sees the authoritative error-type contract without reading T02's package.",
+      "acceptance_ref": null
+    },
+    {
+      "id": "F05",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "routing": "OPTIONAL",
+      "task_id": "T02",
+      "evidence": "Stage acceptance A4 positive_case: 'Export with lang=de produces a PDF with German label text' does not name which label keys or which German strings a third party must assert. It is checkable at execution time because T02's deliverable (i18n module) defines the labels and AT06 pins the test (test_i18n_labels), but the stage-level criterion alone is not independently verifiable without reading T02's package.",
+      "suggested_fix": "Name the label keys (e.g. report title, period, metric columns) and the expected German strings in A4's positive_case, or reference AT06 explicitly as the evidence.",
+      "acceptance_ref": "A4"
+    },
+    {
+      "id": "F06",
+      "severity": "MINOR",
+      "check": "deterministic_lint",
+      "routing": "OPTIONAL",
+      "task_id": null,
+      "evidence": "plan-check lint reports 17 MINOR VAGUE_ACCEPTANCE findings across stage-contract.json and tasks/*.json: acceptance description fields lack inline pytest markers. The paired evidence fields DO carry concrete pytest references (e.g. tests/test_e2e_pdf.py::test_full_export_flow), so the acceptance is deterministic in substance; only the description style triggers the lint.",
+      "suggested_fix": "Add the pytest test reference to each flagged description field (or accept the 17 minors as style noise for alpha). Low priority - evidence fields are sufficient for execution and for the P5 scorer, which counts blockers only.",
+      "acceptance_ref": null
+    }
+  ],
+  "checks_performed": [
+    "scope_creep",
+    "insufficient_non_goals",
+    "late_contract_freeze",
+    "hidden_dependency",
+    "fake_serialization",
+    "ownership_collision",
+    "oversized_leaf",
+    "broad_context_loading",
+    "hidden_integration_work",
+    "nondeterministic_acceptance",
+    "lack_of_local_recoverability",
+    "replan_only_by_append",
+    "communication_overhead",
+    "over_planning",
+    "missing_spike_route"
+  ],
+  "verdict": "PASS",
+  "verdict_rationale": "Zero BLOCKER findings; verdict is data for the governor, not a gate. The single deterministic blocker (AUDIT_NOT_ISOLATED) pointed at the replaced round-1 in-conversation audit file and is resolved by this isolated re-audit. Semantic pass: scope matches the task with all three task-level out-of-scope items plus two grounded extras (no email bait - email appears only as an out_of_scope entry and a T01 non-goal); non-goals are sufficient and reasoned; contracts C1/C2/C3 are frozen before the parallel group [T01,T02,T03] with hashed inlining in every consuming package; ownership paths are disjoint (jobstore/tests, pdf_export+i18n+shim/tests, api/tests, checkpoints, e2e test file); fake-serialization removals (T02->T01, T01->T03) are justified by frozen-contract test fakes; both seams S1/S2 are covered by a seam_integration task (T05) plus e2e_closure (T06) whose E2E gates include failure scenarios (404, 400, 409, job-failure); leaves are S-footprint with documented merge rationales; the pdflib_shim uncertainty is handled by making the shim a T02 deliverable (no spike needed for alpha); single stage with empty forecast, no over-planning. Findings: 1 MAJOR (contract emitted as @2 with empty v1.1 horizons - should have been @3; local re-emission fix) and 5 MINOR, all with concrete local fixes and none threatening a stage acceptance criterion."
+}

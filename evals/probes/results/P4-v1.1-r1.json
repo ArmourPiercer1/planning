@@ -1,0 +1,57 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P4",
+  "version": "v1.1",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": 1,
+    "revision_rounds": 0,
+    "subagent_count": 1,
+    "artifact_count": 12,
+    "task_count": 3
+  },
+  "governor": {
+    "action": "HUMAN_BLOCKER",
+    "spikes": [],
+    "deferred": [
+      "F03"
+    ],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check"
+    },
+    {
+      "name": "true_blocker_detected",
+      "pass": true,
+      "detail": "EXECUTION_BLOCKER findings: 2; the hash-chain vs ring-buffer conflict is a true core-acceptance failure"
+    },
+    {
+      "name": "blocker_cites_acceptance",
+      "pass": true,
+      "detail": "2/2 EXECUTION_BLOCKER findings carry acceptance_ref"
+    },
+    {
+      "name": "governor_blocked",
+      "pass": true,
+      "detail": "governor action=HUMAN_BLOCKER; a true blocker must stop for a human"
+    },
+    {
+      "name": "no_fake_solution",
+      "pass": true,
+      "detail": "plan attempts a forbidden second store: False (platform constraint: single store only)"
+    }
+  ],
+  "score": 1.0,
+  "verdict": "PASS",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p4-v1.1-r1\\plan/**",
+      "observation": "5/5 checks passed; lint_clean=True; true_blocker_detected=True; blocker_cites_acceptance=True; governor_blocked=True; no_fake_solution=True"
+    }
+  ],
+  "baseline": null
+}

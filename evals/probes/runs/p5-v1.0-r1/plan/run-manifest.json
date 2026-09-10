@@ -1,0 +1,109 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p5-v1.0-r1",
+  "stage_id": "pdf-export",
+  "created_at": "2026-09-10T12:30:18+00:00",
+  "skill_versions": ["long-task-planning v1.0 (baseline-v1.0/skills)"],
+  "pipeline": [
+    {
+      "stage": "repo-context-snapshot",
+      "status": "done",
+      "gate": "plan-check.py validate repo-context-snapshot.json",
+      "artifact": "repo-context-snapshot.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate stage-contract.json",
+      "artifact": "stage-contract.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate candidate-tasks.json",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate dag.json",
+      "artifact": "dag.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate integration-plan.json + dag.json",
+      "artifact": "integration-plan.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate tasks/T01.json..tasks/T07.json (each)",
+      "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json, tasks/T04.json, tasks/T05.json, tasks/T06.json, tasks/T07.json",
+      "exit_code": 0,
+      "fallbacks": ["inline-frozen-contracts.py run to inline C1-C5 specs + source hashes into all 7 packages"]
+    },
+    {
+      "stage": "plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate risk-estimates.json + all 7 packages",
+      "artifact": "risk-estimates.json + risk blocks in tasks/*.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-auditor",
+      "status": "done",
+      "gate": "verdict (audit round 1)",
+      "artifact": "audit.json",
+      "exit_code": 0,
+      "fallbacks": ["round 1 verdict FAIL: 2 BLOCKER (F01 hidden_dependency customer_id in C2, F02 nondeterministic_acceptance C1 download body shape), 5 MAJOR, 60 MINOR"]
+    },
+    {
+      "stage": "targeted-revision-round-1",
+      "status": "done",
+      "gate": "plan-check.py validate (all re-run stage artifacts) + plan-check.py lint",
+      "artifact": "stage-contract.json (C1 pinned to raw bytes, C2 +customer_id, S2, allowed_replan, acceptance reword), candidate-tasks.json (T01/T02 objectives, T04 closure +models.py), tasks/T01..T07.json (reword + F08/F09 fixes)",
+      "exit_code": 0,
+      "fallbacks": ["inline-frozen-contracts.py re-run after C1/C2 spec changes"]
+    },
+    {
+      "stage": "plan-auditor (re-audit, round 2)",
+      "status": "done",
+      "gate": "verdict (audit round 2)",
+      "artifact": "audit.json",
+      "exit_code": 0,
+      "fallbacks": ["round 2 verdict PASS: 0 BLOCKER, 0 MAJOR, 1 MINOR (F68 cosmetic: E3 gate evidence typo in integration-plan.json — carried into HANDOFF.md as a warning per the v1.0 PASS rule)"]
+    }
+  ],
+  "gates": [
+    { "name": "validate repo-context-snapshot.json", "exit_code": 0, "ts": "2026-09-10T12:30:18+00:00" },
+    { "name": "validate stage-contract.json", "exit_code": 0 },
+    { "name": "validate candidate-tasks.json", "exit_code": 0 },
+    { "name": "validate dag.json (stage 3)", "exit_code": 0 },
+    { "name": "validate integration-plan.json", "exit_code": 0 },
+    { "name": "validate dag.json (stage 4 amended)", "exit_code": 0 },
+    { "name": "validate tasks/T01.json..T07.json (stage 5, post-inline)", "exit_code": 0 },
+    { "name": "validate risk-estimates.json", "exit_code": 0 },
+    { "name": "validate tasks/T01.json..T07.json (stage 6, final risk blocks)", "exit_code": 0 },
+    { "name": "audit round 1 (fresh subagent): verdict FAIL, lint exit 0 with 62 findings (0 BLOCKER / 4 MAJOR / 58 MINOR)", "exit_code": 0 },
+    { "name": "revision round 1: validate stage-contract + candidate-tasks + all 7 packages (post-inline)", "exit_code": 0 },
+    { "name": "revision round 1: plan-check.py lint plan dir", "exit_code": 0 },
+    { "name": "audit round 2 (fresh subagent): verdict PASS, lint exit 0 with 0 findings", "exit_code": 0 },
+    { "name": "final validate run-manifest.json", "exit_code": 0 },
+    { "name": "final plan-check.py lint plan dir (post-PASS record)", "exit_code": 0 }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 2,
+  "notes": "v1.0 baseline probe run P5 (pdf-export fixture). Stages 0-6 green. Audit round 1 (fresh isolated subagent) FAIL with 2 BLOCKER (F01 hidden_dependency: C2 lacked customer_id; F02 nondeterministic_acceptance: C1 download body shape ambiguous) + 5 MAJOR + 60 MINOR; targeted revision round 1 re-ran stage-contract, context-decomposer (T04 closure), task-packager per the master-skill ownership table; post-revision lint 0 findings. Audit round 2 (fresh isolated subagent) PASS: 0 BLOCKER / 0 MAJOR / 1 MINOR (F68 cosmetic typo, carried into HANDOFF.md). Both auditors ran in fresh subagents with no access to the planner conversation (planner_conversation_isolated: true). HANDOFF.md written; execution is a different run."
+}

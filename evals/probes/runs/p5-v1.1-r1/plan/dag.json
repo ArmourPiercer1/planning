@@ -1,0 +1,76 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    {"from": "T01", "to": "T04", "type": "verification", "reason": "T04 contract_consistency verifies T01's JobStore implementation matches C1 spec"},
+    {"from": "T02", "to": "T04", "type": "verification", "reason": "T04 contract_consistency verifies T02's PdfExportService matches C2 spec"},
+    {"from": "T03", "to": "T04", "type": "verification", "reason": "T04 contract_consistency verifies T03's API endpoints match C3 spec"},
+    {"from": "T01", "to": "T05", "type": "verification", "reason": "T05 seam_integration wires S2 (worker calls PdfExportService) and may patch T01 for seam defects"},
+    {"from": "T02", "to": "T05", "type": "verification", "reason": "T05 seam_integration wires S2 and may patch T02 for seam defects"},
+    {"from": "T03", "to": "T05", "type": "verification", "reason": "T05 seam_integration wires S1 (API creates/reads jobs) and may patch T03 for seam defects"},
+    {"from": "T04", "to": "T06", "type": "verification", "reason": "T06 e2e_closure runs after contract consistency check passes"},
+    {"from": "T05", "to": "T06", "type": "verification", "reason": "T06 e2e_closure runs after seam integration is wired"}
+  ],
+  "parallel_groups": [
+    ["T01", "T02", "T03"],
+    ["T04", "T05"],
+    ["T06"]
+  ],
+  "critical_path": ["T01", "T04", "T06"],
+  "integration_gates": [
+    {"gate_id": "G1", "task_id": "T04", "seams": ["S1", "S2"], "acceptance_ref": "A1"},
+    {"gate_id": "G2", "task_id": "T05", "seams": ["S1", "S2"], "acceptance_ref": "A2"},
+    {"gate_id": "G3", "task_id": "T06", "seams": ["S1", "S2"], "acceptance_ref": "A3"}
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C1", "unlocks": ["T03"] },
+    { "contract_id": "C2", "unlocks": ["T01"] }
+  ],
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T01",
+      "consumer_tasks": ["T03"],
+      "rationale": "T01 implements the JobStore class and worker thread (runtime layer); T03 consumes it via the frozen C1 interface to create and query jobs"
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T02",
+      "consumer_tasks": ["T01"],
+      "rationale": "T02 implements PdfExportService (service layer); T01's worker calls it via the frozen C2 interface to generate PDFs"
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T03",
+      "consumer_tasks": [],
+      "rationale": "T03 implements the three API endpoints (api layer); no other task consumes C3"
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T03", "T01"],
+      "rationale": "T03 (api) creates and reads jobs via JobStore; T01 (runtime) implements the JobStore"
+    },
+    {
+      "seam_id": "S2",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "T01 (runtime) worker invokes PdfExportService; T02 (service) implements the PDF export"
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T02",
+        "to": "T01",
+        "why_not_real": "T01's worker calls T02's PdfExportService via frozen contract C2; a test fake satisfies the interface during T01 development, no real edge needed"
+      },
+      {
+        "from": "T01",
+        "to": "T03",
+        "why_not_real": "T03 consumes T01's JobStore via frozen contract C1; a test fake satisfies the interface during T03 development, no real edge needed"
+      }
+    ],
+    "collisions_handled": [],
+    "free_parallelism_trades": []
+  }
+}

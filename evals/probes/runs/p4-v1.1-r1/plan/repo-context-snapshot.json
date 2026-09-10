@@ -1,0 +1,55 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+  "scope_root": ".",
+  "scanned_at": "2026-09-10T12:19:35+00:00",
+  "files": [
+    {
+      "path": "app/events.py",
+      "layer": "service",
+      "role": "Event API.",
+      "imports": [
+        "app/storage.py"
+      ],
+      "exports": [
+        "EventAPI"
+      ]
+    },
+    {
+      "path": "app/storage.py",
+      "layer": "service",
+      "role": "Fixed-capacity ring buffer storage.",
+      "imports": [],
+      "exports": [
+        "RingBuffer"
+      ]
+    },
+    {
+      "path": "tests/test_events.py",
+      "layer": "e2e",
+      "role": "Event API tests.",
+      "imports": [
+        "app/events.py"
+      ],
+      "exports": [
+        "TestEvents"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_events.py"
+  ],
+  "known_shared_files": [],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [],
+  "scan_boundary": [
+    "app",
+    "tests"
+  ],
+  "dependency_expansions": [],
+  "unknown_areas": [
+    "README.md",
+    "TASK.md"
+  ]
+}

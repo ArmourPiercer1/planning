@@ -1,0 +1,140 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Run the stage closure: contract-consistency diff of both stores against C1/C2 (read-only), gate E1 parity matrix, gate E2 full-suite regression (loader/cli unchanged, DA-1), gate E3 spike-artifact acceptance (A4), and record acceptance evidence A1-A4 in the checkpoint; owns integration-only parity fixes inside T02's app/yaml_store.py.",
+  "required_context": {
+    "files": [
+      "app/config_store.py",
+      "app/yaml_store.py",
+      "tests/test_config.py",
+      "tests/test_yaml_store.py",
+      "evals/probes/runs/p2-v1.1-r1/plan/spike-reader-inventory.md",
+      "tests/test_stage_closure.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2"
+    ],
+    "concepts": [
+      "contract consistency diff against frozen specs",
+      "e2e closure gates with failure scenarios"
+    ]
+  },
+  "inputs": [
+    "T01 output: spike-reader-inventory.md (verified for A4 completeness)",
+    "T02 output: app/yaml_store.py + tests/test_yaml_store.py (gate E1 inputs)",
+    "C1/C2 frozen specs (inlined in frozen_contracts)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "ConfigStore interface: get(key, default=None) -> value; set(key, value) -> None (persists immediately); save() -> None (persists current state); as_dict() -> dict (shallow copy). Class attribute REQUIRED_KEYS = ('app_name', 'env', 'log_level'). Constructor takes a file path; missing file raises ConfigError('config file missing: <path>'). Both JsonConfigStore and YamlConfigStore satisfy this interface identically.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:9bda27cf32054d9e44e7bc14e6a43e3b7c938a4669c995d6a4697230d1825b9d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "config data shape: flat dict; required keys app_name (str), env (str), log_level (one of debug|info|warning|error); all values scalar (str/number/bool). No nested structures.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:67ae46b5e6aa4a9d9317d17aab3d9a30f557289ef6c55d9e16e334f426e73937"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_stage_closure.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "spike-reader-inventory.md (the artifact gate E3 verifies)"
+    },
+    {
+      "task_id": "T02",
+      "what": "app/yaml_store.py + tests/test_yaml_store.py (gate E1 inputs)"
+    }
+  ],
+  "non_goals": [
+    "modifying loader.py or cli.py (DA-1)",
+    "designing either route (next stage)",
+    "reworking T01's artifact — if it is incomplete, gate E3 fails and the blocker goes to the governor, not to silent rework"
+  ],
+  "implementation_constraints": [
+    "read-only on all repo files except owned_paths and T02's app/yaml_store.py (integration-only parity fixes; each such fix is recorded as a deviation in the checkpoint)",
+    "the closure test file must encode gates E1/E2/E3 as executable checks, not prose"
+  ],
+  "deliverables": [
+    {
+      "what": "closure tests encoding gates E1/E2/E3",
+      "where": "tests/test_stage_closure.py"
+    },
+    {
+      "what": "acceptance evidence A1-A4",
+      "where": "checkpoints/T03.json"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-T03-1",
+      "case": "positive",
+      "description": "E1: the full A1 5-item parity matrix passes for BOTH JsonConfigStore and YamlConfigStore (get/set roundtrip, save persistence, as_dict shallow copy, missing-file ConfigError, REQUIRED_KEYS on both classes), including the missing-file failure scenario (A1)",
+      "evidence": "python -m unittest tests.test_stage_closure.test_parity_gate -v → exit 0"
+    },
+    {
+      "id": "AT-T03-2",
+      "case": "positive",
+      "description": "E2: full-suite regression exits 0 with all pre-existing tests green — loader/cli behavior unchanged (A3, DA-1)",
+      "evidence": "python -m unittest discover tests -v → OK (exit 0)"
+    },
+    {
+      "id": "AT-T03-3",
+      "case": "positive",
+      "description": "E3: the spike artifact file exists, contains deploy/check.sh with evidence, and contains a 'Recommendation: Route A' or 'Recommendation: Route B' line followed by reasoning (A4)",
+      "evidence": "python -m unittest tests.test_stage_closure.test_spike_artifact -v → exit 0"
+    },
+    {
+      "id": "AT-T03-4",
+      "case": "failure",
+      "description": "any pre-existing test failure fails the gate — a DA-1 violation, not a warning",
+      "evidence": "test_regress_guard asserts exit code 0 of the pre-existing suite subset and fails loudly otherwise"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a parity defect is found in app/yaml_store.py",
+      "expected_behavior": "apply an integration-only fix (local parity defect), record it as a deviation in checkpoints/T03.json; if the fix is broader than a local parity defect → stop, set status blocked, escalate"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [
+      "T01: spike-reader-inventory.md",
+      "T02: app/yaml_store.py, tests/test_yaml_store.py"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "this checkpoint carries the stage acceptance status (A1-A4) into the stage-checkpoint handoff for the route stage; the route recommendation in the spike artifact is the next stage's planning input"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "e2e",
+      "service"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

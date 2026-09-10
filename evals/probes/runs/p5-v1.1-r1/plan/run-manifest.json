@@ -1,0 +1,33 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p5-v1.1-r1",
+  "stage_id": "p5-report-export",
+  "created_at": "2026-09-10T12:15:00Z",
+  "pipeline": [
+    { "stage": "repo-context-snapshot", "status": "done", "gate": "plan-check validate", "artifact": "repo-context-snapshot.json", "exit_code": 0 },
+    { "stage": "stage-contract", "status": "done", "gate": "plan-check validate", "artifact": "stage-contract.json", "exit_code": 0 },
+    { "stage": "context-decomposer", "status": "done", "gate": "plan-check validate", "artifact": "candidate-tasks.json", "exit_code": 0 },
+    { "stage": "dependency-dag", "status": "done", "gate": "plan-check validate", "artifact": "dag.json", "exit_code": 0 },
+    { "stage": "integration-planner", "status": "done", "gate": "plan-check validate", "artifact": "integration-plan.json", "exit_code": 0 },
+    { "stage": "task-packager", "status": "done", "gate": "plan-check validate", "artifact": "tasks/T01.json..T06.json", "exit_code": 0 },
+    { "stage": "plan-risk-estimator", "status": "done", "gate": "plan-check validate", "artifact": "risk-estimates.json", "exit_code": 0 },
+    { "stage": "plan-auditor", "status": "done", "gate": "plan-check lint + isolated subagent", "artifact": "audit.json", "exit_code": 0, "notes": "Round-1 in-conversation audit rejected (AUDIT_NOT_ISOLATED). Round-2 isolated subagent audit: PASS, 1 MAJOR + 5 MINOR." },
+    { "stage": "planning-governor", "status": "done", "gate": "plan-check validate", "artifact": "governor-decision.json", "exit_code": 0, "notes": "Round 1: TARGETED_PATCH (F01-F04 patched). Round 2 (post round-3 re-audit): EXECUTE — all 4 patches verified, F05/F06 deferred OPTIONAL. Budget at limit: 2/2 audits, 1/3 revisions, 1/5 subagents." }
+  ],
+  "gates": [
+    { "name": "stage-0-snapshot", "exit_code": 0 },
+    { "name": "stage-1-contract", "exit_code": 0 },
+    { "name": "stage-2-decompose", "exit_code": 0 },
+    { "name": "stage-3-dag", "exit_code": 0 },
+    { "name": "stage-4-integration", "exit_code": 0 },
+    { "name": "stage-5-packages", "exit_code": 0 },
+    { "name": "stage-6-risk", "exit_code": 0 },
+    { "name": "stage-7-audit", "exit_code": 0 },
+    { "name": "stage-8-governor", "exit_code": 0 },
+    { "name": "final-lint", "exit_code": 0 },
+    { "name": "stage-7-reaudit-round3-targeted-patch-verification", "exit_code": 0 }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 3,
+  "notes": "Probe run P5-v1.1-r1. Repo: evals/probes/repos/p5-report-export (rev 790b314). Governor action: EXECUTE (round 1: TARGETED_PATCH for F01-F04; round 2 after bounded re-audit: EXECUTE). Budget: 2/2 full audits (round-2 isolated + round-3 bounded re-audit), 1/3 plan revisions, 1/5 subagents. Final lint: exit 0, 0 BLOCKER, 17 MINOR VAGUE_ACCEPTANCE. All F01-F04 resolved and verified; F05/F06 deferred OPTIONAL."
+}

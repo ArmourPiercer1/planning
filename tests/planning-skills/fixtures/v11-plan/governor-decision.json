@@ -1,0 +1,10 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [],
+  "planning_budget_status": { "plan_revisions": 0, "full_audits": 1, "subagents": 2 },
+  "forbidden_actions": [],
+  "reason": "audit PASS with zero findings; budget within limits; no spikes or blockers"
+}

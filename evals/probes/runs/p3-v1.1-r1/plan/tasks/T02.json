@@ -1,0 +1,178 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Modify app/logger.py so LogWriter.__init__ rotates a stale live log at startup and append() rotates before writing when the date has changed (each rotation followed by apply_retention), with the C2 public interface and same-day append behavior byte-identical — observable: pytest tests/test_log_rotation.py -q green, python -m unittest tests.test_log -v passes 2/2 with tests/test_log.py unmodified, and git diff shows changes only in app/logger.py plus the new tests/test_log_rotation.py.",
+  "required_context": {
+    "files": [
+      "app/logger.py",
+      "app/server.py",
+      "tests/test_log.py",
+      "app/rotation.py (new)",
+      "tests/test_log_rotation.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "Live-file date = date of the last line's ISO timestamp (A-TS); the mtime fallback already lives in rotate() per C1",
+      "Trigger points: __init__ after dir/file setup; append() before the write — synchronous, no timer (DA-NO-TIMER)",
+      "apply_retention is called only immediately after a successful rotation (DA-RETENTION-TRIGGER); same-day append stays O(1)"
+    ]
+  },
+  "inputs": [
+    "app/rotation.py implementing C1 (T01 output — the only upstream input)",
+    "Frozen contracts C1, C2, C3 (inlined below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "app/rotation.py exposes exactly: rotation_name(d: date) -> str — returns 'app-' + d.strftime('%Y%m%d') + '.log'; needs_rotation(last_date: date | None, now: datetime) -> bool — True iff last_date is not None and last_date < now.date(); rotate(log_dir: Path, now: datetime) -> Path | None — live file is log_dir/'app.log'; determine its date from the ISO timestamp prefix of its last line (fallback: file mtime date; empty/missing file: no rotation); if that date < now.date(), rename the live file to rotation_name(that date) and return the new Path, else None; apply_retention(log_dir: Path, now: datetime, keep: int = 7) -> list[Path] — for each rotated file app-YYYYMMDD.log with date D < now.date() - 1 day: gzip it to app-YYYYMMDD.log.gz and delete the plain file; then over all dated rotated files (plain and gz, one slot per date) sorted by date descending, delete everything beyond the first `keep` and return the deleted paths. The module imports only stdlib (pathlib, datetime, gzip, re) and nothing from app/ or tests/.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:07362093681ba680d5b6bd8e9a2678de563cab35dcb8d95c3167a346259c27e0"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "LogWriter public interface is unchanged: LogWriter(path: str | Path) constructor (creates parent dirs and an empty live file as today); .append(line: str) -> None appends exactly one newline-terminated line to the live log file; .lines() -> list[str] returns the live file's lines. append() additionally performs the rotation hook (rotate + apply_retention) before writing when the date changed; __init__ performs the same hook at startup. Observable per-request behavior for same-day lines is byte-identical to today.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:ce779727baeb01c23a3b6e0afc5345ee2f7d6cb0cd9b5747660cc69f8249635c"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "data",
+      "spec": "Log file naming and retention policy: live file = logs/app.log; rotated file = logs/app-YYYYMMDD.log named after the completed day (date of the live log's last line); compressed = logs/app-YYYYMMDD.log.gz; at most 7 dated rotated files retained (a gz file occupies the same date slot as its plain file; after successful compression the plain file is deleted, so at most one artifact per date); a rotated file with date D is compressed when D < now.date() - 1 day (today's rotated file and yesterday's stay plain-text).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:1e12c145d2c6ddeab24a4dd6f37c23a8aca72e3df63d9ad0005aeaf41e857f9b"
+    }
+  ],
+  "owned_paths": [
+    "app/logger.py",
+    "tests/test_log_rotation.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "app/rotation.py module: the executor imports and calls the four C1 functions (rotation_name indirectly via rotate/apply_retention; directly rotate and apply_retention in the hooks) — the only code consumed from T01"
+    }
+  ],
+  "non_goals": [
+    "Do not modify app/server.py (S2: serve loop and its log-line format stay untouched)",
+    "Do not modify tests/test_log.py (A5: pre-existing tests stay green and byte-identical)",
+    "Do not modify app/rotation.py (T01 owns it and C1 is frozen — a defect there is routed to T03's owns_fixes_for, never edited here)",
+    "No timer, thread, or scheduler of any kind (DA-NO-TIMER)",
+    "Do not change the per-line write semantics (rstrip trailing newline + write single trailing newline) or the log line format",
+    "Do not add public parameters or methods to LogWriter beyond what C2 already specifies"
+  ],
+  "implementation_constraints": [
+    "C2 interface byte-identical: constructor signature and behavior, append(line) semantics, lines() — no signature or observable same-day behavior change",
+    "Hook placement: __init__ runs rotate() after dir/file setup and, iff rotate() returned a non-None Path, apply_retention(); append() runs the same check before the write",
+    "Clock: the hook reads the current time via a module-level reference in app/logger.py (e.g. `import datetime` then datetime.datetime.now()) so tests can monkeypatch app.logger.datetime — do not add a now parameter to the public API (C2 invariant)",
+    "apply_retention is called only immediately after a successful rotation, never on same-day appends (DA-RETENTION-TRIGGER)",
+    "Rotation errors propagate out of __init__/append (no try/except swallowing) — a failed rotation must not silently drop the line",
+    "Tests: unittest style matching tests/test_log.py; tmpdir; monkeypatch app.logger.datetime for the injected clock; zero wall-clock dependence"
+  ],
+  "deliverables": [
+    {
+      "what": "LogWriter with rotation hooks in __init__ and append() against C1, interface unchanged per C2",
+      "where": "app/logger.py"
+    },
+    {
+      "what": "Wiring tests for A1 (date-change rotation) and A2 (startup rotation) plus invariance cases",
+      "where": "tests/test_log_rotation.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "tests/test_log_rotation.py::test_rotation_on_date_change",
+      "case": "positive",
+      "description": "A1: live log with a line dated 2026-09-08; with the patched clock at 2026-09-09T00:00:05, append('...') rotates: app-20260908.log holds the old line, the fresh app.log holds only the new line.",
+      "evidence": "pytest tests/test_log_rotation.py::test_rotation_on_date_change -q → passed"
+    },
+    {
+      "id": "tests/test_log_rotation.py::test_same_day_no_rotation",
+      "case": "negative",
+      "description": "A1 negative: clock still on the live file's date — append does not rotate; the line is appended to the existing live file and no dated file appears.",
+      "evidence": "pytest tests/test_log_rotation.py::test_same_day_no_rotation -q → passed"
+    },
+    {
+      "id": "tests/test_log_rotation.py::test_startup_rotation",
+      "case": "positive",
+      "description": "A2: pre-create logs/app.log with a line dated today-3; constructing LogWriter (patched clock = today) rotates before any append: app-<today-3>.log exists, app.log is empty; the subsequent same-day append lands in app.log.",
+      "evidence": "pytest tests/test_log_rotation.py::test_startup_rotation -q → passed"
+    },
+    {
+      "id": "tests/test_log_rotation.py::test_startup_fresh_no_rotation",
+      "case": "negative",
+      "description": "A2 negative: live log's last line dated today — construction does not rotate; first append simply appends.",
+      "evidence": "pytest tests/test_log_rotation.py::test_startup_fresh_no_rotation -q → passed"
+    },
+    {
+      "id": "tests/test_log_rotation.py::test_rotation_error_propagates",
+      "case": "failure",
+      "description": "A1 failure behavior: with rotate() made to raise (e.g. read-only dir fixture), append() raises — no silent drop of the line, no partial state left behind that breaks a retry.",
+      "evidence": "pytest tests/test_log_rotation.py::test_rotation_error_propagates -q → passed"
+    },
+    {
+      "id": "tests/test_log.py (unmodified) via python -m unittest",
+      "case": "positive",
+      "description": "A5: the pre-existing suite passes 2/2 (test_append_and_read, test_creates_parent_dirs) with tests/test_log.py byte-identical to the snapshot revision — the C2 seam held.",
+      "evidence": "python -m unittest tests.test_log -v → OK (2 tests); git diff --exit-code 790b314d1d8780b679c7f585d95c5eb3d2b6640d -- tests/test_log.py → exit 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "Construction over a stale live log (last line dated before today)",
+      "expected_behavior": "__init__ rotates it (and runs apply_retention) before any append; the fresh live file is empty."
+    },
+    {
+      "scenario": "rotate() or apply_retention() raises (e.g. permissions)",
+      "expected_behavior": "The exception propagates out of __init__/append; the appended line is not silently dropped; no half-renamed state that a retry cannot recover from."
+    },
+    {
+      "scenario": "Empty or missing live file at construction",
+      "expected_behavior": "No rotation; normal dir/file creation as today."
+    },
+    {
+      "scenario": "append() input containing trailing newlines",
+      "expected_behavior": "Current semantics preserved exactly: rstrip trailing '\\n', write the line plus a single '\\n' — byte-identical to today's behavior."
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [
+      "app/rotation.py (T01)"
+    ],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "LogWriter hooks live in __init__ (after dir setup) and append (before write); both call rotate() then apply_retention() only on a successful rotation. C2 interface and same-day behavior byte-identical; tests/test_log.py unmodified and green. Clock is read via app.logger.datetime so the e2e (T03) can monkeypatch app.logger.datetime — patch target documented here deliberately."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "45-75 min",
+    "p80": "90-120 min",
+    "compaction_risk": "low",
+    "warnings": []
+  }
+}

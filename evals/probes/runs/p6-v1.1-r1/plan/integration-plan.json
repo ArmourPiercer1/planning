@@ -1,0 +1,59 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "handler -> store boundary: every read/write goes through TodoStore methods; stage 2 adds the registration write path (webhook_url) and the done read/mutate path must keep behaving",
+      "contract_ids": ["C1", "C2"],
+      "covered_by": ["T03"]
+    },
+    {
+      "id": "S2",
+      "description": "mark_done -> webhook dispatch boundary: exactly one dispatch per successful transition, after the store mutation, inside a no-escape exception boundary; input side is the registered URL (T01's deliverable)",
+      "contract_ids": ["C3"],
+      "covered_by": ["T03"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "e2e_closure",
+      "merged_kinds": ["final_acceptance", "contract_consistency"],
+      "seams": ["S1", "S2"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A4",
+      "notes": "small plan: final_acceptance and contract_consistency merge into the e2e closure task — the closure run executes acceptance A1-A4 end to end and diffs the live responses against the frozen C1/C2 specs (the unmodified stage-1 suite is the consistency check). Seam defects found by the gates are recorded as deviations and returned to the owning leaf's checkpoint; T03 does not patch leaf code."
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "seam_integration",
+      "reason": "no new production wiring exists: both production changes are in-place edits of app/api.py and app/store.py, and the dispatch reuses the existing WebhookDispatcher in app/webhooks.py — nothing new is registered, imported, or wired between components; both seams are exercised (including failure scenarios) by T03's E2E gates",
+      "evidence": [
+        "repo-context-snapshot.json: the repo has exactly 4 production/test files; no leaf creates a new production file in an existing directory",
+        "stage-contract.json C3 + constraint: dispatch must reuse the existing app/webhooks.py dispatcher — no new HTTP client/worker/queue",
+        "e2e_gates E1/E2/E3 cover S1 and S2 with failure scenarios (unknown id 404, raising dispatcher, no-URL done)"
+      ]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "registration -> done round-trip: create a todo with webhook_url via the API, mark it done, assert the store record keeps the URL and done=true and exactly one C3 dispatch was logged; bad-input failure: marking an unknown id done returns 404 and dispatches nothing",
+      "covers": ["S1", "S2"],
+      "evidence": "tests/test_e2e_notifications.py::test_e2e_registration_done_roundtrip"
+    },
+    {
+      "id": "E2",
+      "scenario": "dispatch failure tolerance (S2 failure scenario): with a dispatcher whose send() raises, the done transition still returns 200 and the store record is done; no-URL done (S1 input edge): zero dispatches, status 200",
+      "covers": ["S2"],
+      "evidence": "tests/test_e2e_notifications.py::test_e2e_raising_dispatcher + ::test_e2e_no_url_done"
+    },
+    {
+      "id": "E3",
+      "scenario": "frozen-contract integrity + final acceptance: the unmodified stage-1 suite tests/test_api.py passes green; GET /todos per-todo key set is exactly {id,title,done}(+tag) with no last_notified_at; acceptance A1-A4 executed end to end and evidenced",
+      "covers": ["S1"],
+      "evidence": "python -m unittest discover tests -v (frozen suite + new suites) + tests/test_e2e_notifications.py::test_c1_key_set_unchanged"
+    }
+  ]
+}

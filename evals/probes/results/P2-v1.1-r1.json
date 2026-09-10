@@ -1,0 +1,58 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P2",
+  "version": "v1.1",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": 2,
+    "revision_rounds": 2,
+    "subagent_count": 2,
+    "artifact_count": 12,
+    "task_count": 3
+  },
+  "governor": {
+    "action": "EXECUTE",
+    "spikes": [],
+    "deferred": [
+      "F01",
+      "F04"
+    ],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check"
+    },
+    {
+      "name": "detailed_is_probe_plus_prep",
+      "pass": true,
+      "detail": "detailed_stage has 2 tasks ['T01', 'T02']; expected the probe + at most one shared-prep task"
+    },
+    {
+      "name": "no_route_work_in_detailed",
+      "pass": true,
+      "detail": "route-specific implementation leaked into detailed stage: False"
+    },
+    {
+      "name": "forecast_carries_both_routes",
+      "pass": true,
+      "detail": "forecast has 2 stage(s); route A (keep json export)=True, route B (full cutover)=True"
+    },
+    {
+      "name": "stop_after_probe",
+      "pass": true,
+      "detail": "stop_after=['T01', 'T02'], detailed=['T01', 'T02']"
+    }
+  ],
+  "score": 1.0,
+  "verdict": "PASS",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p2-v1.1-r1\\plan/**",
+      "observation": "5/5 checks passed; lint_clean=True; detailed_is_probe_plus_prep=True; no_route_work_in_detailed=True; forecast_carries_both_routes=True; stop_after_probe=True"
+    }
+  ],
+  "baseline": null
+}

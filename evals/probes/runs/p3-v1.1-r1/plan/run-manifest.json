@@ -1,0 +1,120 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p3-v1.1-r1",
+  "stage_id": "p3-log-rotation",
+  "created_at": "2026-09-10T12:16:00+00:00",
+  "skill_versions": [
+    "long-task-planning v1.1",
+    "repo-context-snapshot v1.1",
+    "stage-contract v1.1",
+    "context-decomposer v1",
+    "dependency-dag v1",
+    "integration-planner v1",
+    "task-packager v1",
+    "plan-risk-estimator v1.1",
+    "plan-auditor v1.1",
+    "planning-governor v1.1"
+  ],
+  "pipeline": [
+    {
+      "stage": "repo-context-snapshot",
+      "status": "done",
+      "gate": "plan-check.py validate repo-context-snapshot.json",
+      "artifact": "repo-context-snapshot.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate stage-contract.json",
+      "artifact": "stage-contract.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate candidate-tasks.json",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate dag.json",
+      "artifact": "dag.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "first write failed validate (missing unlock_contracts/collisions_handled, free_parallelism_trades type, fake_serialization item keys) — fixed in place per skill failure mode"
+      ]
+    },
+    {
+      "stage": "integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate integration-plan.json + validate dag.json (amended)",
+      "artifact": "integration-plan.json + dag.json (gates/edges into T03)",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate tasks/T01.json + tasks/T02.json + tasks/T03.json (after inline-frozen-contracts.py re-hash)",
+      "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate risk-estimates.json + re-validate tasks/T01-T03 (risk blocks synced)",
+      "artifact": "risk-estimates.json + risk blocks in tasks/*.json",
+      "exit_code": 0,
+      "fallbacks": []
+    },
+    {
+      "stage": "plan-auditor",
+      "status": "done",
+      "gate": "plan-check.py validate audit.json (schema-valid)",
+      "artifact": "audit.json",
+      "exit_code": 0,
+      "fallbacks": [
+        "deterministic layer (plan-check.py lint before audit.json existed): exit 0, 10 MINOR VAGUE_ACCEPTANCE marker-miss findings, carried as F01-F04 (auditor-confirmed deterministic)",
+        "orchestrator-mandated same-session audit: auditor.path=same_session_late_pass, planner_conversation_isolated=false (recorded, not fabricated); the deterministic AUDIT_NOT_ISOLATED BLOCKER it triggers is self-reported as finding F05 for the governor",
+        "ROUND 2 (this revision): isolated re-audit by fresh subagent (planner_conversation_isolated=true) REPLACED the round-1 audit.json per the plan-auditor skill's independence requirement. Round-2 verdict PASS (6 MINOR: F01-F04 marker-miss carryovers re-verified, F05 resolved by isolation, F06 new — pytest-vs-unittest evidence-runner inconsistency). Post-replacement lint exit 0 (0B/0M/10m); audit.json validates against planning/audit@3. Round-2 budget accounting (full_audits count) left to the governor's re-run."
+      ]
+    },
+    {
+      "stage": "planning-governor",
+      "status": "done",
+      "gate": "plan-check.py validate governor-decision.json (action = EXECUTE)",
+      "artifact": "governor-decision.json (re-issued on round-2 audit) + HANDOFF.md (updated with final decision + F06 executor note)",
+      "exit_code": 0,
+      "fallbacks": [
+        "RE-RUN (stage 8): the round-1 EXECUTE decision was void — it was issued on the rejected in-conversation audit. Governor re-ran on the round-2 isolated audit (PASS, 0B/0M/6m): action EXECUTE again, all 6 findings deferred (F01-F04 OPTIONAL, F05 POST_STAGE resolved note, F06 OPTIONAL with executor note: swap 'pytest' evidence commands for 'python -m unittest <module> -v'; no re-audit spawned — multi-artifact MINOR, executor-discoverable, criteria unaffected, consistent with P1/P5 treatment). Budget accounting: full_audits=1/2 (round 1 rejected at the isolation gate does not count as an accepted full audit; round 2 is the 1st accepted), plan_revisions=0/3, subagents=0/5 spawned by this planning session (isolated auditor launched by parent orchestrator, outside this session's telemetry). governor-decision.json re-validated exit 0; HANDOFF.md updated to the final decision."
+      ]
+    }
+  ],
+  "gates": [
+    { "name": "stage0-validate", "exit_code": 0, "ts": "2026-09-10T12:15:40+00:00" },
+    { "name": "stage1-validate", "exit_code": 0, "ts": "2026-09-10T12:20:00+00:00" },
+    { "name": "stage2-validate", "exit_code": 0, "ts": "2026-09-10T12:26:00+00:00" },
+    { "name": "stage3-validate", "exit_code": 0, "ts": "2026-09-10T12:33:00+00:00" },
+    { "name": "stage4-validate", "exit_code": 0, "ts": "2026-09-10T12:40:00+00:00" },
+    { "name": "stage5-validate", "exit_code": 0, "ts": "2026-09-10T12:50:00+00:00" },
+    { "name": "stage6-validate", "exit_code": 0, "ts": "2026-09-10T12:56:00+00:00" },
+    { "name": "stage7-audit-lint", "exit_code": 0, "ts": "2026-09-10T13:02:00+00:00" },
+    { "name": "stage7-validate", "exit_code": 0, "ts": "2026-09-10T13:05:00+00:00" },
+    { "name": "stage8-validate", "exit_code": 0, "ts": "2026-09-10T13:10:00+00:00" },
+    { "name": "final-lint-post-audit", "exit_code": 1, "ts": "2026-09-10T13:06:00+00:00" },
+    { "name": "stage7-reaudit-lint", "exit_code": 0, "ts": "2026-09-10T13:25:00+00:00" },
+    { "name": "stage7-reaudit-validate", "exit_code": 0, "ts": "2026-09-10T13:25:00+00:00" },
+    { "name": "stage8-revalidate", "exit_code": 0, "ts": "2026-09-10T13:40:00+00:00" },
+    { "name": "final-lint-round2", "exit_code": 0, "ts": "2026-09-10T13:40:00+00:00" }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 2,
+  "notes": "Probe run P3-v1.1-r1 COMPLETE. Pipeline: single planning session ran stages 0-8 in order; round-1 auditor ran as same_session_late_pass (orchestrator-mandated, recorded honestly; its F05 AUDIT_NOT_ISOLATED deviation was governor-routed POST_STAGE). ROUND 2: isolated fresh-subagent re-audit replaced audit.json (planner_conversation_isolated=true); verdict PASS with 6 MINOR findings — F01-F04 marker-miss carryovers (re-verified deterministic), F05 resolved by the isolation replacement, F06 new MINOR/OPTIONAL (evidence commands use pytest while the plan constrains the repo to stdlib-only with a unittest suite). GOVERNOR RE-RUN on round-2 audit: action EXECUTE; 6/6 findings deferred (F01-F04 OPTIONAL, F05 POST_STAGE, F06 OPTIONAL + executor note swapping 'pytest' for 'python -m unittest <module> -v'); 0 spikes; no re-audit spawned. Budget (accepted): full_audits=1/2, plan_revisions=0/3, subagents=0/5 (isolated auditor was parent-launched, outside this session's telemetry). FINAL LINT exit 0 (0 BLOCKER / 0 MAJOR / 10 MINOR marker-misses; AUDIT_NOT_ISOLATED gone). All 12 artifacts plan-check-validated exit 0; HANDOFF.md reflects the final decision. Note: audit_rounds=2 counts audit passes executed; the accepted-audit budget count is 1 (round 1 rejected at the isolation gate)."
+}

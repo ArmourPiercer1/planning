@@ -1,0 +1,25 @@
+{
+  "schema": "planning/checkpoint@2",
+  "task_id": "T02",
+  "status": "complete",
+  "revision": { "sha": "fixture-stage1", "branch": "main" },
+  "completed": { "task_id": "T02", "summary": "GET /todos now honors done/tag filters with stable creation-order output; malformed params 400" },
+  "contracts_satisfied": ["C1", "C2"],
+  "changed_paths": ["app/api.py", "tests/test_filter.py"],
+  "tests": { "passed": ["test_filter_done", "test_filter_tag", "test_create_and_list_shape", "test_mark_done", "test_mark_done_unknown"], "failed": [], "evidence": "python -m unittest discover tests -v -> OK (7 tests)" },
+  "verified_facts": [
+    "GET /todos response keys per todo: id, title, done, tag (tag absent when unset) — exactly the C1 key set",
+    "malformed ?done=anything -> 400 {error}; empty match -> 200 {todos: []}"
+  ],
+  "deviations": [],
+  "newly_discovered_issues": [],
+  "blockers": [],
+  "remaining_dag": [],
+  "downstream_notes": "response shape is the frozen C1; any stage-2 change to it is drift, not an extension",
+  "verified_assumptions": [],
+  "falsified_assumptions": [],
+  "unresolved": [],
+  "scope_deviations": [],
+  "budget_used": { "compactions": 0, "wall_time_seconds": 2400 },
+  "next_stage_inputs": [ { "input": "frozen C1/C2 contract baseline for stage 2", "artifact": "stage-1/stage-contract.json" } ]
+}

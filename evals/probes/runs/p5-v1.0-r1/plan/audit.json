@@ -1,0 +1,54 @@
+{
+  "schema": "planning/audit@2",
+  "verdict": "PASS",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "fresh subagent, round 2 re-audit after targeted revision round 1; no access to the planner conversation"
+  },
+  "findings": [
+    {
+      "id": "F68",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T07",
+      "evidence": "integration-plan.json e2e_gates[E3].evidence = 'tests/test_pdf_export.py::test_unknown_and_premiere_errors (test_unknown_report_404, test_unknown_job_404, test_download_before_done_409)' misspells the intended test function name ('premiere' for 'premature') and uses a function-style name, while tasks/T07.json acceptance_tests[AT03].evidence names the same gate as 'python -m unittest tests.test_pdf_export.TestErrors -> test passes (cases: unknown report 404, unknown job 404, download before done 409)'. Cosmetic: T07's package is self-consistent and the three concrete case names are present in both places, so the gate stays judgeable.",
+      "suggested_fix": "align E3.evidence with T07 AT03, e.g. 'tests/test_pdf_export.py::TestErrors (test_unknown_report_404, test_unknown_job_404, test_download_before_done_409)', or at minimum fix the spelling."
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "deterministic_lint",
+    "grounding",
+    "revision_verification",
+    "scope_creep",
+    "insufficient_non_goals",
+    "late_contract_freeze",
+    "hidden_dependency",
+    "fake_serialization",
+    "ownership_collision",
+    "oversized_leaf",
+    "broad_context_loading",
+    "hidden_integration_work",
+    "nondeterministic_acceptance",
+    "lack_of_local_recoverability",
+    "replan_only_by_append",
+    "communication_overhead"
+  ],
+  "grounding": {
+    "snapshot_ref": "repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/queries.py",
+      "app/models.py",
+      "app/api.py",
+      "tests/test_export.py"
+    ],
+    "notes": "Spot-checked four snapshot-listed files read-only: app/queries.py confirms the one-hop import edge to app/models.py (line 8) and that report_with_rows returns a dict containing customer_id, which grounds the revised F01 path (T04 resolves report-to-customer through queries and C2.create now stores customer_id); app/models.py confirms the fixture data c1 -> [r1, r2] that A3/E4/T07 AT04 rely on; app/api.py confirms the (path_params, body) -> (status, payload) convention behind T04 and the known parent-relative import quirk (snapshot records imports: [] for app/api.py, observed in the file, not a plan defect); tests/test_export.py confirms the plain-unittest CSV suite that A4 keeps green. README.md and TASK.md sit in unknown_areas, so the README platform notes behind A-SHIM-VENDOR / A-STD-ONLY / A-IN-PROCESS remain unverifiable assumptions; C4/C5 frozen specs are self-contained, so there is no execution exposure."
+  },
+  "revision_round": 2
+}

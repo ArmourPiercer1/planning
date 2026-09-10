@@ -1,0 +1,127 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Create app/audit.py implementing the C1 hash-chain core: GENESIS marker, entry hashing (sha256 over canonical JSON of {id, prev_entry_hash}), and verify(items) that recomputes every entry_hash, checks every link over an oldest-first list of stored item dicts, and returns {status: 'ok'|'broken'|'unanchored_head', first_broken_link, head: {event_id, anchored}} without raising on broken chains; observable outcome: tests/test_audit_core.py passes, proving an unmodified chain verifies anchored at GENESIS, a rewritten middle entry is detected, and a mid-removed entry is detected.",
+  "required_context": {
+    "files": [],
+    "contracts": [
+      "C1"
+    ],
+    "concepts": [
+      "sha256 over canonical JSON (json.dumps(obj, sort_keys=True, separators=(',', ':')).encode('utf-8'))",
+      "hash-chain link invariant: item[i].prev_entry_hash == item[i-1].entry_hash; item[0].prev_entry_hash == GENESIS",
+      "windowed verifiability semantics: anchored at GENESIS until the first overwrite drops the genesis item, then 'unanchored_head' (links among surviving items are still checked)"
+    ]
+  },
+  "inputs": [
+    "contract C1 (full spec inlined in frozen_contracts — the only spec source; do not open stage-contract.json)",
+    "acceptance A1 semantics (windowed verification result shape)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "data",
+      "spec": "Audit entry data stored inside each event item in the RingBuffer: the stored item is {id: 'e<n>', <event payload fields>, prev_entry_hash: str, entry_hash: str} where prev_entry_hash = entry_hash of the previously appended item (or GENESIS = sha256(b'genesis').hexdigest() for the first item ever appended) and entry_hash = sha256(canonical_json({id, prev_entry_hash})).hexdigest() with canonical_json = json.dumps(obj, sort_keys=True, separators=(',', ':')). Chain order = RingBuffer storage order (oldest surviving first). The API layer never exposes prev_entry_hash/entry_hash outside the C3 query.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:bce13d995b06364d379cd863eac77d32eeb1ea5b7fe92ea4bf30af19146ab84d"
+    }
+  ],
+  "owned_paths": [
+    "app/audit.py",
+    "tests/test_audit_core.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "No changes to app/events.py, app/storage.py, or tests/test_events.py",
+    "No import of EventAPI or RingBuffer — verify() and the hash helpers operate on plain lists/dicts of items",
+    "No external anchoring, no second store, no persistence beyond the in-item fields",
+    "No hashing performance work (out of scope per contract)"
+  ],
+  "implementation_constraints": [
+    "Hash exactly per C1: entry_hash = hashlib.sha256(canonical_json({'id': item['id'], 'prev_entry_hash': item['prev_entry_hash']})).hexdigest() where canonical_json uses sort_keys=True and separators=(',', ':'), encoded utf-8",
+    "GENESIS = hashlib.sha256(b'genesis').hexdigest()",
+    "verify(items) must never raise on broken or unanchored chains — it returns the structured dict {status, first_broken_link, head}",
+    "head.anchored is True iff items is non-empty and items[0].prev_entry_hash == GENESIS",
+    "missing prev_entry_hash/entry_hash keys on an item count as a broken link at that item (no KeyError)",
+    "pure stdlib (hashlib, json); Python 3.10+; no third-party dependencies",
+    "test style: unittest (matching the repo suite), plain asserts, deterministic, in-memory only",
+    "touch no files outside owned_paths"
+  ],
+  "deliverables": [
+    {
+      "what": "chain hashing + verify module per C1 (pure functions over item lists)",
+      "where": "app/audit.py"
+    },
+    {
+      "what": "unit tests: link integrity, rewrite detection, mid-truncation detection",
+      "where": "tests/test_audit_core.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-01-1",
+      "case": "positive",
+      "description": "A 4-item chain built per C1 (first item prev = GENESIS, each next prev = previous entry_hash) verifies: status 'ok', first_broken_link None, head anchored True",
+      "evidence": "python -m unittest tests.test_audit_core.test_chain_verifies_ok -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-01-2",
+      "case": "failure",
+      "description": "Rewriting a middle item's payload (keeping its id) makes verify() return status 'broken' with first_broken_link identifying that item (hash mismatch)",
+      "evidence": "python -m unittest tests.test_audit_core.test_rewrite_detected -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-01-3",
+      "case": "failure",
+      "description": "Deleting a middle item (simulating mid-truncation) makes verify() return status 'broken' with first_broken_link at the dangling link (survivor's prev matches no stored entry_hash)",
+      "evidence": "python -m unittest tests.test_audit_core.test_mid_truncation_detected -v → 1 test passes, exit code 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "verify() called on an empty list",
+      "expected_behavior": "returns {status: 'ok', first_broken_link: None, head: None} — vacuously valid, no exception"
+    },
+    {
+      "scenario": "first item's prev_entry_hash != GENESIS",
+      "expected_behavior": "status 'unanchored_head'; links still checked; first_broken_link reports the first link/hash failure if any, else None"
+    },
+    {
+      "scenario": "an item lacks prev_entry_hash or entry_hash keys",
+      "expected_behavior": "verify() returns status 'broken' with first_broken_link set at that item; no KeyError is raised"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T02"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T02"
+    ],
+    "notes": "T02 imports app.audit: expose exactly the surface C1's spec implies (entry hashing + verify over an oldest-first item list). verify() consumes item dicts with at least id/prev_entry_hash/entry_hash keys in storage order. If T03 later finds a seam defect that requires touching this module, the fix goes through T03's owns_fixes_for route with a deviation recorded in T03's checkpoint."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 1,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "40-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

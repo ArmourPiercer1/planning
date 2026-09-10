@@ -1,0 +1,172 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Implement the retry loop with exponential backoff in app/notify.py per frozen contract C1 (3 attempts; delays 1s then 2s, cap 30s; retryable = 429 + 5xx; any other 4xx fails immediately; delay callable injectable) while keeping the record shape C2 with attempts = number of provider calls made, and add tests/test_retry.py proving acceptance A1-A4 against fake provider clients.",
+  "required_context": {
+    "files": [
+      "app/notify.py",
+      "app/provider.py",
+      "app/db.py",
+      "tests/test_notify.py",
+      "tests/test_gateway_observed.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "exponential backoff with cap",
+      "injectable delay callable (no real sleep in tests)",
+      "ProviderClient.calls as call-counting observability",
+      "plain unittest style (no pytest)"
+    ]
+  },
+  "inputs": [
+    "frozen contracts C1 (retry policy), C2 (record shape), C3 (provider interface) — inlined in this package",
+    "existing suite tests/test_notify.py + tests/test_gateway_observed.py (must stay green, unmodified)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "Retry policy (single source of truth, consumed by implementation and by tests): MAX_ATTEMPTS=3; delays before attempt 2 and 3 are 1s and 2s (exponential base 1s, cap 30s); retryable statuses = {429} union [500..599]; non-retryable = any other 4xx (fail immediately on first response); a 2xx/3xx response always succeeds immediately. Delays must be injectable (a delay callable passed to the retry helper, defaulting to time.sleep) so tests never sleep for real.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:73a82ea9d6434d9560e1e6a2e2e3157299cbddde0af13080ae4271401dc5fdef"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "Notification record shape (unchanged keys): {user_id: str, template: str, status: 'sent'|'failed', provider_ref: str|None, error: str|None, attempts: int 1..3, created_at: int epoch}. `attempts` = number of ProviderClient.send calls actually made. provider_ref taken from the final successful response; error from the final failed response (or None).",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:cdcdda3bdd22972e1d172c14ff1423650d3a4507b24ba5fcfc60153b0016da69"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse interface is FROZEN and unchanged: payload {'to','template','vars'}; response is ProviderResponse(status:int, body:dict, headers:dict). The gateway's success shape is 202 {'accepted': true, 'provider_ref': ...}; failure 4xx/5xx {'error': str} (429 observed without Retry-After).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:bfef5dfee78ba10e05342fbdc2082fa9d6280fa8977c8ae5a4b548aefe2ecdd5"
+    }
+  ],
+  "owned_paths": [
+    "app/notify.py",
+    "tests/test_retry.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no changes to app/provider.py (frozen interface), app/db.py, or app/api.py",
+    "no bulk-send API, no retry-storm / backpressure mitigation (stage out-of-scope)",
+    "no real time.sleep in tests — the delay callable is always injected in the test path",
+    "no new third-party dependencies"
+  ],
+  "implementation_constraints": [
+    "stdlib only; plain unittest (the repo has no pytest)",
+    "send_notification's public signature is unchanged; retry wraps ProviderClient.send inside the service",
+    "delay callable parameter (default time.sleep) on the retry helper so tests record delays without sleeping",
+    "update app/notify.py's module docstring (currently 'No retry today') to describe the retry behavior",
+    "exactly one store.put per send_notification call, after the retry window resolves"
+  ],
+  "deliverables": [
+    {
+      "what": "retry loop with backoff per C1, record per C2 with meaningful attempts",
+      "where": "app/notify.py"
+    },
+    {
+      "what": "unit tests for A1-A4 (transient recovery, mixed 4xx stop, permanent failure, 429 retry/exhaust, injected schedule)",
+      "where": "tests/test_retry.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "provider 500,500,202 -> record status 'sent', attempts 3, provider_ref from the 202 body",
+      "evidence": "python -m unittest tests.test_retry.test_transient_recovers -> pass"
+    },
+    {
+      "id": "AT2",
+      "case": "negative",
+      "description": "provider 500,400 -> record 'failed', attempts 2 (4xx stops the loop immediately)",
+      "evidence": "python -m unittest tests.test_retry.test_mixed_stops_on_4xx -> pass"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "provider always 500 -> record 'failed', attempts 3, error from the last response; no exception escapes",
+      "evidence": "python -m unittest tests.test_retry.test_permanent_failure_5xx -> pass"
+    },
+    {
+      "id": "AT4",
+      "case": "negative",
+      "description": "provider always 400 -> record 'failed', attempts 1, exactly one provider call",
+      "evidence": "python -m unittest tests.test_retry.test_4xx_no_retry -> pass"
+    },
+    {
+      "id": "AT5",
+      "case": "positive",
+      "description": "provider 429 then 202 -> record 'sent', attempts 2, exactly one backoff delay (1.0) recorded by the injected fake",
+      "evidence": "python -m unittest tests.test_retry.test_429_retries -> pass"
+    },
+    {
+      "id": "AT6",
+      "case": "failure",
+      "description": "provider 429 three times -> record 'failed', attempts 3",
+      "evidence": "python -m unittest tests.test_retry.test_429_exhausts -> pass"
+    },
+    {
+      "id": "AT7",
+      "case": "positive",
+      "description": "3-attempt failure records delay calls [1.0, 2.0] exactly (schedule per C1, cap 30s not exceeded)",
+      "evidence": "python -m unittest tests.test_retry.test_backoff_schedule_injected -> pass"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "final failed response body has no 'error' key",
+      "expected_behavior": "record.error is None, status 'failed' (C2: error from the final failed response or None)"
+    },
+    {
+      "scenario": "the injected delay callable raises",
+      "expected_behavior": "the retry aborts immediately; record 'failed' with error naming the delay failure; no further provider calls"
+    },
+    {
+      "scenario": "T01's verification verdict is FALSIFIED — this task has no dependency on T01's output (it runs in parallel against frozen C1/C3); the verdict is checked only at the T03 integration gate, so the executor must not pause or wait for T01",
+      "expected_behavior": "T03 raises a request_contract_revision blocker before anything ships; this task's 429 branch becomes the replan target — the accepted cost of the parallel design (C1/C3 frozen)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "attempts is now 1..3 (was always 1); T03's E1 counts provider .calls and E2 asserts one record per call — both rely on the retry loop not writing intermediate records."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "45-75 min",
+    "p80": "75-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Create app/services/pdflib_shim.py (a vendored minimal pure-stdlib PDF writer implementing the C5 doc API: open/add_page/add_text/save -> bytes, header %PDF-1.4, one page object per add_page, computed xref, trailer, %%EOF) and app/services/labels.py (the exact C4 EN/DE label tables), each with passing unit tests.",
+  "required_context": {
+    "files": [],
+    "contracts": [
+      "C4",
+      "C5"
+    ],
+    "concepts": [
+      "minimal PDF file structure (header, page objects, xref table, trailer)",
+      "byte-offset bookkeeping for the xref",
+      "unittest conventions of this repo"
+    ]
+  },
+  "inputs": [
+    "frozen contract C4 (label key sets + exact strings)",
+    "frozen contract C5 (shim doc API)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C4",
+      "kind": "data",
+      "spec": "label tables for pdf generation: LABELS = {'en': {customer, period, title, metric, value}, 'de': {Kunde, Periode, Titel, Kennzahl, Wert}} — exact key set {customer, period, title, metric, value}; renderer must not hardcode label strings outside these tables.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:b22a9a904497d96fff65cfc822fbd8c835f8562b564b56902b1aaf74b407699c"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "api",
+      "spec": "vendored pdflib_shim module at app/services/pdflib_shim.py exposing: open() -> doc, doc.add_page(), doc.add_text(x, y, text, size=10), doc.save() -> bytes — a ~40-line pure-stdlib wrapper producing a minimal valid PDF (header %PDF-1.4, pages, xref, trailer).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:932db265f01ae878e5402c4e3c6078370b8b2f4c2c0000dbb62a63d65656c58a"
+    }
+  ],
+  "owned_paths": [
+    "app/services/pdflib_shim.py",
+    "app/services/labels.py",
+    "tests/test_pdflib_shim.py",
+    "tests/test_labels.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "no report rendering logic here (that is T03)",
+    "no job/API code (T02/T04)",
+    "no new third-party dependencies",
+    "no changes to existing app files"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only",
+    "save() output MUST start with b'%PDF' and end with a trailer/%%EOF so a downstream page-count check can run on bytes",
+    "xref offsets must be computed from the bytes actually written (no hardcoded offsets)",
+    "labels.py exposes LABELS as a plain dict; no imports from anywhere else in the app",
+    "tests use plain unittest like tests/test_export.py"
+  ],
+  "deliverables": [
+    {
+      "what": "vendored PDF shim module",
+      "where": "app/services/pdflib_shim.py"
+    },
+    {
+      "what": "EN/DE label tables",
+      "where": "app/services/labels.py"
+    },
+    {
+      "what": "unit tests for shim + labels",
+      "where": "tests/test_pdflib_shim.py, tests/test_labels.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "open -> one add_page -> add_text -> save() returns bytes starting b'%PDF' containing one page object and ending with %%EOF",
+      "evidence": "python -m unittest tests.test_pdflib_shim.TestShim.test_save_shape -> test passes"
+    },
+    {
+      "id": "AT02",
+      "case": "positive",
+      "description": "two add_page calls make save() return two page objects in the bytes (the test counts /Page dicts == 2, no /Pages confusion)",
+      "evidence": "python -m unittest tests.test_pdflib_shim.TestShim.test_two_pages -> test passes"
+    },
+    {
+      "id": "AT03",
+      "case": "positive",
+      "description": "the test asserts the LABELS key set is exactly {customer, period, title, metric, value} for both langs and LABELS['de']['customer'] == 'Kunde'",
+      "evidence": "python -m unittest tests.test_labels.TestLabels.test_key_sets -> test passes"
+    },
+    {
+      "id": "AT04",
+      "case": "negative",
+      "description": "a missing label key access raises KeyError (no silent default) — LABELS['en']['nope'] raises",
+      "evidence": "python -m unittest tests.test_labels.TestLabels.test_missing_key_raises -> test passes"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "add_text with empty string",
+      "expected_behavior": "the document still renders a page; save() returns bytes with a valid header (empty content stream is legal)"
+    },
+    {
+      "scenario": "many pages (100)",
+      "expected_behavior": "xref offsets remain correct (computed, not hardcoded); test asserts the last page is present"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S3"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T03",
+      "T05",
+      "T06"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T03",
+      "T05",
+      "T06"
+    ],
+    "notes": "the shim's byte layout is the only surface T03 depends on; if xref computation proves hard, the fallback is a simpler 'objects written in order' layout — but save() must still start with %PDF and keep page objects countable."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "service"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "medium",
+    "uncertainty": "medium",
+    "p50": "30-60 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "HANDROLLED_PDF",
+        "detail": "minimal PDF structure is hand-rolled; xref offset bugs are the likely failure",
+        "rationale": "stdlib has no PDF writer; the shim is a 40-line wrapper by platform-team convention"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

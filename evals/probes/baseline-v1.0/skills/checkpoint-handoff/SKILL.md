@@ -1,0 +1,107 @@
+---
+name: checkpoint-handoff
+description: Execution-time skill that turns a completed (or stopped) stable subgoal into a machine-readable checkpoint — the context handoff artifact carrying revision, contracts satisfied, changed paths, test evidence, verified facts, deviations, newly discovered issues classified A/B/C, blockers of kind CONTRACT_CHANGE_REQUEST or CORE_SEAM_BLOCKER, remaining DAG, and downstream notes. Use during execution of any Task Package, at each stable subgoal, on blocker, and on unhealthy-run stop. NOT a planning stage and NOT a git commit message.
+---
+
+# checkpoint-handoff
+
+A checkpoint is **how the next agent avoids re-reading your work**. If the
+downstream agent still has to open your changed files to know what is true,
+the checkpoint failed its job. Vocabulary: `../../references/glossary.md`.
+
+## Trigger
+
+- Use: (a) at every **stable subgoal** inside a task (a point where another
+  agent could continue from the checkpoint alone); (b) at task completion;
+  (c) on blocker; (d) on unhealthy-run stop (see execution protocol).
+- Do NOT use: after every edit (noise); as a substitute for commits (write the
+  commit first, the checkpoint records it).
+
+## Inputs
+
+- The Task Package being executed; the current work state; the repo revision.
+
+## Procedure
+
+1. **Commit** the current work (clean boundary); capture `revision`
+   (sha, branch, timestamp).
+2. Fill `checkpoints/<task-id>.json` (schema `planning/checkpoint@1`):
+   - `status` — `complete` / `partial` / `blocked`;
+   - `completed` — what is done, one paragraph max;
+   - `contracts_satisfied` — contract ids whose spec this task verified
+     against reality (the integration task's main input);
+   - `changed_paths` — everything changed. Must stay inside `owned_paths` +
+     this task's test paths; anything else is a scope violation → record it in
+     `deviations` with the reason (self-flag, don't hide);
+   - `tests` — passed/failed test ids + the evidence command(s) that ran them;
+   - `verified_facts` — concrete facts downstream can trust without re-reading
+     (schema rows, signatures, observed behavior, test names). Write facts,
+     not prose ("report_jobs.attempts is int, 0..3, checked by
+     test_retry_exhaustion" — not "the retry logic works");
+   - `deviations` — planned vs actual vs why (any context expansion goes here
+     too, one per expansion);
+   - `newly_discovered_issues` — each with `classification` A/B/C and
+     `handling` (A → fixed_in_task, B → backlog, C → escalated). Classify per
+     the freeze discipline; B-class work is **never implemented** in this
+     task;
+   - `blockers` — for C-class stops: `CONTRACT_CHANGE_REQUEST` (contract id,
+     requested change, why the current spec is wrong, evidence, proposed new
+     spec) or `CORE_SEAM_BLOCKER` (seam, why structurally impossible,
+     evidence); set `status: "blocked"`;
+   - `remaining_dag` — task ids still outstanding downstream (from the DAG);
+   - `downstream_notes` — what consumers must know that is not in any
+     contract (a trap you found, a fixture quirk, a timing behavior).
+3. Gate: `plan-check.py validate` the checkpoint file.
+4. If `status: blocked` or any blocker exists → **stop**. Report the blocker
+   to the execution orchestrator / user. Do not continue working around a C
+   classification.
+
+## Heuristics
+
+- `verified_facts` is the checkpoint's real product — budget your effort
+  there; it is what makes the next agent's Required Context smaller.
+- One checkpoint per stable subgoal, not per test run; "stable" = the last
+  checkpoint's `verified_facts` are all still true at this point.
+- `changed_paths` outside owned paths is the canary for scope creep in
+  execution — when it happens, stop and classify (A or C), never "just
+  commit it".
+- A blocked checkpoint is a **good** checkpoint: it stops the expensive
+  behavior (out-of-scope architecture repair) exactly where the freeze
+  discipline says it must stop.
+
+## Output
+
+`<plan-dir>/checkpoints/<task-id>.json` (schema `planning/checkpoint@1`).
+Multiple checkpoints per task are allowed (one file, re-written as the task
+advances; keep the latest).
+
+## Failure & Escalation
+
+- Unhealthy-run termination condition met (see execution protocol) → stop with
+  `status: blocked` + stop-report content in `downstream_notes`
+  (reproducer, diagnosis, failed attempts, recommended split/escalation).
+- Blocker of class C → the planning layer owns the next step; in V1 that means
+  stop + present to the user (replan-controller is interface-reserved).
+- Checkpoint cannot express a real deviation → stop and report; an
+  unexpressable deviation means the plan's vocabulary is missing something.
+
+## Examples
+
+**Good (T01 job store, complete).**
+`{status: complete, contracts_satisfied: [C1, C5], changed_paths:
+[app/db/models.py, app/services/job_store.py, alembic/versions/2026_..._report_jobs.py,
+tests/services/test_job_store.py], tests: {passed: [test_create_get, test_transition_rejects_illegal,
+test_recover_stale_picks_up_running], failed: [], evidence: "pytest tests/services/test_job_store.py -q → 12 passed"},
+verified_facts: ["report_jobs rows: id uuid pk, status enum queued|running|retry_wait|done|failed, attempts 0..3,
+progress int 0..100", "JobStore.transition raises IllegalTransition on queued→done (asserted by
+test_transition_rejects_illegal)", "recover_stale(now) re-queues rows with status running and
+updated_at < now - 300s"], deviations: [], newly_discovered_issues:
+[{id: N1, description: "legacy csv export in app/api/routes/legacy.py duplicates job-like polling logic",
+classification: B, handling: backlog}], blockers: [], remaining_dag: [T02, T03, T04, T05, T06, T07],
+downstream_notes: "test db fixture uses testcontainers postgres; recovery tests need the same fixture, do not
+add a sqlite fallback"}`
+
+**Anti-pattern.** `{status: complete, completed: "done, tests pass", verified_facts: [],
+changed_paths: []}` — no facts, no paths, no contracts; the next agent must
+re-read everything, which is exactly the failure the checkpoint exists to
+prevent.

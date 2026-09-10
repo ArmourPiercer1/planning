@@ -1,0 +1,198 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "p1-notification-retry",
+  "objective": "Add retry with exponential backoff (3 attempts, 1s base, 30s cap) to the notification send path so that transient provider failures (including 429) are retried before marking a delivery as failed, without changing the existing success behavior or the provider client interface.",
+  "in_scope": [
+    "Retry loop in app/notify.py: up to 3 attempts with exponential backoff (1s, 2s, 4s), retrying on non-2xx responses including 429",
+    "attempts field in the stored record reflects actual number of attempts (was hardcoded to 1)",
+    "New unit tests for retry behavior: success-after-retry, all-attempts-fail, 429-retryable",
+    "All existing tests in tests/test_notify.py remain green without modification"
+  ],
+  "out_of_scope": [
+    {
+      "item": "Bulk-send API (1000 notifications in one call)",
+      "reason": "Product team asked 'someday'; nobody has asked for it this sprint. Adding it would change the API surface, the provider payload format, and the store query — a different Stage."
+    },
+    {
+      "item": "Retry storm prevention (throttling, queue-based rate limiting on provider recovery)",
+      "reason": "Task explicitly says 'do not block delivery on it this round'. Requires a different architecture (background queue, not synchronous retry)."
+    },
+    {
+      "item": "Provider client changes (app/provider.py)",
+      "reason": "The client interface (send(payload) -> ProviderResponse) is stable. Retry logic belongs in the send path (notify.py), not in the thin HTTP wrapper."
+    },
+    {
+      "item": "API surface changes (app/api.py)",
+      "reason": "The handler just calls send_notification and returns the record. The retry is internal to that call; no handler change needed."
+    }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-429-TRANSIENT",
+      "statement": "429 from the notification gateway is transient (burst/quota-based), not a permanent payload rejection. Retrying a 429 will eventually succeed if the payload is valid.",
+      "rationale": "The staging capture in tests/test_gateway_observed.py is the only evidence available: first call returns 429 (body {'error': 'rate limited'}, no Retry-After header), second call returns 202. The task says 'Figure out what the client actually does on 429 before designing the retry' — the staging trace answers this: 429 is transient. Invalidation: production evidence that the same payload always gets 429 and never recovers (would mean 429 means 'your payload was rejected', not 'back off')."
+    },
+    {
+      "id": "A-SYNC-RETRY",
+      "statement": "Retries are synchronous (blocking) within the send_notification call. The API handler does not return until all retries are exhausted or one succeeds.",
+      "rationale": "The current send path is synchronous (single client.send() call). Adding a retry loop with 1s+2s+4s = 7s max total delay keeps the same calling convention. The API handler does not need to change. Invalidation: if the API's latency SLA does not allow +7s worst-case delay."
+    },
+    {
+      "id": "A-NO-NEW-DEPS",
+      "statement": "No new Python packages or external services are introduced.",
+      "rationale": "Hard requirement from the task. The retry logic uses only time.sleep() from the standard library and the existing ProviderClient interface. Invalidation: none — this is a hard constraint."
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-RETRY-INLINE",
+      "decision": "Retry logic lives inside send_notification in app/notify.py as an inline loop. No separate retry decorator, middleware, background worker, or new module.",
+      "rationale": "The send path is 35 lines. The retry loop is self-contained (call client.send(), check status, sleep, repeat). A separate module or worker would add process boundaries and persistence concerns that the task does not require. The provider client interface (ProviderClient.send) is unchanged.",
+      "seams_affected": ["S1", "S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "data",
+      "spec": "RetryPolicy: {max_attempts: 3, base_delay_s: 1, max_delay_s: 30, backoff_factor: 2}. Effective delay before attempt N (0-indexed) = min(base_delay_s * backoff_factor^N, max_delay_s). Total max wait = 1+2+4 = 7s. Retriable statuses: all non-2xx (including 429). Non-retriable: none (V1 treats all non-2xx as retryable; 4xx like 400 will exhaust retries and end in failed).",
+      "logical_owner": "planner (from user requirement)",
+      "frozen": true
+    },
+    {
+      "id": "C2",
+      "kind": "service",
+      "spec": "send_notification(store, client, user_id, template, variables=None) -> dict. Return dict keys: user_id (str), template (str), status ('sent'|'failed'), provider_ref (str|None), error (str|None), attempts (int, actual number of attempts made), created_at (int, unix timestamp). The attempts field was previously hardcoded to 1; now reflects actual attempts.",
+      "logical_owner": "service",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "service",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse(status: int, body: dict, headers: dict). Unchanged interface. The retry loop calls this method up to 3 times with the same payload. The client does not know about retries.",
+      "logical_owner": "service",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "notify -> provider: the retry loop calls client.send() up to 3 times. Between attempts, the send path sleeps for the backoff delay. The record is NOT persisted until the final outcome (success or exhausted retries).",
+      "participants": ["service", "runtime"],
+      "contract_ids": ["C3"]
+    },
+    {
+      "id": "S2",
+      "description": "notify -> db: after the retry loop completes (success or exhaustion), the final record is persisted via store.put(record). The record's status reflects the final outcome; attempts reflects the actual count.",
+      "participants": ["service", "persistence"],
+      "contract_ids": ["C2"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "First-attempt success: a 202 response on the first call results in status='sent', attempts=1, provider_ref from the response body. This is the existing behavior and must not change.",
+      "positive_case": "client.send() returns 202 on first call -> record has status='sent', attempts=1",
+      "negative_case": "A non-2xx response must not produce status='sent' with attempts=1; the existing test test_failure_records_failed asserts status='failed' for a 500 response",
+      "failure_behavior": "If the retry loop changes first-attempt success behavior, test_success_records_sent would fail on the status or attempts assertion",
+      "evidence": "Existing test tests/test_notify.py::TestSendPath::test_success_records_sent must pass unchanged. New test asserts attempts==1 explicitly."
+    },
+    {
+      "id": "A2",
+      "description": "Retry succeeds on second attempt: first call returns 500, second call returns 202. The record has status='sent', attempts=2.",
+      "positive_case": "client.send() returns 500 then 202 -> record has status='sent', attempts=2",
+      "negative_case": "If the second attempt also returns 500, the record must not have status='sent'; test would assert status='failed', attempts=2",
+      "failure_behavior": "If the retry loop does not call client.send() a second time, the record would have attempts=1 and status='failed'",
+      "evidence": "New test test_retry_succeeds_second_attempt: FakeClient returns [500, 202], assert record['status']=='sent' and record['attempts']==2"
+    },
+    {
+      "id": "A3",
+      "description": "All attempts fail: 3 consecutive 500 responses result in status='failed', attempts=3, error from the last response. The record is persisted exactly once.",
+      "positive_case": "client.send() returns 500 three times -> record has status='failed', attempts=3, error from last response",
+      "negative_case": "Record must NOT be persisted 3 times (one per attempt) — only once with the final outcome",
+      "failure_behavior": "If the record is persisted per-attempt, store.all() would show 3 records instead of 1",
+      "evidence": "New test test_all_attempts_fail: FakeClient returns [500, 500, 500], assert record['status']=='failed', record['attempts']==3, len(store.all())==1"
+    },
+    {
+      "id": "A4",
+      "description": "429 is treated as retryable: first call returns 429 (no Retry-After header, body {'error': 'rate limited'}), second call returns 202. Record has status='sent', attempts=2.",
+      "positive_case": "client.send() returns 429 then 202 -> record has status='sent', attempts=2",
+      "negative_case": "If 429 is not retried, the record would have status='failed' and attempts=1 instead of status='sent' and attempts=2",
+      "failure_behavior": "If the retry loop skips 429 as non-retryable, test_429_is_retryable would fail: assert record['status']=='sent' would get 'failed'",
+      "evidence": "New test test_429_is_retryable: FakeClient returns [429, 202], assert record['status']=='sent' and record['attempts']==2"
+    },
+    {
+      "id": "A5",
+      "description": "Existing tests remain green: all 3 tests in tests/test_notify.py::TestSendPath pass without modification to the test code.",
+      "positive_case": "pytest tests/test_notify.py -v -> 3 passed",
+      "negative_case": "Any existing test fails or requires modification",
+      "failure_behavior": "A failing existing test means the retry change broke backward compatibility",
+      "evidence": "pytest tests/test_notify.py -v -> 3 passed (all existing tests, no modifications)"
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "dependency",
+      "rule": "No new Python packages. Only stdlib (time, typing) and existing project imports."
+    },
+    {
+      "kind": "performance",
+      "rule": "Total max retry delay is 7s (1s + 2s + 4s). This must be acceptable for the synchronous API path."
+    },
+    {
+      "kind": "process",
+      "rule": "Existing tests in tests/test_notify.py must pass without modification. New tests are additive only."
+    }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-45 min",
+    "leaf_p80_max": "60-90 min",
+    "max_compactions_per_leaf": 2,
+    "stage_estimate": "1-2 dev-hours"
+  },
+  "allowed_replan": ["split", "reduce_scope", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Should 429 use a longer backoff than 5xx (since rate limiting may need more recovery time)?",
+      "blocking": false,
+      "owner": "planner",
+      "resolution": "V1: 429 uses the same backoff as other retryable errors (C1 defines one policy for all non-2xx). The staging capture shows no Retry-After header to honor. If the vendor later documents Retry-After, the retry policy can be updated in a future Stage."
+    }
+  ],
+  "delivery_profile": {
+    "level": "alpha"
+  },
+  "planning_budget": {
+    "max_full_audits": 2,
+    "max_plan_revisions": 3,
+    "max_planning_subagents": 5,
+    "soft_wall_fraction": 0.3
+  },
+  "horizons": {
+    "commitment": {
+      "tasks": ["T01"]
+    },
+    "detailed_stage": {
+      "objective": "Retry with exponential backoff in the notification send path, with tests for all retry outcomes and an e2e closure gate verifying all acceptance criteria",
+      "tasks": ["T01", "T02"]
+    },
+    "forecast": {
+      "stages": []
+    }
+  },
+  "stage_boundary": {
+    "stop_after": ["T02"],
+    "because": "The stage has two tasks: T01 (retry implementation + tests) and T02 (e2e_closure gate verifying A1-A5). T02 is the stage's acceptance gate — the stage is not complete until T02 has run the full test suite and confirmed all acceptance criteria. No cross-stage evidence dependency exists. The 429 question is answered by the staging capture (A-429-TRANSIENT). The bulk-send and retry-storm items are explicitly deferred to future stages.",
+    "expected_new_evidence": [],
+    "decisions_deferred_until_then": [
+      "Bulk-send API design (product asked 'someday')",
+      "Retry storm prevention (throttling/queue design for provider recovery)"
+    ]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified"],
+    "not_triggers": ["first_worker_failure", "optional_bug"]
+  }
+}

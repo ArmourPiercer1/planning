@@ -1,0 +1,152 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T03",
+  "objective": "Create tests/test_e2e_retry.py with gate E1 (call-count/status matrix: transient recovery, non-retryable stop, retry exhaustion through the real client seam), gate E2 (exactly one record per call through the store seam), and gate E3 (full suite green including the unmodified existing tests), then execute final acceptance A5 end to end against the real modules and record the evidence.",
+  "required_context": {
+    "files": [
+      "app/notify.py",
+      "app/provider.py",
+      "app/db.py",
+      "tests/test_retry.py",
+      "tests/test_notify.py",
+      "tests/test_gateway_observed.py",
+      "docs/429-behavior-verification.md"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "e2e gates per integration plan (E1-E3)",
+      "FakeGatewayClient pattern (subclass ProviderClient, record calls)",
+      "integration-only fix ownership: may patch seam defects in T01/T02 owned paths, recorded as deviations"
+    ]
+  },
+  "inputs": [
+    "T01 output: docs/429-behavior-verification.md (verdict on A-429-RETRYABLE — FALSIFIED means STOP, do not ship)",
+    "T02 outputs: app/notify.py retry loop + tests/test_retry.py",
+    "integration-plan.json gates E1-E3 (scenario text)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "Retry policy (single source of truth, consumed by implementation and by tests): MAX_ATTEMPTS=3; delays before attempt 2 and 3 are 1s and 2s (exponential base 1s, cap 30s); retryable statuses = {429} union [500..599]; non-retryable = any other 4xx (fail immediately on first response); a 2xx/3xx response always succeeds immediately. Delays must be injectable (a delay callable passed to the retry helper, defaulting to time.sleep) so tests never sleep for real.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:73a82ea9d6434d9560e1e6a2e2e3157299cbddde0af13080ae4271401dc5fdef"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "Notification record shape (unchanged keys): {user_id: str, template: str, status: 'sent'|'failed', provider_ref: str|None, error: str|None, attempts: int 1..3, created_at: int epoch}. `attempts` = number of ProviderClient.send calls actually made. provider_ref taken from the final successful response; error from the final failed response (or None).",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:cdcdda3bdd22972e1d172c14ff1423650d3a4507b24ba5fcfc60153b0016da69"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse interface is FROZEN and unchanged: payload {'to','template','vars'}; response is ProviderResponse(status:int, body:dict, headers:dict). The gateway's success shape is 202 {'accepted': true, 'provider_ref': ...}; failure 4xx/5xx {'error': str} (429 observed without Retry-After).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:bfef5dfee78ba10e05342fbdc2082fa9d6280fa8977c8ae5a4b548aefe2ecdd5"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_e2e_retry.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "docs/429-behavior-verification.md — the verdict on A-429-RETRYABLE; FALSIFIED blocks the gate"
+    },
+    {
+      "task_id": "T02",
+      "what": "app/notify.py retry loop + tests/test_retry.py — the implementation under gate"
+    }
+  ],
+  "non_goals": [
+    "no new production behavior — only the e2e test file is created; any production fix is a seam defect patched in T01/T02 owned paths and recorded as a deviation in their checkpoints",
+    "no bulk-send, no storm mitigation, no API surface changes (stage out-of-scope)"
+  ],
+  "implementation_constraints": [
+    "stdlib only; plain unittest",
+    "gates must run against the real app modules (real NotificationStore on a temp path, real send_notification) — not against mocks of the service itself; fakes are allowed only for the provider client (the C3 boundary)",
+    "E3 runs the full suite (python -m unittest discover tests -v) and asserts zero failures, including the untouched test_notify.py and test_gateway_observed.py"
+  ],
+  "deliverables": [
+    {
+      "what": "e2e gates E1-E3",
+      "where": "tests/test_e2e_retry.py"
+    },
+    {
+      "what": "final acceptance A5 evidence (full suite output)",
+      "where": "checkpoints/T03.json tests.evidence"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "E1: provider 500,500,202 -> exactly 3 client.calls entries, record sent/attempts 3; provider always 400 -> exactly 1 call, failed/attempts 1; provider 429 x3 -> exactly 3 calls, failed (exhaustion)",
+      "evidence": "python -m unittest tests.test_e2e_retry.test_call_count_and_status -> pass"
+    },
+    {
+      "id": "AT2",
+      "case": "failure",
+      "description": "E2: after a 3-attempt failure the store holds exactly 1 record (not one per attempt) with attempts 3 and last error; first-attempt success holds 1 record with attempts 1",
+      "evidence": "python -m unittest tests.test_e2e_retry.test_one_record_per_call -> pass"
+    },
+    {
+      "id": "AT3",
+      "case": "positive",
+      "description": "E3: full suite green — existing test_notify.py + test_gateway_observed.py unchanged and passing plus new test_retry.py + test_e2e_retry.py",
+      "evidence": "python -m unittest discover tests -v -> all pass (output recorded in checkpoint)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "T01's verdict is FALSIFIED when the gate runs",
+      "expected_behavior": "STOP: raise a request_contract_revision blocker (CONTRACT_CHANGE_REQUEST on C1) — do not ship the 429 retry branch; record the blocker in the checkpoint with the doc's evidence"
+    },
+    {
+      "scenario": "the retry loop writes an intermediate record per attempt",
+      "expected_behavior": "E2 fails — a seam defect in T02's code; patch app/notify.py (owned fix), record the deviation in T02's checkpoint, re-run E2"
+    },
+    {
+      "scenario": "a previously green existing test breaks",
+      "expected_behavior": "E3 fails — regression in T02; fix within T02's owned paths and re-run; never modify the existing test files to make them pass"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2"
+    ],
+    "upstream_outputs": [
+      "docs/429-behavior-verification.md (T01)",
+      "app/notify.py + tests/test_retry.py (T02)"
+    ],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T03.json",
+    "downstream_consumers": [],
+    "notes": "final gate of the stage: the checkpoint records the full-suite output as acceptance A5 evidence and the T01 verdict status; on FALSIFIED the checkpoint is blocked with a CONTRACT_CHANGE_REQUEST blocker."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "45-75 min",
+    "p80": "75-90 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

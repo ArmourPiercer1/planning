@@ -1,0 +1,32 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p1-v1.0-r1",
+  "stage_id": "p1-retry-v1.0",
+  "created_at": "2026-07-10T13:00:00+00:00",
+  "skill_versions": ["v1.0 (baseline skills, commit 59b78e3)"],
+  "pipeline": [
+    { "stage": "0 repo-context-snapshot", "status": "done", "gate": "plan-check.py validate", "artifact": "repo-context-snapshot.json", "exit_code": 0 },
+    { "stage": "1 stage-contract", "status": "done", "gate": "plan-check.py validate", "artifact": "stage-contract.json", "exit_code": 0 },
+    { "stage": "2 context-decomposer", "status": "done", "gate": "plan-check.py validate", "artifact": "candidate-tasks.json", "exit_code": 0 },
+    { "stage": "3 dependency-dag", "status": "done", "gate": "plan-check.py validate", "artifact": "dag.json", "exit_code": 0 },
+    { "stage": "4 integration-planner", "status": "done", "gate": "plan-check.py validate", "artifact": "integration-plan.json", "exit_code": 0 },
+    { "stage": "5 task-packager", "status": "done", "gate": "plan-check.py validate (tasks/T01-T03.json)", "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json", "exit_code": 0 },
+    { "stage": "6 plan-risk-estimator", "status": "done", "gate": "plan-check.py validate (risk-estimates.json + tasks)", "artifact": "risk-estimates.json", "exit_code": 0 },
+    { "stage": "7 plan-auditor", "status": "done", "gate": "verdict PASS (round 2 of 2)", "artifact": "audit.json", "exit_code": 0 }
+  ],
+  "gates": [
+    { "name": "stage0-snapshot-validate", "exit_code": 0, "ts": "2026-07-10T13:01:00+00:00" },
+    { "name": "stage1-contract-validate", "exit_code": 0, "ts": "2026-07-10T13:05:00+00:00" },
+    { "name": "stage2-candidates-validate", "exit_code": 0, "ts": "2026-07-10T13:14:00+00:00" },
+    { "name": "stage3-dag-validate", "exit_code": 0, "ts": "2026-07-10T13:20:00+00:00" },
+    { "name": "stage4-integration-validate", "exit_code": 0, "ts": "2026-07-10T13:26:00+00:00" },
+    { "name": "stage5-packages-validate", "exit_code": 0, "ts": "2026-07-10T13:35:00+00:00" },
+    { "name": "stage6-risk-validate", "exit_code": 0, "ts": "2026-07-10T13:39:00+00:00" },
+    { "name": "audit-round-1 (fresh isolated subagent, v1.0 plan-check lint)", "exit_code": 1, "ts": "2026-07-10T13:52:00+00:00" },
+    { "name": "revision-round-1 re-gate (candidate-tasks + T01/T02 packages validate; lint exit 0: 0 BLOCKER/0 MAJOR/22 MINOR)", "exit_code": 0, "ts": "2026-07-10T14:05:00+00:00" },
+    { "name": "audit-round-2 (fresh isolated subagent, v1.0 plan-check lint) -> verdict PASS", "exit_code": 0, "ts": "2026-07-10T14:18:00+00:00" }
+  ],
+  "audit_verdict": "PASS",
+  "audit_rounds": 2,
+  "notes": "v1.0 baseline probe run; 429 unknown handled as frozen assumption A-429-RETRYABLE + parallel verification leaf T01 (v1.0 has no spike/governor machinery). Audit round 1 FAIL (1 BLOCKER T01 hidden_dependency, 1 MAJOR T02 phantom T01 input, 23 MINOR) -> targeted revision round 1 (context-decomposer closure + dag/package consistency, owning stages only) -> audit round 2 PASS with 24 carried MINOR warnings (22 VAGUE_ACCEPTANCE evidence-marker heuristic + 2 semantic MINOR), recorded in HANDOFF.md. Execution NOT started: handoff written, execution is a different run."
+}

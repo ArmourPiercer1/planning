@@ -1,0 +1,55 @@
+{
+  "$id": "planning/candidate-tasks@1",
+  "title": "Candidate leaf tasks (context-decomposer output)",
+  "type": "object",
+  "required": ["schema", "tasks"],
+  "properties": {
+    "schema": { "const": "planning/candidate-tasks@1" },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id", "objective", "required_context", "owned_paths",
+          "forbidden_scope", "touched_layers", "inputs", "outputs",
+          "downstream_consumers", "split_rationale"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "objective": { "type": "string", "minLength": 30 },
+          "required_context": {
+            "type": "object",
+            "required": ["files", "contracts", "concepts"],
+            "properties": {
+              "files": { "type": "array", "items": { "type": "string" } },
+              "contracts": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" } },
+              "concepts": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "owned_paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "forbidden_scope": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "touched_layers": {
+            "type": "array",
+            "items": {
+              "enum": ["ui", "store", "api", "service", "runtime", "persistence", "lifecycle", "e2e", "tooling", "docs"]
+            },
+            "minItems": 1
+          },
+          "inputs": { "type": "array", "items": { "type": "string" } },
+          "outputs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "downstream_consumers": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+          "split_rationale": { "type": "string", "minLength": 20 }
+        }
+      }
+    }
+  }
+}

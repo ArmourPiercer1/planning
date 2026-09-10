@@ -1,0 +1,132 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T06",
+  "objective": "Run all E2E gates (E1-E5) and acceptance criteria (A1-A5) end-to-end: write tests/test_e2e_pdf.py with the five E2E scenarios, run the full test suite (existing + new), and record pass/fail evidence for each acceptance criterion in the checkpoint",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/services/jobstore.py",
+      "app/services/pdf_export.py",
+      "app/services/i18n.py",
+      "app/queries.py",
+      "tests/test_e2e_pdf.py (new)"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": ["E2E flow: POST -> poll -> download", "failure scenarios: 404, 400, 409, job failure", "acceptance criteria A1-A5 from stage contract"]
+  },
+  "inputs": ["C1/C2/C3 specs (inlined below)", "Checkpoint outputs from T01-T05", "E2E gate definitions from integration-plan.json"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:b68311094451d4abf959c3ad0bab29255d180763d06e4b3e495a59e4b9ac8211"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a92f1005d7e84f03c1aab8342660945187f692e0ee6ba22729b36ca663aaa3d7"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf: body {lang: str (optional, default 'en')} -> 202 {job_id: str}. 404 if report_id unknown. 400 if lang not in {en, de}. GET /jobs/{id} -> 200 {job_id, status, result_available: bool, error: str|None}. 404 if job unknown. GET /jobs/{id}/download -> 200 (application/pdf bytes) if done, 409 if not done, 404 if unknown.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:36ea071992fcc9d6e89a3e77b99ab3bce11ae959a92e4c50dd922efd6fbf839e"
+    }
+  ],
+  "owned_paths": [
+    "tests/test_e2e_pdf.py"
+  ],
+  "allowed_dependencies": [
+    {"task_id": "T01", "what": "JobStore (real implementation for E2E)"},
+    {"task_id": "T02", "what": "PdfExportService (real implementation for E2E)"},
+    {"task_id": "T03", "what": "API handlers (real implementation for E2E)"},
+    {"task_id": "T05", "what": "Seam integration fixes (must be applied before E2E)"}
+  ],
+  "non_goals": [
+    "Do not modify any source files outside tests/test_e2e_pdf.py",
+    "Do not add new endpoints or features",
+    "Do not run benchmarks or performance tests"
+  ],
+  "implementation_constraints": [
+    "E2E tests must use real implementations (no mocks for JobStore or PdfExportService)",
+    "Test the full flow: POST -> poll (with timeout) -> download",
+    "Each E2E gate (E1-E5) must be a separate test method",
+    "Run the full test suite: pytest tests/ (all existing + new tests)",
+    "Record pass/fail for each acceptance criterion A1-A5 in the checkpoint"
+  ],
+  "deliverables": [
+    {"what": "E2E test file with 5 test methods (E1-E5)", "where": "tests/test_e2e_pdf.py"},
+    {"what": "Final acceptance checkpoint with A1-A5 evidence", "where": "checkpoints/T06.json"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT17",
+      "case": "positive",
+      "description": "E1: Full export flow — POST /reports/r1/export-pdf -> 202, poll GET /jobs/{id} -> done, GET /jobs/{id}/download -> PDF bytes starting with %PDF",
+      "evidence": "pytest tests/test_e2e_pdf.py::test_full_export_flow -> passed"
+    },
+    {
+      "id": "AT18",
+      "case": "negative",
+      "description": "E2: POST /reports/nope/export-pdf -> 404 with error field",
+      "evidence": "pytest tests/test_e2e_pdf.py::test_unknown_report_404 -> passed"
+    },
+    {
+      "id": "AT19",
+      "case": "negative",
+      "description": "E3: POST /reports/r1/export-pdf with lang=fr -> 400 with error field",
+      "evidence": "pytest tests/test_e2e_pdf.py::test_invalid_lang_400 -> passed"
+    },
+    {
+      "id": "AT20",
+      "case": "failure",
+      "description": "E4: GET /jobs/{id}/download while job is pending -> 409",
+      "evidence": "pytest tests/test_e2e_pdf.py::test_download_pending_409 -> passed"
+    },
+    {
+      "id": "AT21",
+      "case": "failure",
+      "description": "E5: PdfExportService raises -> job status failed with error populated",
+      "evidence": "pytest tests/test_e2e_pdf.py::test_job_failure_state -> passed"
+    },
+    {
+      "id": "AT22",
+      "case": "positive",
+      "description": "A5: All existing CSV export tests remain green",
+      "evidence": "pytest tests/test_export.py -> all passed"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "Job never transitions to done (worker stuck)", "expected_behavior": "Test times out after 10 seconds and fails with assertion on job status"},
+    {"scenario": "PDF bytes are empty or malformed", "expected_behavior": "Assertion fails: bytes must start with %PDF and be non-empty"}
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T01", "T02", "T03", "T04", "T05"],
+    "consumers": []
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T06.json",
+    "downstream_consumers": [],
+    "notes": "This is the final task. The checkpoint must include: (1) all E2E test results, (2) pass/fail for each acceptance criterion A1-A5, (3) full test suite result, (4) any deviations from the plan."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": ["e2e"],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "medium",
+    "p50": "30-45 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

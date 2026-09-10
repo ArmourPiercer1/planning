@@ -1,0 +1,149 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Modify app/notify.py so that send_notification retries up to 3 times with exponential backoff (1s, 2s, 4s) on any non-2xx response, and extend tests/test_notify.py with 3 new test methods that verify: success-after-retry (attempts=2), all-attempts-fail (attempts=3, single persisted record), and 429-retryable (attempts=2). The existing 3 tests in tests/test_notify.py must pass without modification.",
+  "required_context": {
+    "files": [
+      "app/notify.py",
+      "app/provider.py",
+      "app/db.py",
+      "tests/test_notify.py",
+      "tests/test_gateway_observed.py"
+    ],
+    "contracts": ["C1", "C2", "C3"],
+    "concepts": [
+      "exponential backoff: delay before attempt N (0-indexed) = min(base * factor^N, cap); for C1: min(1 * 2^N, 30)",
+      "retry semantics: call client.send(payload) in a loop; if 200 <= status < 300, stop and record 'sent'; if non-2xx, sleep for the backoff delay and retry; after max_attempts, record 'failed' with the last error",
+      "429 is transient: the staging capture (test_gateway_observed.py) shows first call 429, second call 202 — 429 must be treated as retryable like 5xx",
+      "ProviderResponse shape: dataclass with status (int), body (dict), headers (dict); response.body.get('provider_ref') for success, response.body.get('error') for failure"
+    ]
+  },
+  "inputs": [
+    "stage-contract.json (C1 retry policy, C2 return shape, C3 client interface — inlined in frozen_contracts below)",
+    "repo-context-snapshot.json (file inventory for orientation)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "data",
+      "spec": "RetryPolicy: {max_attempts: 3, base_delay_s: 1, max_delay_s: 30, backoff_factor: 2}. Effective delay before attempt N (0-indexed) = min(base_delay_s * backoff_factor^N, max_delay_s). Total max wait = 1+2+4 = 7s. Retriable statuses: all non-2xx (including 429). Non-retriable: none (V1 treats all non-2xx as retryable; 4xx like 400 will exhaust retries and end in failed).",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:edd2a2c1bb63536107c5e9ca4e598cfc9fc6410478cba1e079883644964d456d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "send_notification(store, client, user_id, template, variables=None) -> dict. Return dict keys: user_id (str), template (str), status ('sent'|'failed'), provider_ref (str|None), error (str|None), attempts (int, actual number of attempts made), created_at (int, unix timestamp). The attempts field was previously hardcoded to 1; now reflects actual attempts.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:dd91dcddd63e0015ffdce981f3469ddb95781b02d1cb93351719a29eb874444e"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "ProviderClient.send(payload: dict) -> ProviderResponse(status: int, body: dict, headers: dict). Unchanged interface. The retry loop calls this method up to 3 times with the same payload. The client does not know about retries.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:eccc75df05f40b8512fdfa9d6d042419be04da0fc2dc90ddc38fb13e1fb24486"
+    }
+  ],
+  "owned_paths": [
+    "app/notify.py",
+    "tests/test_notify.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do NOT modify app/provider.py (the client interface is frozen; C3 is read-only)",
+    "Do NOT modify app/db.py (the store interface is frozen; C2 is read-only)",
+    "Do NOT modify app/api.py (the handler just calls send_notification; no change needed)",
+    "Do NOT modify tests/test_gateway_observed.py (read-only reference for 429 behavior)",
+    "Do NOT add any new Python packages or dependencies",
+    "Do NOT implement bulk-send, throttling, queue-based retry, or any form of retry storm prevention",
+    "Do NOT add a background worker, queue, or new module — the retry is an inline loop in send_notification"
+  ],
+  "implementation_constraints": [
+    "No new dependencies: only stdlib (time, typing) and existing project imports",
+    "The retry loop must persist the record exactly once (after the final outcome), not per-attempt",
+    "The backoff delay uses time.sleep() — in tests, patch time.sleep to avoid real delays",
+    "Existing test methods in TestSendPath must pass without modification to the test code",
+    "New test methods are additive: add to the existing TestSendPath class or create a new class in the same file",
+    "The _record_status helper can be kept or inlined; the record shape (C2) is the contract, not the helper"
+  ],
+  "deliverables": [
+    {
+      "what": "Modified send_notification with retry loop (3 attempts, exponential backoff 1s/2s/4s, retry on all non-2xx including 429, single record persistence)",
+      "where": "app/notify.py"
+    },
+    {
+      "what": "3 new test methods: test_retry_succeeds_second_attempt, test_all_attempts_fail, test_429_is_retryable",
+      "where": "tests/test_notify.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "First-attempt success: OkClient returns 202 on first call. Record has status='sent', attempts=1, provider_ref='ref-1'.",
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_success_records_sent -v -> 1 passed; record['attempts']==1"
+    },
+    {
+      "id": "AT2",
+      "case": "positive",
+      "description": "Retry succeeds on second attempt: FakeClient returns 500 then 202. Record has status='sent', attempts=2.",
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_retry_succeeds_second_attempt -v -> 1 passed"
+    },
+    {
+      "id": "AT3",
+      "case": "failure",
+      "description": "All attempts fail: FakeClient returns 500 three times. Record has status='failed', attempts=3, error from last response. Store has exactly 1 record.",
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_all_attempts_fail -v -> 1 passed; len(store.all())==1"
+    },
+    {
+      "id": "AT4",
+      "case": "positive",
+      "description": "429 is retryable: FakeClient returns 429 (body {'error': 'rate limited'}, no Retry-After header) then 202. Record has status='sent', attempts=2.",
+      "evidence": "pytest tests/test_notify.py::TestSendPath::test_429_is_retryable -v -> 1 passed"
+    },
+    {
+      "id": "AT5",
+      "case": "negative",
+      "description": "Existing tests remain green: all 3 original tests in TestSendPath pass without modification.",
+      "evidence": "pytest tests/test_notify.py -v -> 3 passed (original tests, unmodified)"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "Retry loop persists the record per-attempt (3 times instead of 1)",
+      "expected_behavior": "test_all_attempts_fail fails on len(store.all())==3; the record must be persisted exactly once after the final outcome"
+    },
+    {
+      "scenario": "429 is treated as non-retryable and skipped",
+      "expected_behavior": "test_429_is_retryable fails: status would be 'failed' instead of 'sent'; 429 must be retried like 5xx"
+    },
+    {
+      "scenario": "Retry loop does not sleep between attempts",
+      "expected_behavior": "Tests may still pass with faked clients, but the backoff behavior is wrong; time.sleep must be called with 1s, 2s, 4s delays (patched in tests)"
+    }
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": [],
+    "consumers": ["T02"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T02"],
+    "notes": "The retry loop in send_notification is the only code change. The record shape (C2) is unchanged except that 'attempts' now reflects the actual count. The provider client (C3) is called the same way, just up to 3 times. Tests use fake clients that return canned responses; no real HTTP calls."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["service", "e2e"],
+    "cross_contracts": 3,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-90 min",
+    "compaction_risk": "low",
+    "warnings": []
+  }
+}

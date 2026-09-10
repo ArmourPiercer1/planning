@@ -1,0 +1,38 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    { "from": "T01", "to": "T03", "type": "verification", "reason": "E2E closure verifies the 429 decision is honored in the shipped retry behavior (gate E1) and that the verification document matches observed call counts" },
+    { "from": "T02", "to": "T03", "type": "verification", "reason": "E2E closure exercises the retry loop against the real provider/store seams (gates E1, E2, E3)" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T02", "T03"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T03", "seams": ["S1", "S2"], "acceptance_ref": "A5" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C1", "unlocks": ["T01"], "rationale": "T01 verifies the assumption behind frozen C1 while running in parallel with C1's owner T02; C1's unfreeze_rule handles the FALSIFIED case as a replan gate, not an execution edge" },
+    { "contract_id": "C3", "unlocks": ["T01"], "rationale": "T01 reads the frozen provider interface C3 (docstring + capture test) while its owner T02 runs in parallel" }
+  ],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T02", "consumer_tasks": ["T01", "T02", "T03"], "rationale": "the retry policy is implemented in app/notify.py, which T02 owns; T01 consumes C1's unfreeze_rule to verify the 429 assumption behind it; T03 verifies the policy end to end (E1)" },
+    { "contract_id": "C2", "owner_task": "T02", "consumer_tasks": ["T02", "T03"], "rationale": "app/db.py is modified by no task; the record shape is finalized by the service writer (T02) and verified end to end by T03 (E2)" },
+    { "contract_id": "C3", "owner_task": "T02", "consumer_tasks": ["T01", "T02", "T03"], "rationale": "the ProviderClient interface (app/provider.py) is pre-existing and frozen — no task modifies it; T02's retry wrapper is the concrete owner of its usage semantics; T03 counts its calls (E1)" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T01", "T02"], "rationale": "S1's logical participants 'service' and 'provider-client' bind to T02 (retry wrap in the service) and T01 (provider-boundary verification via the staging-capture test)" },
+    { "seam_id": "S2", "participant_tasks": ["T02", "T03"], "rationale": "S2's logical participants 'service' and 'persistence' bind to T02 (record writer) and T03 (e2e closure, which reads the record back to verify one-record-per-call)" }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      {
+        "from": "T01",
+        "to": "T02",
+        "why_not_real": "naive 'verify then implement' ordering rejected: C1 (retry policy incl. retry-on-429) and C3 (provider interface) are frozen, so T02 implements against the frozen spec with test fakes; T01's FALSIFIED verdict triggers C1's unfreeze_rule (request_contract_revision) — a plan-validity gate, not an execution edge. Ordering them would serialize 2 of 3 tasks for no data dependency."
+      }
+    ],
+    "collisions_handled": ["none — owned paths are disjoint by construction (T01: docs/ only; T02: app/notify.py + tests/test_retry.py; T03: tests/test_e2e_retry.py)"]
+  }
+}

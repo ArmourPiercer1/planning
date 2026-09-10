@@ -1,0 +1,19 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "scope_root": ".",
+  "scanned_at": "2026-01-15T09:00:00+00:00",
+  "files": [
+    { "path": "app/__init__.py", "layer": "service", "role": "package: app", "imports": [], "exports": [] },
+    { "path": "app/main.py", "layer": "lifecycle", "role": "app entry: FastAPI app + router registration (S1 wiring surface)", "imports": ["app/api/routes/health.py"], "exports": ["app", "main"] },
+    { "path": "app/api/routes/health.py", "layer": "api", "role": "health route — router pattern reference for new routes", "imports": [], "exports": ["router"] },
+    { "path": "tests/conftest.py", "layer": "e2e", "role": "shared pytest fixtures: counting store double for the profile store", "imports": [], "exports": ["store_double"] }
+  ],
+  "known_test_entrypoints": ["tests/conftest.py"],
+  "known_shared_files": [],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [],
+  "scan_boundary": ["."],
+  "unknown_areas": []
+}

@@ -1,0 +1,132 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P1",
+  "version": "v1.1",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": 2,
+    "revision_rounds": 1,
+    "subagent_count": 1,
+    "artifact_count": 11,
+    "task_count": 2
+  },
+  "governor": {
+    "action": "EXECUTE",
+    "spikes": [],
+    "deferred": [
+      "F02",
+      "F03",
+      "F04"
+    ],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check"
+    },
+    {
+      "name": "no_false_blocker",
+      "pass": true,
+      "detail": "governor action=EXECUTE; the fixture has 0 true blockers"
+    },
+    {
+      "name": "unknown_addressed_bounded",
+      "pass": true,
+      "detail": "spikes=[]; the 429 unknown must be either a bounded probe OR resolved from documented repo evidence (frozen assumption); probe_routed=True, resolved_from_evidence=True"
+    },
+    {
+      "name": "optimization_deferred",
+      "pass": true,
+      "detail": "bulk-send planned=False, deferred/oo-scope=True"
+    },
+    {
+      "name": "robustness_concern_deferred",
+      "pass": true,
+      "detail": "retry-storm mitigation is a planned leaf=False (should be a note/POST_STAGE)"
+    },
+    {
+      "name": "budget_within_limits",
+      "pass": true,
+      "detail": "full_audits=2 (<=2), subagents=1 (<=5)"
+    },
+    {
+      "name": "single_audit_ideal",
+      "pass": false,
+      "detail": "full_audits=2; one audit is the target"
+    }
+  ],
+  "score": 0.857,
+  "verdict": "PASS_WITH_NOTES",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p1-v1.1-r1\\plan/**",
+      "observation": "6/7 checks passed; lint_clean=True; no_false_blocker=True; unknown_addressed_bounded=True; optimization_deferred=True; robustness_concern_deferred=True; budget_within_limits=True; single_audit_ideal=False"
+    }
+  ],
+  "baseline": {
+    "schema": "planning/probe-run-result@1",
+    "probe_id": "P1",
+    "version": "v1.0",
+    "run_id": "r1",
+    "planning": {
+      "audit_count": null,
+      "revision_rounds": null,
+      "subagent_count": null,
+      "artifact_count": 11,
+      "task_count": 3
+    },
+    "governor": {
+      "action": "absent",
+      "spikes": [],
+      "deferred": [],
+      "budget_exceeded": false
+    },
+    "checks": [
+      {
+        "name": "lint_clean",
+        "pass": true,
+        "detail": "0 BLOCKER finding(s) from plan-check"
+      },
+      {
+        "name": "no_false_blocker",
+        "pass": true,
+        "detail": "governor action=absent; the fixture has 0 true blockers"
+      },
+      {
+        "name": "unknown_addressed_bounded",
+        "pass": true,
+        "detail": "spikes=None; the 429 unknown must be either a bounded probe OR resolved from documented repo evidence (frozen assumption); probe_routed=True, resolved_from_evidence=True"
+      },
+      {
+        "name": "optimization_deferred",
+        "pass": true,
+        "detail": "bulk-send planned=False, deferred/oo-scope=True"
+      },
+      {
+        "name": "robustness_concern_deferred",
+        "pass": true,
+        "detail": "retry-storm mitigation is a planned leaf=False (should be a note/POST_STAGE)"
+      },
+      {
+        "name": "budget_within_limits",
+        "pass": true,
+        "detail": "full_audits=None (<=2), subagents=None (<=5)"
+      },
+      {
+        "name": "single_audit_ideal",
+        "pass": true,
+        "detail": "full_audits=None; one audit is the target"
+      }
+    ],
+    "score": 1.0,
+    "verdict": "PASS_WITH_NOTES",
+    "evidence": [
+      {
+        "artifact": "evals\\probes\\runs\\p1-v1.0-r1\\plan/**",
+        "observation": "7/7 checks passed; lint_clean=True; no_false_blocker=True; unknown_addressed_bounded=True; optimization_deferred=True; robustness_concern_deferred=True; budget_within_limits=True; single_audit_ideal=True"
+      }
+    ]
+  }
+}

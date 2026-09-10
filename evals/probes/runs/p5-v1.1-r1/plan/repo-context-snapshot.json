@@ -1,0 +1,79 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+  "scope_root": ".",
+  "scanned_at": "2026-09-10T12:18:18+00:00",
+  "files": [
+    {
+      "path": "app/api.py",
+      "layer": "api",
+      "role": "Endpoint handlers (framework-agnostic).",
+      "imports": [],
+      "exports": [
+        "handle_export_csv"
+      ]
+    },
+    {
+      "path": "app/models.py",
+      "layer": "persistence",
+      "role": "Domain models.",
+      "imports": [],
+      "exports": [
+        "Customer",
+        "Report",
+        "get_customer",
+        "get_report"
+      ]
+    },
+    {
+      "path": "app/queries.py",
+      "layer": "service",
+      "role": "Report queries — the single source for fetching report rows.",
+      "imports": [
+        "app/models.py"
+      ],
+      "exports": [
+        "report_with_rows",
+        "reports_for_customer"
+      ]
+    },
+    {
+      "path": "app/services/export.py",
+      "layer": "service",
+      "role": "Existing CSV export.",
+      "imports": [
+        "app/queries.py"
+      ],
+      "exports": [
+        "export_csv"
+      ]
+    },
+    {
+      "path": "tests/test_export.py",
+      "layer": "e2e",
+      "role": "CSV export tests.",
+      "imports": [
+        "app/services/export.py"
+      ],
+      "exports": [
+        "TestCsvExport"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_export.py"
+  ],
+  "known_shared_files": [],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [],
+  "scan_boundary": [
+    "app",
+    "tests"
+  ],
+  "dependency_expansions": [],
+  "unknown_areas": [
+    "README.md",
+    "TASK.md"
+  ]
+}

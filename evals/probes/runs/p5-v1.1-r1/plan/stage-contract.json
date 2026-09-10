@@ -1,0 +1,170 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "p5-report-export",
+  "objective": "Add a monthly PDF export capability for customer reports with async job processing, in-process job store, i18n labels (EN/DE), and three new API endpoints, reusing existing report queries.",
+  "in_scope": [
+    "In-process job store with state machine (pending -> running -> done/failed) and job_id generation",
+    "POST /reports/{id}/export-pdf endpoint that enqueues a job and returns 202 with job_id",
+    "GET /jobs/{id} polling endpoint returning job status and state",
+    "GET /jobs/{id}/download endpoint returning PDF bytes when job is done",
+    "PDF export service using vendored pdflib_shim, one page per report, consuming report rows from app/queries.py",
+    "i18n label module with EN and DE translations for PDF labels, selected by lang field (default en)",
+    "Vendoring pdflib_shim module as a real file in the repo",
+    "Unit tests for the new job store, PDF export service, and API endpoints"
+  ],
+  "out_of_scope": [
+    { "item": "Email delivery of exported PDF", "reason": "Explicitly excluded by task; no email infrastructure exists in this service" },
+    { "item": "Report editing or creation", "reason": "Task says export of existing reports only; report creation is a separate feature" },
+    { "item": "Historical archive or retention policy for old exports", "reason": "Explicitly excluded by task; adds storage and lifecycle management out of scope" },
+    { "item": "Refactoring existing CSV export", "reason": "Existing CSV export works and has tests; the task adds PDF alongside it" },
+    { "item": "Database or persistence layer changes", "reason": "Job store is in-process at this scale; no DB migration needed" }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-INPROC-JOBS",
+      "statement": "In-process job queue is sufficient at this scale; no external message broker needed",
+      "rationale": "Task explicitly says in-process is fine at this scale; the fixture has no job infrastructure and the repo is stdlib-only"
+    },
+    {
+      "id": "A-PDFLIB-SHIM",
+      "statement": "pdflib_shim.py will be provided as a 40-line wrapper by the platform team; the plan treats vendoring it as a real task",
+      "rationale": "README Platform notes state this explicitly; stdlib cannot render PDFs"
+    },
+    {
+      "id": "A-I18N-SCOPE",
+      "statement": "i18n covers PDF labels only (headers, column names), not full UI strings",
+      "rationale": "Task says labels in the PDF must be available in EN and DE; no UI layer exists in this service"
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-JOB-STORE",
+      "decision": "Job store is an in-process dict-based store with a background thread worker; state machine: pending -> running -> done | failed",
+      "rationale": "No job infrastructure exists; in-process is the minimum that satisfies async semantics; background thread runs one job at a time",
+      "seams_affected": ["S1", "S2"]
+    },
+    {
+      "id": "DA-PDF-PER-REPORT",
+      "decision": "export_pdf renders the single report named by report_id (one page) using report_with_rows; the endpoint POST /reports/{id}/export-pdf exports one report per job",
+      "rationale": "Matches frozen contract C2 (export_pdf takes report_id, not a list); the endpoint URL /reports/{id}/export-pdf confirms one-report-per-export; input.md requirement 4 'one page per report' is satisfied by rendering the single report as one PDF page",
+      "seams_affected": ["S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "logical_owner": "runtime",
+      "frozen": true
+    },
+    {
+      "id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "logical_owner": "service",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf: body {lang: str (optional, default 'en')} -> 202 {job_id: str}. 404 if report_id unknown. 400 if lang not in {en, de}. GET /jobs/{id} -> 200 {job_id, status, result_available: bool, error: str|None}. 404 if job unknown. GET /jobs/{id}/download -> 200 (application/pdf bytes) if done, 409 if not done, 404 if unknown.",
+      "logical_owner": "api",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "API endpoints interact with JobStore: POST creates a job, GET reads job state, download reads job result",
+      "participants": ["api", "runtime"],
+      "contract_ids": ["C1", "C3"]
+    },
+    {
+      "id": "S2",
+      "description": "Job worker invokes PdfExportService: worker picks up pending job, calls export_pdf, stores result or error",
+      "participants": ["runtime", "service"],
+      "contract_ids": ["C1", "C2"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "POST /reports/r1/export-pdf returns 202 with a job_id string",
+      "positive_case": "POST with report_id=r1 returns HTTP 202 and body contains job_id field with a non-empty string",
+      "negative_case": "POST with report_id=nope returns HTTP 404 with error field",
+      "failure_behavior": "POST with lang=fr returns HTTP 400 with error field",
+      "evidence": "pytest tests/test_pdf_export.py::test_export_endpoint_returns_202"
+    },
+    {
+      "id": "A2",
+      "description": "GET /jobs/{id} reflects job state transitions",
+      "positive_case": "After POST, GET /jobs/{job_id} returns status pending or running; after completion, returns status done with result_available true",
+      "negative_case": "GET /jobs/nope returns 404",
+      "failure_behavior": "If job fails, status is failed with error string populated",
+      "evidence": "pytest tests/test_pdf_export.py::test_job_state_transitions"
+    },
+    {
+      "id": "A3",
+      "description": "GET /jobs/{id}/download returns valid PDF bytes when done",
+      "positive_case": "After job completes, download returns HTTP 200 with content-type application/pdf and body starts with %PDF",
+      "negative_case": "Download before job completes returns HTTP 409",
+      "failure_behavior": "Download for unknown job returns HTTP 404",
+      "evidence": "pytest tests/test_pdf_export.py::test_download_pdf_bytes"
+    },
+    {
+      "id": "A4",
+      "description": "PDF labels are in the requested language",
+      "positive_case": "Export with lang=de produces PDF with German label text; lang=en (default) produces English labels",
+      "negative_case": "Export with lang=fr returns 400 before job creation",
+      "failure_behavior": "Unknown lang in i18n module raises ValueError",
+      "evidence": "pytest tests/test_pdf_export.py::test_i18n_labels"
+    },
+    {
+      "id": "A5",
+      "description": "Existing CSV export tests remain green",
+      "positive_case": "pytest tests/test_export.py runs and all tests pass",
+      "negative_case": "N/A — this is a regression check",
+      "failure_behavior": "If CSV tests break, the PDF export changes leaked into the CSV path",
+      "evidence": "pytest tests/test_export.py"
+    }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "All report data access must go through app/queries.py functions; no direct import of _REPORTS or _CUSTOMERS" },
+    { "kind": "dependency", "rule": "Python 3.11 stdlib only; no external packages. pdflib_shim is vendored, not installed" },
+    { "kind": "style", "rule": "Follow existing code patterns: dataclasses for models, framework-agnostic handler functions, type hints with __future__ annotations" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30-45 min",
+    "leaf_p80_max": "60-90 min",
+    "max_compactions_per_leaf": 3,
+    "stage_estimate": "3-5 dev-hours"
+  },
+  "allowed_replan": ["split", "merge", "defer", "reduce_scope", "checkpoint_and_split", "request_contract_revision"],
+  "open_questions": [],
+  "delivery_profile": {
+    "level": "alpha"
+  },
+  "planning_budget": {
+    "max_full_audits": 2,
+    "max_plan_revisions": 3,
+    "max_planning_subagents": 5,
+    "soft_wall_fraction": 0.3
+  },
+  "horizons": {
+    "commitment": { "tasks": ["T01", "T02", "T03"] },
+    "detailed_stage": { "objective": "All tasks in this stage are detailed; none are forecast", "tasks": ["T01", "T02", "T03", "T04", "T05", "T06"] },
+    "forecast": { "stages": [] }
+  },
+  "stage_boundary": {
+    "stop_after": ["T06"],
+    "because": "This stage ends when all PDF export endpoints are functional, the job store works, i18n labels are correct, and all tests (existing + new) pass. This is an independently verifiable capability increment: a customer can request a PDF export and download it.",
+    "expected_new_evidence": ["pdflib_shim API surface (actual method names and behavior once vendored)"],
+    "decisions_deferred_until_then": ["Whether to add retry logic for failed jobs", "Whether to support additional languages beyond EN/DE"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified", "core_seam_blocker", "route_changing_evidence"],
+    "not_triggers": ["first_worker_failure", "optional_bug", "mechanical_merge_conflict"]
+  }
+}

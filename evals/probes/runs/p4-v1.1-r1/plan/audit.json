@@ -1,0 +1,80 @@
+{
+  "schema": "planning/audit@3",
+  "verdict": "FAIL",
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Audit ran as an isolated fresh subagent with no access to the P4 planner's conversation or reasoning; all judgments are based on the plan directory artifacts, the plan-auditor skill, and read-only spot checks of the repo files listed in grounding. Disclosure: this subagent's context was seeded from the probe-orchestration session, which includes the P4 probe fixture design (the task text and platform constraint were authored by the orchestrating parent). That is fixture-design knowledge, not planner reasoning; every factual claim used as evidence was re-verified against on-disk artifacts during this pass. Deterministic layer (plan-check.py lint) was run first, per the skill procedure."
+  },
+  "grounding": {
+    "snapshot_ref": "evals/probes/runs/p4-v1.1-r1/plan/repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/storage.py",
+      "app/events.py",
+      "tests/test_events.py",
+      "README.md",
+      "TASK.md"
+    ],
+    "notes": "repo_revision matches the snapshot (parent planning-repo HEAD; the fixture repo lives inside the planning git repo, per the run-manifest note). The three code files in the snapshot file list were verified against disk with no drift: RingBuffer append overwrites slot _head when full and read_all() is oldest-first; EventAPI exposes post_event (201 {id}) / list_events (?since=, 404 unknown id); the 4-test suite includes test_ring_overwrites_oldest (capacity-3 wrap keeps k2,k3,k4). README.md and TASK.md are in the snapshot's unknown_areas (root docs outside the code-scope scan); they were spot-checked as the designated grounding surface because the plan's frozen-constraint claims cite the README 'Platform constraints (fixed)' section (single 1024-slot RingBuffer, cannot be replaced/extended/second-stored, no change this release cycle). The same constraint is independently restated in input.md (a plan artifact), so the plan does not depend solely on unknown-area claims. No repo movement under the plan."
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "BLOCKER",
+      "routing": "EXECUTION_BLOCKER",
+      "check": "scope_creep",
+      "task_id": null,
+      "acceptance_ref": "A1",
+      "evidence": "input.md requirement 1 (the task, verbatim): 'the full history forms a verifiable chain. The chain must be verifiable end-to-end at any time (any truncation or rewrite breaks it).' The stage acceptance substitutes a weaker windowed reading without user approval: A1 scopes verification to the window of entries held in the RingBuffer, and A2's failure_behavior = 'after wrap: verify() returns status unanchored_head (head anchored=false, first_broken_link None) - all links among surviving entries checkable', i.e. the chain is by design no longer verifiable end-to-end after the first wrap. This is not a rare edge: app/storage.py RingBuffer.append overwrites slot _head when full (verified on disk); with the platform-fixed capacity 1024 (README 'Platform constraints (fixed)': cannot be replaced, extended, or run alongside a second store; no change this release cycle) the oldest entry is destroyed after 1025 appends and full-history end-to-end verifiability cannot hold. The wrap is documented behavior, not a hypothetical: tests/test_events.py::test_ring_overwrites_oldest asserts it. The plan concedes the conflict in OQ1 ('the literal full-history/any-truncation reading is ... infeasible under fixed platform constraints') yet sets blocking=false and proceeds, encoding the windowed reading as frozen acceptance A1/A2 and freezing the contested interpretation as frozen_assumption A-CHAIN-WINDOW before its owner (user) decided. A-CHAIN-WINDOW's own rationale states that if the literal reading is mandatory 'the task is infeasible under the constraint and must be re-scoped via request_contract_revision' - i.e. the plan itself classifies this as requiring a contract-level/user decision, but defers it instead of waiting (OQ1 owner: user, no answer recorded in any artifact).",
+      "suggested_fix": "Do not execute. Escalate to the user/compliance owner as a product-semantics decision, following the three resolution paths the plan's own OQ1 text lists: (a) the user explicitly accepts windowed semantics in writing - then A1/A2 stand as the approved re-scoped acceptance and the deviation from requirement 1 is recorded; (b) the user confirms the literal full-history/any-truncation reading is mandatory - then the stage is infeasible under the frozen platform constraint and must be re-scoped via request_contract_revision (platform exception, externally anchored root, or a reduced compliance requirement). The planner's blocking=false is a position, not a decision: no user approval of the re-interpretation exists in the artifacts.",
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F02",
+      "severity": "MAJOR",
+      "routing": "EXECUTION_BLOCKER",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T01",
+      "acceptance_ref": "A1",
+      "evidence": "C1 (frozen in stage-contract.json and inlined in all three task packages) fixes the hash input to two fields: 'entry_hash = sha256(canonical_json({id, prev_entry_hash})).hexdigest()'; T01 implementation_constraints[0] pins the exact expression 'entry_hash = hashlib.sha256(canonical_json({'id': item['id'], 'prev_entry_hash': item['prev_entry_hash']}))'. The acceptance clauses require payload-rewrite detection: A1 failure_behavior = 'rewriting a middle stored entry's payload makes verify() return status broken ... (its entry_hash no longer matches, and/or the next link dangles)'; A2 = 'rewrite the head's payload: verify() returns broken (head entry_hash mismatch)'; T01 AT-01-2 = 'Rewriting a middle item's payload (keeping its id) makes verify() return status broken ... (hash mismatch)'; integration-plan gate E3 = 'then rewrite the head item's payload in memory: verify() returns status broken (the head rewrite is still detected)'. Under C1 as written, a payload rewrite that keeps id and prev_entry_hash changes neither the stored entry_hash nor any link, so a C1-conformant verify() returns ok for a rewritten entry: AT-01-2, A1's negative case, A2's negative case, and E3 cannot pass against the frozen spec, and no implementation of C1 can detect payload rewrites at all (the original payload is not recoverable from the stored items). The primary tamper vector for a tamper-evident audit log is a payload edit; the plan's own first task (T01) would hit a red acceptance test against its own frozen contract.",
+      "suggested_fix": "Amend C1 before execution: include the canonicalized payload in the hash input, e.g. entry_hash = sha256(canonical_json({id, prev_entry_hash, payload})), and propagate the change to T01 implementation_constraints[0], T01 AT-01-2, and the A1/A2 wording (windowed head-anchor semantics of A2 are unaffected). The fix is specific, local, and known - a mechanical contract amendment, not a product decision; the governor may fold it into the same escalation/patch round as F01.",
+      "delivery_profile_note": null
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "routing": "OPTIONAL",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "acceptance_ref": "A1",
+      "evidence": "stage-contract.json constraints[style] says 'new tests go in tests/test_audit.py', but the plan's acceptance evidence and task packages name three new test files: A1 evidence references tests/test_audit_core.py (T01 owned_paths), A2/A3 evidence references tests/test_audit_boundary.py (T03 owned_paths), and T02 owns tests/test_audit.py. From the contract text alone a third party cannot determine which file placement governs (constraint line vs acceptance evidence); the task packages are internally consistent on the three-file split, so this is a stale constraint line, not a plan-wide inconsistency.",
+      "suggested_fix": "In the contract patch round triggered by F01/F02, update the style constraint line to name the three test files (tests/test_audit_core.py, tests/test_audit.py, tests/test_audit_boundary.py), or converge on a single file and update the evidence/owned_paths references.",
+      "delivery_profile_note": null
+    }
+  ],
+  "deterministic": {
+    "tool": "plan-check.py lint",
+    "exit_code": 0,
+    "finding_count": 0
+  },
+  "checks_performed": [
+    "deterministic_lint: plan-check.py lint <plan-dir> run first per skill procedure - exit 0, 0 findings; no deterministic carryover",
+    "schema validation: per-stage plan-check.py validate gates recorded in run-manifest.json (stages 0-6 + final-plan-lint) all exit 0; auditor independently re-ran the plan-wide lint in this pass",
+    "grounding: snapshot file list (app/events.py, app/storage.py, tests/test_events.py) verified against disk - structure, exports, and key semantics match; no drift between snapshot and repo",
+    "grounding/unknown_areas: README.md and TASK.md sit in snapshot unknown_areas; opened as read-only spot checks per the probe orchestrator's grounding directive - 'Platform constraints (fixed)' verified; constraint independently restated in input.md",
+    "acceptance vs task requirement: requirement 1 (full history, verifiable end-to-end at any time, any truncation or rewrite breaks it) checked against A1-A4 under the grounded platform constraint - core conflict found (F01)",
+    "shared-contract satisfiability: C1 hash input ({id, prev_entry_hash}) checked against every acceptance/test clause requiring payload-rewrite detection (A1/A2 failure_behavior, T01 AT-01-2, gate E3) - unsatisfiable as frozen (F02)",
+    "constraint consistency: contract constraints[] vs acceptance evidence and task owned_paths - test-file placement mismatch (F03)",
+    "scope_creep / non-goals: in/out-of-scope checked against input.md requirements; out-of-scope entries cite real repo facts (platform constraint, in-memory store); no B-class item smuggled in-scope",
+    "hidden_dependency / fake_serialization / ownership_collision: T01->T02 data edge is real (T02 imports T01's app/audit.py); owned_paths disjoint across T01/T02/T03; no collisions; single-leaf parallel groups are a consequence of the real serial edge, dag notes record the fake-audit-module trade and its rejection",
+    "integration completeness: seam S1 covered by T03 (seam_integration + e2e_closure + final_acceptance merged); e2e gates E1-E4 include failure scenarios (wrap boundary E3, mid-chain tamper E4); contract_consistency omission justified (single C1 implementation, consumer via import not re-implementation)",
+    "horizon: commitment=[T01] is a subset of detailed=[T01,T02,T03]; forecast stage contains no leaf task ids; stop_after=[T03] is in detailed (also enforced by lint)",
+    "deterministic acceptance: A1-A4 are all observable with concrete evidence commands; no vague criteria",
+    "delivery_profile alpha gate applied: F01/F02 are core-acceptance findings (requirement-vs-constraint conflict and frozen-spec unsatisfiability), not migration/edge-coverage assurance - no demotion applies; F03 already MINOR->OPTIONAL",
+    "budget: planning_budget present (max_full_audits 2, max_plan_revisions 3, max_subagents 5); run-manifest records 0 audit rounds before this pass - within limits; governor to re-check at stage 8",
+    "risk consistency: risk blocks in tasks/T01-T03.json match risk-estimates.json (S/M/M footprints, p50/p80 ranges, empty warnings)"
+  ],
+  "revision_round": 1,
+  "delivery_profile_applied": "alpha"
+}

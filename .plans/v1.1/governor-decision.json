@@ -1,0 +1,13 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    { "finding_id": "F01", "routing": "POST_STAGE", "reason": "schema split completed in C1-A; no further action in this stage" },
+    { "finding_id": "F02", "routing": "POST_STAGE", "reason": "control-flow fixed in C1-B" }
+  ],
+  "planning_budget_status": { "plan_revisions": 0, "full_audits": 1, "subagents": 8 },
+  "forbidden_actions": [],
+  "reason": "no execution blockers; all findings are POST_STAGE and resolved within the stage; budget within limits (1/2 audits, 0/3 revisions, 8/8 subagents)"
+}

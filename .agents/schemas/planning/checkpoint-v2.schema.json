@@ -1,0 +1,161 @@
+{
+  "$id": "planning/checkpoint@2",
+  "title": "Task-level execution checkpoint (v2: adds drift tracking, verified/falsified assumptions). NOTE: this is a TASK-level artifact — stage completion handoff is planning/stage-checkpoint@1, not this.",
+  "type": "object",
+  "required": [
+    "schema", "task_id", "status", "revision", "completed", "contracts_satisfied",
+    "changed_paths", "tests", "verified_facts", "deviations",
+    "newly_discovered_issues", "blockers", "remaining_dag", "downstream_notes"
+  ],
+  "properties": {
+    "schema": { "const": "planning/checkpoint@2" },
+    "task_id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+    "status": { "enum": ["complete", "partial", "blocked"] },
+    "revision": {
+      "type": "object",
+      "required": ["sha", "branch"],
+      "properties": {
+        "sha": { "type": "string" },
+        "branch": { "type": "string" },
+        "committed_at": { "type": "string" }
+      }
+    },
+    "completed": {
+      "type": "object",
+      "required": ["task_id", "summary"],
+      "properties": {
+        "task_id": { "type": "string" },
+        "summary": { "type": "string", "minLength": 10 }
+      }
+    },
+    "contracts_satisfied": { "type": "array", "items": { "type": "string", "pattern": "^C[0-9]+$" } },
+    "changed_paths": { "type": "array", "items": { "type": "string" } },
+    "tests": {
+      "type": "object",
+      "required": ["passed", "failed", "evidence"],
+      "properties": {
+        "passed": { "type": "array", "items": { "type": "string" } },
+        "failed": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "string" }
+      }
+    },
+    "verified_facts": { "type": "array", "items": { "type": "string" } },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["planned", "actual", "why"],
+        "properties": {
+          "planned": { "type": "string" },
+          "actual": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "newly_discovered_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "classification", "handling"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "classification": { "enum": ["A", "B", "C"] },
+          "handling": { "enum": ["fixed_in_task", "backlog", "escalated"] }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "description", "evidence", "requested_action"],
+        "properties": {
+          "kind": { "enum": ["CONTRACT_CHANGE_REQUEST", "CORE_SEAM_BLOCKER"] },
+          "description": { "type": "string" },
+          "evidence": { "type": "string" },
+          "requested_action": { "type": "string" }
+        }
+      }
+    },
+    "remaining_dag": { "type": "array", "items": { "type": "string", "pattern": "^T[0-9]{2,}$" } },
+    "downstream_notes": { "type": "string" },
+    "verified_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["assumption_id", "evidence"],
+        "properties": {
+          "assumption_id": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "falsified_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["assumption_id", "evidence", "implication"],
+        "properties": {
+          "assumption_id": { "type": "string" },
+          "evidence": { "type": "string" },
+          "implication": { "type": "string" }
+        }
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description", "blocking"],
+        "properties": {
+          "description": { "type": "string" },
+          "blocking": { "type": "boolean" }
+        }
+      }
+    },
+    "scope_deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["planned_scope", "actual_scope", "reason"],
+        "properties": {
+          "planned_scope": { "type": "string" },
+          "actual_scope": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "budget_used": {
+      "type": "object",
+      "properties": {
+        "compactions": { "type": "integer" },
+        "wall_time_seconds": { "type": "integer" },
+        "tokens": { "type": "integer" },
+        "subagents": { "type": "integer" }
+      }
+    },
+    "next_stage_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["input", "artifact"],
+        "properties": {
+          "input": { "type": "string" },
+          "artifact": { "type": "string" }
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "properties": {
+        "requirements_removed": { "type": "array", "items": { "type": "string" } },
+        "scope_added": { "type": "array", "items": { "type": "string" } },
+        "frozen_decisions_changed": { "type": "array", "items": { "type": "string" } },
+        "delivery_profile_changed": { "type": "boolean" },
+        "acceptance_changed": { "type": "array", "items": { "type": "string" } },
+        "budget_envelope_changed": { "type": "boolean" }
+      }
+    }
+  }
+}

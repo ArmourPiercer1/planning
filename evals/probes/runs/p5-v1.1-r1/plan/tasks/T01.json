@@ -1,0 +1,111 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Implement app/services/jobstore.py with a JobStore class (in-process dict-backed store with state machine pending->running->done|failed) and a background-thread worker that polls for pending jobs and invokes PdfExportService, plus tests/test_jobstore.py with unit tests for all state transitions and worker pickup",
+  "required_context": {
+    "files": [
+      "app/models.py",
+      "app/services/jobstore.py (new)",
+      "tests/test_jobstore.py (new)"
+    ],
+    "contracts": ["C1", "C2"],
+    "concepts": ["dataclass patterns from models.py", "threading.Thread for background worker", "state machine with valid transitions only"]
+  },
+  "inputs": ["C1 job store interface spec (inlined below)"],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "state",
+      "spec": "JobStore interface: create(customer_id, report_id, lang) -> job_id (str); get(job_id) -> Job | None where Job = {id, customer_id, report_id, lang, status: pending|running|done|failed, result: bytes|None, error: str|None, created_at: str}. Status transitions: pending->running (worker picks up), running->done (PDF generated), running->failed (exception). No other transitions allowed.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:b68311094451d4abf959c3ad0bab29255d180763d06e4b3e495a59e4b9ac8211"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "service",
+      "spec": "PdfExportService interface: export_pdf(customer_id: str, report_id: str, lang: str) -> bytes. Fetches report data via app/queries.report_with_rows (never reads _REPORTS directly). Uses pdflib_shim to render one page per report. Returns raw PDF bytes. Raises PdfExportError on failure. lang must be 'en' or 'de'; unknown lang raises ValueError.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:a92f1005d7e84f03c1aab8342660945187f692e0ee6ba22729b36ca663aaa3d7"
+    }
+  ],
+  "owned_paths": [
+    "app/services/jobstore.py",
+    "tests/test_jobstore.py"
+  ],
+  "allowed_dependencies": [
+    {"task_id": "T02", "what": "PdfExportService interface (frozen C2) — worker calls export_pdf(customer_id, report_id, lang) -> bytes"}
+  ],
+  "non_goals": [
+    "Do not modify app/api.py, app/queries.py, app/models.py, or app/services/export.py",
+    "Do not add retry logic or backoff (keep state machine simple: pending->running->done|failed)",
+    "Do not add persistence or database storage (in-process dict only)",
+    "Do not add email, notification, or any delivery mechanism"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only — use threading.Thread for the worker, no asyncio, no external packages",
+    "Follow dataclass pattern from app/models.py",
+    "Job dataclass must have: id, customer_id, report_id, lang, status, result, error, created_at",
+    "Worker thread must be daemon=True so it doesn't block process exit",
+    "State transitions must validate: only pending->running, running->done, running->failed are legal; raise IllegalTransition for anything else"
+  ],
+  "deliverables": [
+    {"what": "JobStore class with create/get/mark_running/mark_done/mark_failed methods", "where": "app/services/jobstore.py"},
+    {"what": "Background worker thread that polls for pending jobs and calls PdfExportService", "where": "app/services/jobstore.py (WorkerThread class)"},
+    {"what": "Unit tests for state transitions, worker pickup, and error handling", "where": "tests/test_jobstore.py"}
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "create() returns a job_id string and get(job_id) returns a Job with status 'pending'",
+      "evidence": "pytest tests/test_jobstore.py::test_create_returns_pending -> passed"
+    },
+    {
+      "id": "AT02",
+      "case": "positive",
+      "description": "Worker picks up a pending job and transitions it to 'running' then 'done' when export_pdf succeeds",
+      "evidence": "pytest tests/test_jobstore.py::test_worker_picks_up_and_completes -> passed"
+    },
+    {
+      "id": "AT03",
+      "case": "failure",
+      "description": "When export_pdf raises, job transitions to 'failed' with error string populated",
+      "evidence": "pytest tests/test_jobstore.py::test_worker_failure_marks_failed -> passed"
+    },
+    {
+      "id": "AT04",
+      "case": "negative",
+      "description": "Illegal transition (e.g., pending->done directly) raises IllegalTransition",
+      "evidence": "pytest tests/test_jobstore.py::test_illegal_transition_raises -> passed"
+    }
+  ],
+  "failure_cases": [
+    {"scenario": "export_pdf raises PdfExportError", "expected_behavior": "Job transitions to failed, error field contains the exception message, worker continues to next job"},
+    {"scenario": "get(job_id) for unknown id", "expected_behavior": "Returns None"},
+    {"scenario": "Worker thread encounters unexpected exception", "expected_behavior": "Job marked failed, worker logs and continues polling"}
+  ],
+  "integration_dependency": {
+    "seams": ["S1", "S2"],
+    "upstream_outputs": ["T02: PdfExportService (frozen C2 interface)"],
+    "consumers": ["T03", "T04", "T05", "T06"]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": ["T03", "T04", "T05", "T06"],
+    "notes": "JobStore is thread-safe via a single worker thread; no locking needed for the dict since only the worker mutates. T03 imports JobStore from app.services.jobstore."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": ["runtime", "service"],
+    "cross_contracts": 1,
+    "statefulness": "high",
+    "integration_distance": "medium",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-75 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

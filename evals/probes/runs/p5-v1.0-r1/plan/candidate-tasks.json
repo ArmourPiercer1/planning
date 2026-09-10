@@ -1,0 +1,69 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Create app/services/pdflib_shim.py (a vendored minimal pure-stdlib PDF writer per C5) and app/services/labels.py (the EN/DE i18n label tables per C4) as two small service modules, with unit tests proving the shim emits bytes starting with %PDF and the label key sets are exact.",
+      "required_context": {
+        "files": [],
+        "contracts": ["C4", "C5"],
+        "concepts": ["minimal PDF file structure (header, pages, xref, trailer)", "pure-stdlib file/byte handling"]
+      },
+      "owned_paths": ["app/services/pdflib_shim.py", "app/services/labels.py", "tests/test_pdflib_shim.py", "tests/test_labels.py"],
+      "forbidden_scope": ["app/api.py", "app/queries.py", "app/models.py", "app/jobs.py", "app/services/worker.py", "app/services/pdf_export.py", "app/services/export.py", "tests/test_export.py"],
+      "touched_layers": ["service", "e2e"],
+      "inputs": ["contract C4 (label key sets)", "contract C5 (shim doc API)"],
+      "outputs": ["app/services/pdflib_shim.py (new)", "app/services/labels.py (new)", "tests for both"],
+      "downstream_consumers": ["T03", "T05"],
+      "split_rationale": "shim + labels are the leaf's shared closure: two small dependency-free format modules consumed together by the renderer, no other layer in between — merging keeps the renderer's required context to one pair of files."
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the in-memory job store (C2 record shape + JobStore API, including the customer_id field) and the single worker loop that picks queued jobs, calls render_report_pdf(job.customer_id, job.lang), and marks done/failed, with unit tests that drive the store/worker against a stub renderer (C3 is frozen, so the stub is legitimate).",
+      "required_context": {
+        "files": [],
+        "contracts": ["C2", "C3"],
+        "concepts": ["in-process background thread over an in-memory queue", "job state machine queued->running->done|failed"]
+      },
+      "owned_paths": ["app/jobs.py", "app/services/worker.py", "tests/test_jobs.py", "tests/test_worker.py"],
+      "forbidden_scope": ["app/api.py", "app/queries.py", "app/models.py", "app/services/pdflib_shim.py", "app/services/labels.py", "app/services/pdf_export.py", "app/services/export.py", "tests/test_export.py"],
+      "touched_layers": ["runtime", "e2e"],
+      "inputs": ["contract C2 (job record + JobStore API)", "contract C3 (renderer signature, consumed as a frozen stub)"],
+      "outputs": ["app/jobs.py (new)", "app/services/worker.py (new)", "tests for both"],
+      "downstream_consumers": ["T04", "T05"],
+      "split_rationale": "job state machine + worker is one runtime closure: both live in the same two modules, share the C2 record, and the worker's only external dependency (C3) is frozen and stubbable — a clean single-layer cut."
+    },
+    {
+      "id": "T03",
+      "objective": "Implement render_report_pdf(customer_id, lang) per C3: one PDF page per report of the customer, report data fetched exclusively through app/queries.py, labels from the C4 tables, drawing through the C5 shim (stubbed in unit tests), plus a page-count assertion test.",
+      "required_context": {
+        "files": ["app/queries.py", "app/models.py"],
+        "contracts": ["C3", "C4", "C5"],
+        "concepts": ["report data shape from report_with_rows/reports_for_customer", "page-per-report layout (customer header, period, title, metric/value rows)"]
+      },
+      "owned_paths": ["app/services/pdf_export.py", "tests/test_pdf_render.py"],
+      "forbidden_scope": ["app/api.py", "app/jobs.py", "app/services/worker.py", "app/services/pdflib_shim.py", "app/services/labels.py", "app/services/export.py", "tests/test_export.py"],
+      "touched_layers": ["service", "e2e"],
+      "inputs": ["contract C3 (own signature)", "contract C4 (label tables)", "contract C5 (shim API)", "app/queries.py (data source, read-only)"],
+      "outputs": ["app/services/pdf_export.py (new)", "tests/test_pdf_render.py"],
+      "downstream_consumers": ["T02", "T05"],
+      "split_rationale": "the renderer's closure is the queries.py data path plus the two frozen format contracts; it crosses at most service+e2e and no other task needs to read queries.py for content, so the query-reuse rule can be enforced against a single owner."
+    },
+    {
+      "id": "T04",
+      "objective": "Add the three C1 endpoint handlers (POST /reports/{id}/export-pdf, GET /jobs/{job_id}, GET /jobs/{job_id}/download) to app/api.py, coding against the frozen C2 spec with a stub JobStore in tests; unknown report/job -> 404, lang not in {en,de} -> 400, download before done -> 409.",
+      "required_context": {
+        "files": ["app/api.py", "app/queries.py", "app/models.py"],
+        "contracts": ["C1", "C2"],
+        "concepts": ["framework-agnostic handler convention (path_params, body dicts)", "status code discipline from the existing handler"]
+      },
+      "owned_paths": ["app/api.py", "tests/test_api_pdf.py"],
+      "forbidden_scope": ["app/jobs.py", "app/services/worker.py", "app/services/pdf_export.py", "app/services/pdflib_shim.py", "app/services/labels.py", "app/services/export.py", "tests/test_export.py"],
+      "touched_layers": ["api", "e2e"],
+      "inputs": ["contract C1 (own spec)", "contract C2 (JobStore API, consumed as a frozen stub)", "app/api.py (existing pattern + handle_export_csv to preserve)", "app/queries.py (report existence check + customer id, read-only)", "app/models.py (read-only, one hop from app/queries.py per the snapshot import graph — data shape only)"],
+      "outputs": ["app/api.py (amended)", "tests/test_api_pdf.py"],
+      "downstream_consumers": ["T05"],
+      "split_rationale": "the API closure is one file plus two frozen contracts; nothing below the api layer needs to be read (C2 is stubbed), so this is a clean single-file, single-layer leaf that runs fully parallel to T01-T03."
+    }
+  ]
+}

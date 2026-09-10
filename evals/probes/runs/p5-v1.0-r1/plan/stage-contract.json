@@ -1,0 +1,160 @@
+{
+  "schema": "planning/stage-contract@2",
+  "stage_id": "pdf-export",
+  "objective": "Add an async monthly PDF export of a customer's reports: POST enqueues an export job, the client polls GET /jobs/{id} and downloads the finished PDF, rendered from the existing report queries with EN/DE labels.",
+  "in_scope": [
+    "POST /reports/{id}/export-pdf endpoint that enqueues an export job and returns immediately",
+    "in-process async job infrastructure (job store + worker) with GET /jobs/{id} status polling",
+    "GET /jobs/{id}/download returning the finished PDF",
+    "PDF rendering: one page per report, via the vendored pdflib_shim module",
+    "i18n label tables for EN and DE selected by a lang field (default en)",
+    "vendoring pdflib_shim as a real code artifact"
+  ],
+  "out_of_scope": [
+    { "item": "email delivery of the exported PDF", "reason": "explicitly excluded by the task; no mail infrastructure exists in the repo" },
+    { "item": "report editing / creation (only export of existing reports)", "reason": "explicitly excluded by the task; models.py data is read-only fixture data" },
+    { "item": "historical archive or retention policy for old exports", "reason": "explicitly excluded by the task; no persistence layer exists to back an archive" },
+    { "item": "refactoring the existing CSV export", "reason": "works and is covered by tests; touching it adds risk with no task value" }
+  ],
+  "frozen_assumptions": [
+    {
+      "id": "A-IN-PROCESS",
+      "statement": "an in-process background worker (thread) over an in-memory job store is sufficient for this service's scale; no external queue or persistence is required for job state",
+      "rationale": "the repo has no persistence layer at all (models.py is in-memory fixture data) and the platform notes say in-process is acceptable at this scale"
+    },
+    {
+      "id": "A-SHIM-VENDOR",
+      "statement": "the platform team's pdflib_shim (a ~40-line wrapper) is available to vendor into the repo and exposes a minimal document API (open/append text/close or equivalent) sufficient for one-page-per-report output",
+      "rationale": "README platform notes designate it as the PDF path; stdlib cannot render PDFs"
+    },
+    {
+      "id": "A-STD-ONLY",
+      "statement": "Python 3.11 stdlib only; no new third-party dependencies",
+      "rationale": "README platform notes; tests use plain unittest"
+    }
+  ],
+  "frozen_architecture": [
+    {
+      "id": "DA-JOB-MODEL",
+      "decision": "jobs are records in an in-memory job store ({job_id, report_id, lang, status, created_at, error, pdf_ref}); a single worker loop picks queued jobs, renders the PDF, and marks done/failed; PDF bytes held in memory under pdf_ref (job id)",
+      "rationale": "matches DA of in-process async at fixture scale; keeps the worker, renderer, and API tasks parallel against one frozen record shape",
+      "seams_affected": ["S1", "S2"]
+    },
+    {
+      "id": "DA-QUERY-REUSE",
+      "decision": "all report data for PDF rendering is fetched through app/queries.py (report_with_rows / reports_for_customer); no other code path reads _REPORTS or get_report directly for content",
+      "rationale": "task requirement 1 + queries.py docstring ('the ONLY place report rows are fetched')",
+      "seams_affected": ["S2"]
+    }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf body {lang?: 'en'|'de'} -> 202 {job_id}; 404 {error} for unknown report; 400 {error} for lang not in {en,de}. GET /jobs/{job_id} -> 200 {job_id, status: 'queued'|'running'|'done'|'failed', created_at: int, error: string|null}; 404 {error} for unknown job. GET /jobs/{job_id}/download -> 200 with the raw PDF bytes as the response body (the bytes start with b'%PDF'; content-type application/pdf) when status is done; 409 {error: 'job not done'} while status is queued or running; 404 {error} for unknown job.",
+      "logical_owner": "api",
+      "frozen": true,
+      "unfreeze_rule": "only via contract change request; the polling client is the consumer"
+    },
+    {
+      "id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "logical_owner": "runtime (job store)",
+      "frozen": true,
+      "unfreeze_rule": "additive-only; worker and API both consume it"
+    },
+    {
+      "id": "C3",
+      "kind": "service",
+      "spec": "render_report_pdf(customer_id: str, lang: str) -> bytes — renders one PDF page per report of the customer, fetching report data exclusively via app/queries.py, labels from the C4 label tables for the given lang; returns a non-empty byte string starting with b'%PDF'.",
+      "logical_owner": "service (pdf renderer)",
+      "frozen": true,
+      "unfreeze_rule": "signature frozen; internals free"
+    },
+    {
+      "id": "C4",
+      "kind": "data",
+      "spec": "label tables for pdf generation: LABELS = {'en': {customer, period, title, metric, value}, 'de': {Kunde, Periode, Titel, Kennzahl, Wert}} — exact key set {customer, period, title, metric, value}; renderer must not hardcode label strings outside these tables.",
+      "logical_owner": "service (i18n labels)",
+      "frozen": true,
+      "unfreeze_rule": "adding a language is additive; changing existing keys is a contract revision"
+    },
+    {
+      "id": "C5",
+      "kind": "api",
+      "spec": "vendored pdflib_shim module at app/services/pdflib_shim.py exposing: open() -> doc, doc.add_page(), doc.add_text(x, y, text, size=10), doc.save() -> bytes — a ~40-line pure-stdlib wrapper producing a minimal valid PDF (header %PDF-1.4, pages, xref, trailer).",
+      "logical_owner": "service (pdf shim)",
+      "frozen": true,
+      "unfreeze_rule": "frozen; the renderer (C3) is its only consumer"
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "api <-> job store: the POST handler creates a job via JobStore.create, polling reads JobStore.get; the worker consumes next_queued",
+      "participants": ["api", "runtime (job store)"],
+      "contract_ids": ["C1", "C2"]
+    },
+    {
+      "id": "S2",
+      "description": "worker <-> renderer: the worker fetches nothing itself — it calls render_report_pdf(job.customer_id, job.lang) from the job record and stores the returned bytes via mark_done",
+      "participants": ["runtime (worker)", "service (pdf renderer)"],
+      "contract_ids": ["C2", "C3", "C4"]
+    },
+    {
+      "id": "S3",
+      "description": "renderer <-> pdflib_shim: the renderer drives the shim's doc API (open/add_page/add_text/save) and consumes only bytes out",
+      "participants": ["service (pdf renderer)", "service (pdf shim)"],
+      "contract_ids": ["C3", "C5"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "enqueue -> poll -> download happy path: POST enqueues a job for an existing report, status transitions queued -> done, download returns a PDF",
+      "positive_case": "POST /reports/r1/export-pdf -> 202 {job_id}; GET /jobs/{job_id} polled in a bounded loop -> status 'done'; GET /jobs/{job_id}/download -> 200 with pdf bytes starting b'%PDF'",
+      "negative_case": "GET /jobs/nope -> 404; GET /jobs/{job_id}/download while status != done -> 409",
+      "failure_behavior": "renderer exception -> job marked failed with error message; polling shows status 'failed'; enqueue of unknown report -> 404 without creating a job",
+      "evidence": "tests/test_pdf_export.py::test_enqueue_poll_download"
+    },
+    {
+      "id": "A2",
+      "description": "i18n: PDF labels follow the requested lang (default en); a request without lang returns the English label set",
+      "positive_case": "export with lang='de' produces a PDF whose pages contain the German label strings from C4 (Kunde/Periode/Titel/Kennzahl/Wert); no lang produces the English set",
+      "negative_case": "lang='fr' is rejected with status 400 at enqueue; no silent fallback",
+      "failure_behavior": "unknown lang never reaches the renderer (the API returns 400 per C1)",
+      "evidence": "tests/test_pdf_export.py::test_lang_de_labels and ::test_unknown_lang_rejected"
+    },
+    {
+      "id": "A3",
+      "description": "one page per report: a customer with N reports yields N pages in the PDF (the test counts page objects in the saved bytes)",
+      "positive_case": "customer c1 (2 reports) -> the saved PDF contains 2 page objects (counted in the shim output or via a /Count or page marker in the bytes)",
+      "negative_case": "customer with 0 reports -> status 404 at enqueue (nothing to export)",
+      "failure_behavior": "n/a — page count is a render property; the test asserts it, it is not a failure mode",
+      "evidence": "tests/test_pdf_export.py::test_one_page_per_report"
+    },
+    {
+      "id": "A4",
+      "description": "existing behavior preserved: the CSV export stays green (its test file tests/test_export.py passes alongside the new suite)",
+      "positive_case": "python -m unittest discover tests -q -> all existing CSV test-file cases pass alongside the new suite",
+      "negative_case": "no existing endpoint returns a changed shape (handle_export_csv response dict unchanged)",
+      "failure_behavior": "n/a — covered by the positive-case suite run (status 0)",
+      "evidence": "python -m unittest discover tests -q (full suite)"
+    }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "Python 3.11 stdlib only; no new third-party imports (pdflib_shim is vendored in-repo, not installed)" },
+    { "kind": "process", "rule": "report data for rendering must flow through app/queries.py only (task requirement 1)" },
+    { "kind": "style", "rule": "handlers stay framework-agnostic (path_params, body dicts) like the existing api.py" },
+    { "kind": "resource", "rule": "worker must not block the API: enqueue returns before rendering starts (in-process thread or deferred tick)" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "45m",
+    "leaf_p80_max": "90m",
+    "max_compactions_per_leaf": 1,
+    "stage_estimate": "6-8 dev-hours (5 leaves + integration, 2-3 parallel tracks)"
+  },
+  "allowed_replan": ["split", "reorder", "change_dependency", "defer", "merge", "checkpoint_and_split", "reduce_scope"],
+  "open_questions": []
+}

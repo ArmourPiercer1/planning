@@ -1,0 +1,71 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement the tamper-evident chain core in a new app/audit.py: entry hashing per C1 (sha256 over canonical JSON of {id, prev_entry_hash}, GENESIS marker), and a verify() function that takes a list of stored items (oldest-first), recomputes every entry_hash, checks every link (entry[i].prev_entry_hash == entry[i-1].entry_hash), and returns a structured result {status: 'ok'|'broken'|'unanchored_head', first_broken_link, head: {event_id, anchored}} without raising on broken chains. Unit tests in tests/test_audit_core.py cover: unmodified chain verifies anchored at GENESIS; a rewritten middle entry is detected at its link; a mid-removed entry is detected at the dangling link.",
+      "required_context": {
+        "files": [],
+        "contracts": ["C1"],
+        "concepts": [
+          "sha256 over canonical JSON (json.dumps(obj, sort_keys=True, separators=(',', ':')))",
+          "hash-chain link invariant (prev pointer of entry i equals entry_hash of entry i-1)",
+          "genesis anchoring and the unanchored-head state after overwrite (A1/A2 semantics)"
+        ]
+      },
+      "owned_paths": ["app/audit.py", "tests/test_audit_core.py"],
+      "forbidden_scope": [
+        "app/events.py (T02's closure; the chain core must not know about EventAPI)",
+        "app/storage.py (frozen by platform constraint; no changes)",
+        "tests/test_events.py (pre-existing suite; regression belongs to the integration task)"
+      ],
+      "touched_layers": ["service", "e2e"],
+      "inputs": [
+        "contract C1 (audit entry shape + exact hash spec + GENESIS marker)",
+        "acceptance A1 (verification semantics: ok/broken/unanchored_head)"
+      ],
+      "outputs": [
+        "app/audit.py — hashing + verify module per C1 (pure functions over entry lists; no EventAPI or RingBuffer dependency)",
+        "tests/test_audit_core.py — link-integrity, rewrite-detection, mid-truncation-detection tests"
+      ],
+      "downstream_consumers": ["T02"],
+      "split_rationale": "Pure chain-logic closure: one new module plus its unit tests, zero existing files touched; cut from the API work at the frozen C1 interface so T02 integrates against a stable, independently testable core instead of re-deriving the hashing rules mid-task."
+    },
+    {
+      "id": "T02",
+      "objective": "Integrate the audit chain into the existing EventAPI in app/events.py: post_event reads the buffer's current newest item, computes prev_entry_hash (GENESIS for the first ever item) and entry_hash via app/audit.py per C1, and stores both fields inside the event item appended to the RingBuffer; add the GET /events?audit=true handler per C3 (returns {'audit_chain': [{event_id, prev_entry_hash, entry_hash}, ...]} in storage order, [] when empty); strip prev_entry_hash/entry_hash from every C2 response (list_events output) so the frozen response shape stays byte-exact; API-level tests in tests/test_audit.py cover the audit query shape and the no-audit-leak guarantee on C2 responses.",
+      "required_context": {
+        "files": [
+          "app/events.py",
+          "app/storage.py",
+          "app/audit.py (new — T01's module, consumed via the C1 interface)",
+          "tests/test_events.py"
+        ],
+        "contracts": ["C1", "C2", "C3"],
+        "concepts": [
+          "RingBuffer.read_all() ordering (oldest surviving first; wraps at capacity)",
+          "frozen-response discipline: audit fields stored but stripped at the API boundary (C2)",
+          "chain append = read newest item -> hash per C1 -> append extended item"
+        ]
+      },
+      "owned_paths": ["app/events.py", "tests/test_audit.py"],
+      "forbidden_scope": [
+        "app/audit.py (T01's closure — consume its interface, never modify it)",
+        "app/storage.py (frozen by platform constraint; no changes, no second store)",
+        "tests/test_audit_core.py (T01's closure)",
+        "tests/test_events.py (pre-existing — read for regression shape, never modify or weaken)"
+      ],
+      "touched_layers": ["service", "e2e"],
+      "inputs": [
+        "contracts C1/C2/C3 (entry shape, frozen API surface, audit query shape)",
+        "T01's app/audit.py interface (frozen by C1)"
+      ],
+      "outputs": [
+        "app/events.py — chain append in post_event, audit=true query handler, C2 response stripping",
+        "tests/test_audit.py — audit query shape + no-audit-field-leak tests"
+      ],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "Existing-API closure: the only task that touches the frozen-surface file app/events.py and must hold the C2 byte-exact discipline; split from T01 because contract-sensitive integration of one existing file is a different context from the pure hashing module, and the two meet at the frozen C1 seam."
+    }
+  ]
+}

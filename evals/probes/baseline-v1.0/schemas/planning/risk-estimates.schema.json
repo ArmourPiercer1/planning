@@ -1,0 +1,46 @@
+{
+  "$id": "planning/risk-estimates@1",
+  "title": "Per-task structured risk estimates (heuristic, no fake precision)",
+  "type": "object",
+  "required": ["schema", "tasks"],
+  "properties": {
+    "schema": { "const": "planning/risk-estimates@1" },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "task_id", "context_footprint", "touched_layers", "cross_contracts",
+          "statefulness", "integration_distance", "uncertainty", "p50", "p80",
+          "compaction_risk", "warnings", "oversized_justification"
+        ],
+        "properties": {
+          "task_id": { "type": "string", "pattern": "^T[0-9]{2,}$" },
+          "context_footprint": { "enum": ["S", "M", "L", "XL"] },
+          "touched_layers": { "type": "array", "items": { "type": "string" } },
+          "cross_contracts": { "type": "integer", "minimum": 0 },
+          "statefulness": { "enum": ["low", "medium", "high"] },
+          "integration_distance": { "enum": ["low", "medium", "high"] },
+          "uncertainty": { "enum": ["low", "medium", "high"] },
+          "p50": { "type": "string" },
+          "p80": { "type": "string" },
+          "compaction_risk": { "enum": ["low", "medium", "high"] },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["code", "detail", "rationale"],
+              "properties": {
+                "code": { "type": "string" },
+                "detail": { "type": "string" },
+                "rationale": { "type": "string" }
+              }
+            }
+          },
+          "oversized_justification": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

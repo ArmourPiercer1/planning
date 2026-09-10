@@ -1,0 +1,103 @@
+{
+  "schema": "planning/stage-contract@3",
+  "stage_id": "stage-2",
+  "objective": "Send a webhook notification when a todo is marked done via POST /todos/{id}/done, reusing the existing fire-and-forget webhook infra (app/webhooks.py), with customer webhook URL registration — without changing the frozen stage-1 API shape (C1) or breaking the done transition.",
+  "in_scope": [
+    "webhook URL registration: additive optional webhook_url field on the todo record (C2 additive per its unfreeze rule) set at todo creation",
+    "done -> webhook dispatch: marking a todo done sends exactly one webhook to the registered URL with a deterministic payload, via the existing WebhookDispatcher",
+    "failure tolerance: webhook send failure (or missing URL) never breaks the done transition — POST /todos/{id}/done still returns 200 and the todo is done",
+    "tests: new notification suite + the frozen stage-1 suite stays green with the C1 response key set unchanged"
+  ],
+  "out_of_scope": [
+    { "item": "last_notified_at timestamp in the GET /todos response (product ticket note)", "reason": "would change the frozen C1 api contract (stage 1, exact per-todo key set). C1's unfreeze rule allows change only via a formal contract change request with sign-off — a product ticket note is input to that request, not the request itself. The decision is recorded as open question Q1 with owner user; if approved, C1 is revised (request_contract_revision) and the field is planned as a follow-on stage. It is NOT absorbed into this stage." },
+    { "item": "multi-user auth / per-user todo isolation", "reason": "carried over from stage 1 out-of-scope; not part of this engagement" },
+    { "item": "bulk operations (delete-all, mark-all)", "reason": "carried over from stage 1 out-of-scope; no request" },
+    { "item": "webhook retry, delivery history, or per-webhook management endpoints", "reason": "the existing dispatcher is fire-and-forget by design; management surface is a separate future stage with its own contract work" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "the service runs single-process with the in-memory store; no persistence layer is involved", "rationale": "carried over from stage 1 (verified there); store.py still holds everything in memory" },
+    { "id": "A-2", "statement": "WebhookDispatcher.send never raises: the fixture records and returns a status; the real deployment logs and swallows failures by design, so a send failure cannot propagate into the done transition", "rationale": "app/webhooks.py docstring + README platform notes; if a deployment ever made send() raise, DA-2's try/except boundary still protects the transition" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "TodoAPI is the only writer to the store; handlers never mutate store state directly", "rationale": "carried over from stage 1", "seams_affected": ["S1"] },
+    { "id": "DA-2", "decision": "the webhook dispatch happens inside mark_done, strictly after the store mutation, through the existing WebhookDispatcher, wrapped so that any exception is caught and logged and never propagates to the caller", "rationale": "notification is best-effort per the task's hard requirement (failure must not break the done transition) and the infra's fire-and-forget design; no new worker/queue layer is introduced", "seams_affected": ["S2"] }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "api",
+      "spec": "GET /todos response: {todos: [{id: string, title: string, done: boolean, tag?: string}]} — exactly these keys per todo, in creation order; 400 {error} on malformed filter params",
+      "logical_owner": "todo API layer (app/api.py)",
+      "frozen": true,
+      "unfreeze_rule": "only via a contract change request with product sign-off; external clients depend on the exact key set"
+    },
+    {
+      "id": "C2",
+      "kind": "data",
+      "spec": "todo record shape in store: {id: 't<n>', title: string, done: boolean, tag?: string, webhook_url?: string}; creation order preserved. Stage-2 additive: webhook_url (optional string) added per C2's unfreeze rule (additive-only; stage 2 proposes it in writing in this contract). last_notified_at is intentionally NOT added — it ships only if/when C1 is revised (see Q1).",
+      "logical_owner": "todo store (app/store.py)",
+      "frozen": true,
+      "unfreeze_rule": "additive-only until stage 2 proposes otherwise in writing"
+    },
+    {
+      "id": "C3",
+      "kind": "service",
+      "spec": "done-notification contract: on a successful mark_done (todo exists, transition applied), exactly one webhook is dispatched to the todo's webhook_url with payload {event: 'todo.done', todo_id: string, title: string, at: ISO-8601 timestamp}; if webhook_url is absent, exactly zero dispatches. Dispatch never affects the HTTP result: POST /todos/{id}/done returns 200 {id, done: true} (404 for unknown id) regardless of dispatch outcome, and a dispatch exception is caught+logged, never raised",
+      "logical_owner": "done-notification path (app/api.py mark_done over app/webhooks.py)",
+      "frozen": true,
+      "unfreeze_rule": "payload shape may grow additively in a later stage only via a contract change request"
+    }
+  ],
+  "integration_seams": [
+    { "id": "S1", "description": "handler -> store boundary: every read/write goes through TodoStore methods", "participants": ["api", "persistence"], "contract_ids": ["C1", "C2"] },
+    { "id": "S2", "description": "mark_done -> webhook dispatch boundary: the API handler calls WebhookDispatcher.send exactly once per successful transition, after the store mutation, inside a no-escape exception boundary", "participants": ["api", "service"], "contract_ids": ["C3"] }
+  ],
+  "acceptance": [
+    { "id": "A1", "description": "marking a todo with a registered webhook_url done dispatches exactly one webhook with the C3 payload and returns 200", "positive_case": "create todo with webhook_url='https://hooks.example/cb'; mark done -> WebhookLog.sent has exactly 1 entry {url: 'https://hooks.example/cb', payload: {event: 'todo.done', todo_id, title, at}} and response is 200 {id, done: true}", "negative_case": "marking the same todo done again is a no-op state-wise but still returns 200 (idempotent transition)", "failure_behavior": "if the dispatcher is replaced by one that raises, the response is still 200, the todo is done, and the exception is swallowed (asserted, not inferred)", "evidence": "tests/test_notifications.py::test_done_dispatches_one_webhook" },
+    { "id": "A2", "description": "a todo without webhook_url is marked done with zero dispatches and status 200 (the test asserts an empty WebhookLog.sent)", "positive_case": "create todo without webhook_url; mark done -> WebhookLog.sent stays empty, response status 200 {id, done: true}", "negative_case": "no implicit default URL and no error status: the API returns 200 and the test asserts no 400 and no default dispatch", "failure_behavior": "missing webhook_url is a valid record state, not an error: the API returns 200 and the test asserts no dispatch was logged", "evidence": "tests/test_notifications.py::test_done_without_url_dispatches_nothing" },
+    { "id": "A3", "description": "the done transition survives a raising dispatcher (failure tolerance, hard requirement): the handler catches the exception and still returns 200", "positive_case": "TodoAPI wired to a dispatcher whose send() raises RuntimeError; mark done -> response status 200, the store record shows done=true, no exception reaches the caller", "negative_case": "no half-state: the store record is done=true even when the send failed (asserted, not inferred)", "failure_behavior": "the exception raised by the dispatcher is caught at the DA-2 boundary, logged, and the transition is intact: response status stays 200", "evidence": "tests/test_notifications.py::test_done_survives_raising_dispatcher" },
+    { "id": "A4", "description": "the frozen C1 response shape is unchanged by stage 2 (no last_notified_at): the test asserts the exact per-todo key set", "positive_case": "after stage-2 work, GET /todos per-todo keys are exactly {id, title, done} (+tag when set) — asserted by the unmodified stage-1 frozen suite test tests/test_api.py::test_create_and_list_shape", "negative_case": "no last_notified_at key appears in any todo of the GET /todos response (the test asserts its absence)", "failure_behavior": "an added key fails the frozen suite's exact-key-set assertion — the test suite is the canary", "evidence": "tests/test_api.py::test_create_and_list_shape (unmodified) + tests/test_notifications.py::test_get_todos_key_set_unchanged" }
+  ],
+  "constraints": [
+    { "kind": "dependency", "rule": "stdlib only; no new third-party imports" },
+    { "kind": "dependency", "rule": "the existing WebhookDispatcher (app/webhooks.py) must be reused as the dispatch seam — no new HTTP client, worker, or queue introduced" },
+    { "kind": "style", "rule": "handlers stay framework-agnostic (path_params, body dicts)" },
+    { "kind": "process", "rule": "the stage-1 frozen suite tests/test_api.py must pass unmodified; the stage-1 out-of-scope list remains in force" }
+  ],
+  "resource_budget": { "leaf_p50": "40m", "leaf_p80_max": "75m", "max_compactions_per_leaf": 1, "stage_estimate": "3h" },
+  "allowed_replan": ["split", "reorder", "defer", "reduce_scope", "request_contract_revision"],
+  "open_questions": [
+    {
+      "id": "Q1",
+      "question": "Does the product ticket note for last_notified_at in GET /todos constitute the formal C1 contract change request (with sign-off) that C1's unfreeze rule requires? If yes: revise C1 via request_contract_revision and plan the response field as a follow-on stage. If no: keep C1 frozen as-is and close the product request. Recorded as non-blocking: the rest of stage 2 (webhook dispatch + registration) is independent of this decision and can execute while the user decides.",
+      "blocking": false,
+      "owner": "user",
+      "resolution": ""
+    }
+  ],
+  "delivery_profile": { "level": "alpha" },
+  "planning_budget": { "max_full_audits": 2, "max_plan_revisions": 3, "max_planning_subagents": 5 },
+  "horizons": {
+    "commitment": { "tasks": ["T01"] },
+    "detailed_stage": { "objective": "webhook dispatch on todo completion with URL registration, C1 untouched", "tasks": ["T01", "T02", "T03"] },
+    "forecast": {
+      "stages": [
+        {
+          "objective": "follow-on stage (conditional): expose last_notified_at in GET /todos per todo",
+          "depends_on_evidence": ["user decision on Q1 (C1 contract change request + sign-off)", "C1 revised to include the additive field"]
+        }
+      ]
+    }
+  },
+  "stage_boundary": {
+    "stop_after": ["T03"],
+    "because": "after T03 the notification path is acceptance-verifiable end to end (frozen stage-1 suite + new notification suite green, C1 key set asserted unchanged); the C1 response-shape question is a contract decision owned by the user, not an evidence gate, so it does not stretch this stage",
+    "expected_new_evidence": ["notification suite green under the frozen suite", "dispatcher-failure tolerance asserted by test, not inferred"],
+    "decisions_deferred_until_then": ["Q1: C1 change sign-off decision", "webhook management surface (retry/history/endpoints)"]
+  },
+  "next_planning_trigger": {
+    "normal": ["stage_acceptance_reached"],
+    "early": ["frozen_assumption_falsified", "core_seam_blocker"],
+    "not_triggers": ["first_worker_failure", "mechanical_merge_conflict"]
+  }
+}

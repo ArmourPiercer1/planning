@@ -1,0 +1,100 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement an in-process job store with state machine (pending -> running -> done | failed) and a background-thread worker that picks up pending jobs, per contract C1",
+      "required_context": {
+        "files": [
+          "app/models.py",
+          "app/services/jobstore.py (new)"
+        ],
+        "contracts": ["C1"],
+        "concepts": ["dataclass patterns", "threading", "state machine transitions"]
+      },
+      "owned_paths": [
+        "app/services/jobstore.py",
+        "tests/test_jobstore.py"
+      ],
+      "forbidden_scope": [
+        "app/api.py",
+        "app/queries.py",
+        "app/models.py",
+        "app/services/export.py",
+        "tests/test_export.py"
+      ],
+      "touched_layers": ["runtime", "service"],
+      "inputs": ["C1 job store interface spec"],
+      "outputs": ["app/services/jobstore.py (JobStore class + worker thread)", "tests/test_jobstore.py (unit tests for state transitions and worker)"],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "Job store + worker is a single closure: the state machine and the worker that drives it are inseparable (the worker IS the state transition mechanism), and both live in one file with one test file"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the PDF export service (one page per report via pdflib_shim), the i18n label module (EN/DE), and vendor the pdflib_shim module, per contract C2",
+      "required_context": {
+        "files": [
+          "app/queries.py",
+          "app/models.py",
+          "app/services/pdf_export.py (new)",
+          "app/services/i18n.py (new)",
+          "app/services/pdflib_shim.py (new)"
+        ],
+        "contracts": ["C2"],
+        "concepts": ["PDF rendering via shim", "report data structure from queries.report_with_rows", "i18n label lookup"]
+      },
+      "owned_paths": [
+        "app/services/pdf_export.py",
+        "app/services/i18n.py",
+        "app/services/pdflib_shim.py",
+        "tests/test_pdf_export.py"
+      ],
+      "forbidden_scope": [
+        "app/api.py",
+        "app/services/export.py",
+        "app/services/jobstore.py",
+        "tests/test_export.py",
+        "tests/test_jobstore.py"
+      ],
+      "touched_layers": ["service"],
+      "inputs": ["C2 PDF export service spec", "app/queries.py (report data source)"],
+      "outputs": ["app/services/pdf_export.py (PdfExportService)", "app/services/i18n.py (EN/DE labels)", "app/services/pdflib_shim.py (vendored 40-line wrapper)", "tests/test_pdf_export.py (unit tests for PDF generation and i18n)"],
+      "downstream_consumers": ["T01"],
+      "split_rationale": "PDF export + i18n + shim vendoring is one closure: the export service depends on the shim and i18n labels, all three are in the same service layer, and the shim is a 40-line wrapper tightly coupled to the export logic"
+    },
+    {
+      "id": "T03",
+      "objective": "Add three PDF export API endpoints (POST /reports/{id}/export-pdf, GET /jobs/{id}, GET /jobs/{id}/download) to app/api.py, per contract C3, using the job store from T01",
+      "required_context": {
+        "files": [
+          "app/api.py",
+          "app/queries.py",
+          "app/models.py",
+          "app/services/jobstore.py (new)",
+          "tests/test_api_pdf.py (new)"
+        ],
+        "contracts": ["C1", "C3"],
+        "concepts": ["handler function pattern from existing api.py", "job store create/get/download interface", "HTTP status codes (202, 404, 409)"]
+      },
+      "owned_paths": [
+        "app/api.py",
+        "tests/test_api_pdf.py"
+      ],
+      "forbidden_scope": [
+        "app/services/export.py",
+        "app/services/pdf_export.py",
+        "app/services/jobstore.py",
+        "app/services/i18n.py",
+        "app/models.py",
+        "tests/test_export.py",
+        "tests/test_jobstore.py",
+        "tests/test_pdf_export.py"
+      ],
+      "touched_layers": ["api"],
+      "inputs": ["C3 API contract", "C1 job store interface (from T01)"],
+      "outputs": ["app/api.py (3 new handler functions added)", "tests/test_api_pdf.py (unit tests for all 3 endpoints)"],
+      "downstream_consumers": [],
+      "split_rationale": "API endpoints are a single closure in the api layer: all three endpoints share the same handler pattern and job store dependency, and they all modify the same file (app/api.py)"
+    }
+  ]
+}

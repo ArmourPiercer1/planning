@@ -1,0 +1,147 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T02",
+  "objective": "Integrate the audit chain into the existing EventAPI in app/events.py: post_event reads the buffer's current newest item, computes prev_entry_hash (GENESIS for the first item) and entry_hash via app/audit.py per C1, and appends {id, **payload, prev_entry_hash, entry_hash} to the RingBuffer; add GET /events?audit=true per C3 returning {'audit_chain': [{event_id, prev_entry_hash, entry_hash}, ...]} in storage order ([] when empty); strip prev_entry_hash/entry_hash at the API boundary so every C2 response (POST /events, GET /events?since=) stays byte-exact in shape; observable outcome: tests/test_audit.py passes (audit query shape + no audit-field leak in C2) and the pre-existing tests/test_events.py stays green unmodified.",
+  "required_context": {
+    "files": [
+      "app/events.py",
+      "app/storage.py",
+      "app/audit.py (new — T01's module, consumed via the C1 interface)",
+      "tests/test_events.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "concepts": [
+      "RingBuffer.read_all() ordering: oldest surviving item first; buffer wraps at capacity (oldest overwritten)",
+      "frozen-response discipline: audit fields are stored in the buffer but stripped at the API boundary — C2 shapes are byte-exact invariants",
+      "chain append = read newest item (if any) -> prev = GENESIS or that item's entry_hash -> hash per C1 -> append extended item"
+    ]
+  },
+  "inputs": [
+    "T01's completed app/audit.py (C1-conformant hashing + verify)",
+    "contracts C1/C2/C3 (full specs inlined in frozen_contracts)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "data",
+      "spec": "Audit entry data stored inside each event item in the RingBuffer: the stored item is {id: 'e<n>', <event payload fields>, prev_entry_hash: str, entry_hash: str} where prev_entry_hash = entry_hash of the previously appended item (or GENESIS = sha256(b'genesis').hexdigest() for the first item ever appended) and entry_hash = sha256(canonical_json({id, prev_entry_hash})).hexdigest() with canonical_json = json.dumps(obj, sort_keys=True, separators=(',', ':')). Chain order = RingBuffer storage order (oldest surviving first). The API layer never exposes prev_entry_hash/entry_hash outside the C3 query.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:bce13d995b06364d379cd863eac77d32eeb1ea5b7fe92ea4bf30af19146ab84d"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "api",
+      "spec": "FROZEN, unchanged: POST /events -> 201 {'id': 'e<n>'}; GET /events?since=<id> -> 200 {'events': [...]} where each item has EXACTLY the keys the client posted plus 'id' (audit fields stripped at the API boundary — no prev_entry_hash/entry_hash in the response); unknown since id -> 404 {'error': 'unknown since id: <id>'}. Existing tests in tests/test_events.py stay green against this contract.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:addac9f29b3bb8878347596dc03e612b8f4a525c19497a0c4d486ea575113753"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "api",
+      "spec": "New: GET /events?audit=true -> 200 {'audit_chain': [{'event_id': str, 'prev_entry_hash': str, 'entry_hash': str}, ...]} in storage order (oldest surviving first); empty buffer -> 200 {'audit_chain': []}. This is the only API surface that exposes audit fields.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:ac412703555ec8ae18b5ddec3349350d72e0d22ec35da8d38d101d6b2a3fca09"
+    }
+  ],
+  "owned_paths": [
+    "app/events.py",
+    "tests/test_audit.py"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "app/audit.py — C1-conformant hash functions and verify(); consume by import, never modify"
+    }
+  ],
+  "non_goals": [
+    "No changes to app/storage.py (platform-frozen: exactly one 1024-slot overwriting ring, no second store, no change this release cycle)",
+    "No changes to app/audit.py (T01-owned; suspected defects go to T03's owns_fixes_for route)",
+    "No changes or weakening of tests/test_events.py — it must remain green exactly as written",
+    "No external reporting/export, no file persistence, no hashing performance work"
+  ],
+  "implementation_constraints": [
+    "Append path: items = store.read_all(); newest = items[-1] if items else None; prev = GENESIS if newest is None else newest['entry_hash']; extended item = {'id': eid, **payload, 'prev_entry_hash': prev, 'entry_hash': hash per C1}; store.append(extended item) — event retention stays 1024 (no parallel stream)",
+    "Strip audit fields at the API boundary in every C2 response: POST /events returns exactly (201, {'id': eid}); each item in GET /events?since= output is the payload keys + 'id' only — 'prev_entry_hash'/'entry_hash' must never appear",
+    "GET /events?audit=true: 200 {'audit_chain': [{event_id, prev_entry_hash, entry_hash}, ...]} in storage order; {'audit_chain': []} when empty",
+    "The audit parameter is meaningful only on the read path (C3 is the only surface exposing audit fields): POST /events behavior is unchanged whether or not the audit parameter is present — the frozen 201 {'id': eid}; do not invent a new error response for that case",
+    "keep EventAPI's existing call compatibility: post_event(payload) and list_events(since) behave exactly as before for existing callers",
+    "pure stdlib; no new dependencies; touch no files outside owned_paths"
+  ],
+  "deliverables": [
+    {
+      "what": "EventAPI with chain append in post_event, audit=true query handler, and C2 response stripping",
+      "where": "app/events.py"
+    },
+    {
+      "what": "API-level tests: audit query shape, no audit-field leak in C2 responses",
+      "where": "tests/test_audit.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT-02-1",
+      "case": "positive",
+      "description": "After two posts, GET /events?audit=true returns {'audit_chain': [2 entries in storage order]} whose fields match the stored items, and verify() over those items returns status 'ok'",
+      "evidence": "python -m unittest tests.test_audit.test_audit_query_shape -v → 1 test passes, exit code 0"
+    },
+    {
+      "id": "AT-02-2",
+      "case": "negative",
+      "description": "After posts, every item in GET /events?since= responses has exactly the posted keys + 'id' — 'prev_entry_hash' and 'entry_hash' are absent (C2 byte-exact); GET /events?since=unknown-id returns 404 {'error': 'unknown since id: unknown-id'} unchanged",
+      "evidence": "python -m unittest tests.test_audit.test_no_audit_leak_in_c2 -v → 1 test passes, exit code 0"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "first event ever (empty buffer)",
+      "expected_behavior": "the first appended item stores prev_entry_hash = GENESIS, so verify() returns head anchored=true"
+    },
+    {
+      "scenario": "POST /events with the audit parameter present",
+      "expected_behavior": "the POST returns 201 {'id': eid} unchanged — audit is read-only per C3; the contracts define no error shape for this case and none is invented"
+    },
+    {
+      "scenario": "GET /events?audit=true on an empty buffer",
+      "expected_behavior": "returns 200 {'audit_chain': []}"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [
+      "T01: app/audit.py (hashing + verify)"
+    ],
+    "consumers": [
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T02.json",
+    "downstream_consumers": [
+      "T03"
+    ],
+    "notes": "T03 verifies this seam end-to-end: the audit query must present items in storage order (read_all() order), C2 stripping happens at the boundary, and the append path maintains the C1 link invariant across wraps. The pre-existing tests/test_events.py suite must stay green unmodified — that regression is T02's own responsibility before handoff. If a seam defect requires touching T01's code, record it as a deviation in the checkpoint; T03 owns the fix."
+  },
+  "risk": {
+    "context_footprint": "M",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 3,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "60-90 min",
+    "p80": "90-120 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

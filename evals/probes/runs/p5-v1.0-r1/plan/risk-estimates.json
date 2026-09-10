@@ -1,0 +1,143 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["service"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "medium",
+      "uncertainty": "medium",
+      "p50": "30-60 min",
+      "p80": "60-90 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "HANDROLLED_PDF",
+          "detail": "the minimal PDF structure (page objects, xref offsets, trailer) is hand-rolled — the single most bug-prone part of this leaf",
+          "rationale": "stdlib has no PDF writer and vendoring the shim is an explicit task (A-SHIM-VENDOR); xref offset bugs are the expected failure mode, which is why AT02 counts page objects in the saved bytes"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["runtime"],
+      "cross_contracts": 2,
+      "statefulness": "medium",
+      "integration_distance": "medium",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "M",
+      "touched_layers": ["service"],
+      "cross_contracts": 3,
+      "statefulness": "low",
+      "integration_distance": "medium",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T04",
+      "context_footprint": "S",
+      "touched_layers": ["api"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "medium",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "SHARED_FILE_AMENDMENT",
+          "detail": "app/api.py is an existing shared file; the amendment must leave handle_export_csv behaviorally unchanged",
+          "rationale": "acceptance A4 requires the pre-existing CSV suite to stay green; the risk is regression, not new-code difficulty"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T05",
+      "context_footprint": "L",
+      "touched_layers": ["service", "api", "runtime"],
+      "cross_contracts": 5,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "30-60 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "CONTRACT_DENSITY",
+          "detail": "consumes all five contracts C1-C5",
+          "rationale": "inevitable for a cross-leaf consistency pass — each contract is a re-read point by construction; splitting the pass into per-contract tasks would multiply the overhead without shrinking any single closure, so it stays one read-only leaf"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T06",
+      "context_footprint": "M",
+      "touched_layers": ["service", "runtime", "api"],
+      "cross_contracts": 3,
+      "statefulness": "high",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "45-75 min",
+      "p80": "75-120 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        {
+          "code": "SPLIT_RECHECK_REQUIRED",
+          "detail": "p80 (75-120 min) can exceed the stage leaf_p80_max of 90 min",
+          "rationale": "seam defects discovered at wiring time are open-ended; if execution exceeds p80 the correct move is checkpoint_and_split around the single defect (the composition module itself is thin and stable)"
+        },
+        {
+          "code": "SEAM_FIX_RIGHTS",
+          "detail": "owns_fixes_for spans all four leaves",
+          "rationale": "fix rights are deliberately limited to seam lines and every patch is recorded as a deviation in the checkpoint, so local recoverability of the leaves is preserved"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T07",
+      "context_footprint": "M",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "30-60 min",
+      "p80": "60-120 min",
+      "compaction_risk": "medium",
+      "warnings": [
+        {
+          "code": "SPLIT_RECHECK_REQUIRED",
+          "detail": "p80 (60-120 min) can exceed the stage leaf_p80_max of 90 min",
+          "rationale": "the e2e task is not splittable in any useful way (gates share the ServiceApp fixture); if it exceeds p80 the scope to reduce is the gate count (E5 full-suite rerun can be delegated to CI), not the closure semantics"
+        },
+        {
+          "code": "TIMING_SENSITIVITY",
+          "detail": "e2e drives a real in-process worker thread",
+          "rationale": "tests use a bounded polling loop (max ~10s) instead of fixed sleeps so a slow worker fails loudly with the last observed status as evidence instead of flaking"
+        }
+      ],
+      "oversized_justification": null
+    }
+  ]
+}

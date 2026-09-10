@@ -1,0 +1,25 @@
+{
+  "schema": "planning/checkpoint@2",
+  "task_id": "T01",
+  "status": "complete",
+  "revision": { "sha": "fixture-stage1", "branch": "main" },
+  "completed": { "task_id": "T01", "summary": "tag support added to store + creation path; store remains the single writer boundary" },
+  "contracts_satisfied": ["C2"],
+  "changed_paths": ["app/store.py", "app/api.py"],
+  "tests": { "passed": ["test_create_and_list_shape"], "failed": [], "evidence": "python -m unittest tests.test_api -v -> OK" },
+  "verified_facts": [
+    "todo records now carry an optional tag field; untagged todos have no tag key (absent, not null)",
+    "TodoStore.add preserves creation order; all() returns copies"
+  ],
+  "deviations": [],
+  "newly_discovered_issues": [],
+  "blockers": [],
+  "remaining_dag": ["T02"],
+  "downstream_notes": "list_todos currently ignores filter params — T02 wires them through",
+  "verified_assumptions": [ { "assumption_id": "A1", "evidence": "single-process confirmed in deploy notes; store.py in-memory" } ],
+  "falsified_assumptions": [],
+  "unresolved": [],
+  "scope_deviations": [],
+  "budget_used": { "compactions": 0, "wall_time_seconds": 1800 },
+  "next_stage_inputs": [ { "input": "tag-ready store", "artifact": "app/store.py" } ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F02",
+      "routing": "OPTIONAL",
+      "reason": "C1 spec says 'Total max wait = 1+2+4 = 7s' but 3 attempts imply 2 sleeps (1s + 2s = 3s). Real ambiguity, but the acceptance criteria (A1-A5) test attempt count and status, not sleep sequence. The executor will implement 2 sleeps from the '3 attempts' constraint. Correcting C1 text would require re-hashing frozen_contracts in both task packages (2 artifacts). Deferred to post-execution cleanup."
+    },
+    {
+      "finding_id": "F03",
+      "routing": "OPTIONAL",
+      "reason": "Evidence commands use 'pytest' but the repo uses stdlib unittest. The executor should use 'python -m unittest' instead. Affects T01, T02, and integration-plan.json (3 artifacts). Deferred: the executor will discover the runner from the test file imports (unittest) and use the correct command."
+    },
+    {
+      "finding_id": "F04",
+      "routing": "OPTIONAL",
+      "reason": "4x VAGUE_ACCEPTANCE are heuristic false positives: the description text lacks inline evidence markers, but the adjacent 'evidence' field carries specific test names and commands. No functional change needed. Deferred as cosmetic."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 1,
+    "full_audits": 2,
+    "subagents": 1,
+    "wall_time": null,
+    "tokens": null
+  },
+  "forbidden_actions": [],
+  "reason": "Round 2 audit (revision_round 2, same auditor, bounded re-audit post-TARGETED_PATCH): F01 RESOLVED, no new findings, verdict PASS (unchanged). All remaining findings (F02, F03, F04) are MINOR/OPTIONAL and deferred. No EXECUTION_BLOCKER, no SPIKE_REQUIRED. Budget: 2/2 full audits (at limit), 1/3 plan revisions, 1/5 subagents. full_audits is now at the max — a further full audit would be forbidden, but none is needed. Proceeding to execution."
+}

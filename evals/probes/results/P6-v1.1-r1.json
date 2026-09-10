@@ -1,0 +1,55 @@
+{
+  "schema": "planning/probe-run-result@1",
+  "probe_id": "P6",
+  "version": "v1.1",
+  "run_id": "r1",
+  "planning": {
+    "audit_count": 1,
+    "revision_rounds": 0,
+    "subagent_count": 0,
+    "artifact_count": 12,
+    "task_count": 3
+  },
+  "governor": {
+    "action": "EXECUTE",
+    "spikes": [],
+    "deferred": [
+      "F01",
+      "F02",
+      "F03",
+      "Q1"
+    ],
+    "budget_exceeded": false
+  },
+  "checks": [
+    {
+      "name": "lint_clean",
+      "pass": true,
+      "detail": "0 BLOCKER finding(s) from plan-check"
+    },
+    {
+      "name": "c1_frozen_intact",
+      "pass": true,
+      "detail": "C1 spec identical to stage 1 — no drift on the frozen api shape"
+    },
+    {
+      "name": "notification_failure_policy",
+      "pass": true,
+      "detail": "the done transition must survive webhook failure (requirement in the task)"
+    },
+    {
+      "name": "webhook_infra_reused",
+      "pass": true,
+      "detail": "existing app/webhooks.py referenced=True (must be reused, not reinvented)"
+    }
+  ],
+  "score": 1.0,
+  "verdict": "PASS",
+  "evidence": [
+    {
+      "artifact": "evals\\probes\\runs\\p6-v1.1-r1\\plan/**",
+      "observation": "4/4 checks passed; lint_clean=True; c1_frozen_intact=True; notification_failure_policy=True; webhook_infra_reused=True"
+    }
+  ],
+  "baseline": null
+}

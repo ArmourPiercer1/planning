@@ -1,0 +1,61 @@
+{
+  "schema": "planning/repo-context-snapshot@1",
+  "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+  "scope_root": ".",
+  "scanned_at": "2026-09-10T12:15:36+00:00",
+  "files": [
+    {
+      "path": "app/logger.py",
+      "layer": "service",
+      "role": "Log writer used by the server.",
+      "imports": [],
+      "exports": [
+        "LogWriter"
+      ]
+    },
+    {
+      "path": "app/server.py",
+      "layer": "lifecycle",
+      "role": "Tiny request server loop (fixture: one tick = one request).",
+      "imports": [
+        "app/logger.py"
+      ],
+      "exports": [
+        "handle",
+        "serve"
+      ]
+    },
+    {
+      "path": "tests/test_log.py",
+      "layer": "e2e",
+      "role": "Log writer tests.",
+      "imports": [
+        "app/logger.py"
+      ],
+      "exports": [
+        "TestLogWriter"
+      ]
+    }
+  ],
+  "known_test_entrypoints": [
+    "tests/test_log.py"
+  ],
+  "known_shared_files": [
+    "app/logger.py"
+  ],
+  "known_todos": [],
+  "known_tech_debt": [],
+  "known_seams": [
+    "app/logger.py (imported across layers: e2e, lifecycle)"
+  ],
+  "scan_boundary": [
+    "app",
+    "tests",
+    "logs"
+  ],
+  "dependency_expansions": [],
+  "unknown_areas": [
+    "README.md",
+    "TASK.md"
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Produce app/rotation.py exposing exactly the four C1 functions and tests/test_rotation.py in which every C1/C3 behavior (naming, rotation decision, live-file rename, 7-file retention, compress-older-than-yesterday) passes against tmpdir fixtures with an injected now: datetime — observable: pytest tests/test_rotation.py -q fully green and git diff shows changes only in the two owned paths.",
+  "required_context": {
+    "files": [
+      "app/logger.py",
+      "tests/test_log.py",
+      "app/rotation.py (new)",
+      "tests/test_rotation.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C3"
+    ],
+    "concepts": [
+      "ISO timestamp prefix parsing (%Y-%m-%dT%H:%M:%S) for the live log's last line",
+      "date math with datetime.date: yesterday = now.date() - timedelta(days=1); compress iff D < now.date() - 1",
+      "gzip module round-trip; one retention slot per dated file (plain or gz, one artifact per date)"
+    ]
+  },
+  "inputs": [
+    "Frozen contract C1 (inlined below): exact signatures and semantics of app/rotation.py",
+    "Frozen contract C3 (inlined below): naming, retention, and compression policy"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "service",
+      "spec": "app/rotation.py exposes exactly: rotation_name(d: date) -> str — returns 'app-' + d.strftime('%Y%m%d') + '.log'; needs_rotation(last_date: date | None, now: datetime) -> bool — True iff last_date is not None and last_date < now.date(); rotate(log_dir: Path, now: datetime) -> Path | None — live file is log_dir/'app.log'; determine its date from the ISO timestamp prefix of its last line (fallback: file mtime date; empty/missing file: no rotation); if that date < now.date(), rename the live file to rotation_name(that date) and return the new Path, else None; apply_retention(log_dir: Path, now: datetime, keep: int = 7) -> list[Path] — for each rotated file app-YYYYMMDD.log with date D < now.date() - 1 day: gzip it to app-YYYYMMDD.log.gz and delete the plain file; then over all dated rotated files (plain and gz, one slot per date) sorted by date descending, delete everything beyond the first `keep` and return the deleted paths. The module imports only stdlib (pathlib, datetime, gzip, re) and nothing from app/ or tests/.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:07362093681ba680d5b6bd8e9a2678de563cab35dcb8d95c3167a346259c27e0"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "data",
+      "spec": "Log file naming and retention policy: live file = logs/app.log; rotated file = logs/app-YYYYMMDD.log named after the completed day (date of the live log's last line); compressed = logs/app-YYYYMMDD.log.gz; at most 7 dated rotated files retained (a gz file occupies the same date slot as its plain file; after successful compression the plain file is deleted, so at most one artifact per date); a rotated file with date D is compressed when D < now.date() - 1 day (today's rotated file and yesterday's stay plain-text).",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:1e12c145d2c6ddeab24a4dd6f37c23a8aca72e3df63d9ad0005aeaf41e857f9b"
+    }
+  ],
+  "owned_paths": [
+    "app/rotation.py",
+    "tests/test_rotation.py"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "Do not touch app/logger.py or app/server.py (owned by T02 / unmodified per S2)",
+    "Do not implement any LogWriter wiring or trigger points (that is T02)",
+    "No background thread, timer, or cron — the module is pure functions called by the writer (DA-NO-TIMER)",
+    "No third-party dependencies (stdlib only, A-STD)",
+    "No writing under the real logs/ directory — tests use tempfile.TemporaryDirectory only"
+  ],
+  "implementation_constraints": [
+    "Python 3.11 stdlib only: pathlib, datetime, gzip, re — no other imports in app/rotation.py",
+    "All four functions take now: datetime as an explicit parameter — the module never reads wall-clock time",
+    "The module must not import anything from app/ or tests/ (C1; prevents the S1 import cycle)",
+    "Tests follow the style of tests/test_log.py: unittest, tempfile.TemporaryDirectory, injected now, zero wall-clock dependence",
+    "Explicit encoding='utf-8' on all text file reads/writes"
+  ],
+  "deliverables": [
+    {
+      "what": "Rotation policy module implementing C1 exactly (four public functions, no other exports)",
+      "where": "app/rotation.py"
+    },
+    {
+      "what": "Unit tests for naming, decision, rotate, retention (A3), compression (A4)",
+      "where": "tests/test_rotation.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "tests/test_rotation.py::test_rotation_name",
+      "case": "positive",
+      "description": "rotation_name(date(2026, 9, 8)) == 'app-20260908.log' for at least three dates across a month boundary (e.g. 2026-08-31, 2026-09-01, 2026-09-08).",
+      "evidence": "pytest tests/test_rotation.py::test_rotation_name -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_needs_rotation",
+      "case": "positive",
+      "description": "needs_rotation(D, now on D) is False; needs_rotation(D, now on D+1) is True; needs_rotation(None, now) is False for any now.",
+      "evidence": "pytest tests/test_rotation.py::test_needs_rotation -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_rotate_renames_live_file",
+      "case": "positive",
+      "description": "Live app.log with last line dated D and now = D+1: rotate() renames it to app-<D>.log and returns that Path; live file is absent afterwards. Same-date now → None and file untouched. Empty live file → None.",
+      "evidence": "pytest tests/test_rotation.py::test_rotate_renames_live_file -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_retention_keeps_seven",
+      "case": "positive",
+      "description": "A3: nine rotated files dated today-1 .. today-9; apply_retention(now=today, keep=7) deletes exactly today-8 and today-9, returns both deleted Paths, and exactly 7 dated files remain.",
+      "evidence": "pytest tests/test_rotation.py::test_retention_keeps_seven -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_retention_under_cap_noop",
+      "case": "negative",
+      "description": "A3 negative: with fewer than 7 rotated files, apply_retention deletes nothing and returns [].",
+      "evidence": "pytest tests/test_rotation.py::test_retention_under_cap_noop -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_compress_older_than_yesterday",
+      "case": "positive",
+      "description": "A4: rotated file dated today-2 is gzipped to app-<today-2>.log.gz, the plain file is deleted, and gzip.decompress of the gz equals the original bytes; pre-existing gz (idempotent re-run) leaves content unchanged and still deletes the plain file.",
+      "evidence": "pytest tests/test_rotation.py::test_compress_older_than_yesterday -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_yesterday_stays_plain",
+      "case": "negative",
+      "description": "A4 negative: rotated files dated today-1 (and today, if present) remain plain-text after apply_retention.",
+      "evidence": "pytest tests/test_rotation.py::test_yesterday_stays_plain -q → passed"
+    },
+    {
+      "id": "tests/test_rotation.py::test_retention_ignores_unmatched",
+      "case": "failure",
+      "description": "A3 failure behavior: files not matching app-YYYYMMDD.log(.gz) (e.g. app.log, notes.txt, app-2026-09-08.log with dashes) are ignored by the retention pass — never renamed, compressed, or deleted.",
+      "evidence": "pytest tests/test_rotation.py::test_retention_ignores_unmatched -q → passed"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "Live log's last line has no parseable ISO timestamp prefix (corrupt line)",
+      "expected_behavior": "rotate() falls back to the live file's mtime date (C1 fallback); if that date < now.date(), rotation proceeds with the mtime date."
+    },
+    {
+      "scenario": "Live file is empty or missing",
+      "expected_behavior": "rotate() returns None without error; no rotation."
+    },
+    {
+      "scenario": "gz target already exists for a rotated file",
+      "expected_behavior": "apply_retention deletes the plain file without rewriting or corrupting the existing gz (idempotent)."
+    },
+    {
+      "scenario": "Log directory contains unrelated files alongside rotated files",
+      "expected_behavior": "Only names matching the app-YYYYMMDD.log(.gz) pattern are ever compressed or deleted."
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T02",
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T02",
+      "T03"
+    ],
+    "notes": "app/rotation.py is complete against C1/C3: exactly four public functions, no other exports, no app/-imports, no wall-clock reads. All tests run in tmpdir with injected now. No file outside app/rotation.py and tests/test_rotation.py was touched. T02 imports the four functions by their C1 names."
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "service",
+      "e2e"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-45 min",
+    "p80": "60-75 min",
+    "compaction_risk": "low",
+    "warnings": []
+  }
+}

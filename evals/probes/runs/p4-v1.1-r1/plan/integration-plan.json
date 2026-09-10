@@ -1,0 +1,65 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "Chain integration seam: the item list the API side presents from the RingBuffer (storage order, C1-extended items) is what verify() consumes; the append the API side performs must maintain the C1 link invariant; C2 responses strip audit fields. New production wiring exists: T01 creates app/audit.py inside app/ next to T02's app/events.py, and T02 adds the import edge that consumes it.",
+      "contract_ids": ["C1", "C2", "C3"],
+      "covered_by": ["T03"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "seam_integration",
+      "merged_kinds": ["e2e_closure", "final_acceptance"],
+      "seams": ["S1"],
+      "owns_fixes_for": ["T01", "T02"],
+      "acceptance_ref": "A2",
+      "objective": "Verify the S1 chain seam end-to-end against the fixed RingBuffer: confirm T02's wiring of app.audit (import edge, item presentation order, C2 stripping) behaves per C1/C2/C3 under failure scenarios; own tests/test_audit_boundary.py (wrap-boundary behavior, frozen-contract regression, audit query e2e, mid-truncation detection); execute acceptance A1-A4 end to end and record evidence. May patch T01/T02 code for seam defects only (integration-only fix ownership); a defect that requires redesigning a leaf is reported, not silently fixed.",
+      "non_goals": [
+        "No new production modules (only the boundary test file)",
+        "No changes to app/storage.py (platform-frozen)",
+        "No weakening of pre-existing tests"
+      ]
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "contract_consistency",
+      "reason": "C1's exact hash spec has exactly one implementation — T01's app/audit.py — and T02 consumes it through function calls rather than re-implementing it, so the two sides cannot diverge on the spec; C2's byte-exact response shape is enforced by T02's own API tests plus T03's frozen-contract regression gate E2. A separate read-only diff task would re-read both leaves' code to confirm what the single-implementation structure already guarantees.",
+      "evidence": [
+        "C1 single implementation in app/audit.py (T01's owned path; T02's forbidden_scope names it read-only)",
+        "T02 required_context lists app/audit.py as consumed via the C1 interface (import, not re-implementation)",
+        "E2 frozen-contract regression gate (tests/test_audit_boundary.py::test_frozen_contract_unchanged)",
+        "T02 owned test tests/test_audit.py (no-audit-leak assertion on C2 responses)"
+      ]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "Happy path: capacity-5 buffer, post 3 events via EventAPI; GET /events?audit=true returns exactly 3 entries in storage order with matching prev/entry hashes; verify() over the presented items returns status 'ok', anchored at GENESIS, 0 broken links.",
+      "covers": ["S1"],
+      "evidence": "tests/test_audit_boundary.py::test_chain_e2e_ok"
+    },
+    {
+      "id": "E2",
+      "scenario": "Frozen-contract regression (no audit leak): post 2 events; GET /events?since=<first id> returns 200 with exactly one event whose keys are the posted payload keys plus 'id' — assert 'prev_entry_hash' and 'entry_hash' are ABSENT from response items (C2 byte-exact); GET /events?since=unknown returns 404 {'error': 'unknown since id: unknown'} unchanged.",
+      "covers": ["S1"],
+      "evidence": "tests/test_audit_boundary.py::test_frozen_contract_unchanged"
+    },
+    {
+      "id": "E3",
+      "scenario": "Failure scenario (wrap boundary): capacity-3 buffer, post 5 events (two overwrites); verify() over the 3 surviving entries returns status 'unanchored_head', head anchored=false, 0 broken links among surviving entries; then rewrite the head item's payload in memory: verify() returns status 'broken' (the head rewrite is still detected even though the head is unanchored).",
+      "covers": ["S1"],
+      "evidence": "tests/test_audit_boundary.py::test_wrap_unanchored_head, ::test_wrap_head_rewrite_detected"
+    },
+    {
+      "id": "E4",
+      "scenario": "Failure scenario (mid-chain tamper): capacity-5 buffer, 3 events; delete the middle stored item from the buffer's slot list (simulating truncation); verify() over the remaining items returns status 'broken' with first_broken_link at the dangling link (the survivor after the gap has a prev pointer that matches no stored entry_hash).",
+      "covers": ["S1"],
+      "evidence": "tests/test_audit_boundary.py::test_mid_truncation_detected_e2e"
+    }
+  ]
+}

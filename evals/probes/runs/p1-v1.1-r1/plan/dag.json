@@ -1,0 +1,82 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    {
+      "from": "T01",
+      "to": "T02",
+      "type": "verification",
+      "reason": "T02 (e2e_closure) runs the test suite that verifies T01's retry implementation against all acceptance criteria."
+    }
+  ],
+  "parallel_groups": [
+    ["T01"],
+    ["T02"]
+  ],
+  "critical_path": ["T01", "T02"],
+  "integration_gates": [
+    {
+      "gate_id": "G1",
+      "task_id": "T02",
+      "seams": ["S1", "S2"],
+      "acceptance_ref": "A5"
+    },
+    {
+      "gate_id": "G2",
+      "task_id": "T02",
+      "seams": ["S1"],
+      "acceptance_ref": "A3"
+    }
+  ],
+  "unlock_contracts": [
+    {
+      "contract_id": "C1",
+      "unlocks": ["T01"]
+    },
+    {
+      "contract_id": "C2",
+      "unlocks": ["T01"]
+    },
+    {
+      "contract_id": "C3",
+      "unlocks": ["T01"]
+    }
+  ],
+  "contract_bindings": [
+    {
+      "contract_id": "C1",
+      "owner_task": "T01",
+      "consumer_tasks": ["T01"],
+      "rationale": "C1 (RetryPolicy) is a data contract from the user requirement. T01 implements the retry logic that uses this policy. Owner and consumer are the same task because the policy is consumed inline."
+    },
+    {
+      "contract_id": "C2",
+      "owner_task": "T01",
+      "consumer_tasks": ["T01", "T02"],
+      "rationale": "C2 (send_notification return shape) is implemented by T01 in app/notify.py. T02 consumes it via the test assertions."
+    },
+    {
+      "contract_id": "C3",
+      "owner_task": "T01",
+      "consumer_tasks": ["T01", "T02"],
+      "rationale": "C3 (ProviderClient.send interface) is a frozen, unchanged interface in app/provider.py. T01 calls it in the retry loop; T02's test fakes implement it."
+    }
+  ],
+  "seam_bindings": [
+    {
+      "seam_id": "S1",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "T01 implements the retry loop that calls ProviderClient.send() (S1 owner). T02 verifies the seam via E2E gates (test fakes implement ProviderClient.send, asserting call counts and status codes)."
+    },
+    {
+      "seam_id": "S2",
+      "participant_tasks": ["T01", "T02"],
+      "rationale": "T01 implements the persistence call via store.put() (S2 owner). T02 verifies the seam via E2E gates (asserting record count, status, and attempts in the persisted record)."
+    }
+  ],
+  "notes": {
+    "fake_serialization_removed": [],
+    "collisions_handled": [],
+    "free_parallelism_trades": [],
+    "note": "Two-task DAG: T01 (leaf) -> T02 (e2e_closure, merged final_acceptance). No parallelism: T02 depends on T01 via verification edge. Both seams (S1, S2) are bound to [T01, T02] — T01 owns the implementation, T02 verifies via E2E gates."
+  }
+}

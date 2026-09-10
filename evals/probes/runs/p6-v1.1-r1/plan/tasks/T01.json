@@ -1,0 +1,137 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T01",
+  "objective": "Extend the todo record with the optional webhook_url field (C2 additive) and make POST /todos accept webhook_url at creation so the store round-trips it; no other record key, endpoint, or the C1 GET /todos response key set changes",
+  "required_context": {
+    "files": [
+      "app/store.py",
+      "app/api.py",
+      "tests/test_api.py",
+      "tests/test_registration.py (new)"
+    ],
+    "contracts": [
+      "C1",
+      "C2"
+    ],
+    "concepts": [
+      "in-memory store as single source of truth (DA-1: TodoAPI is the only writer)",
+      "frozen C1 response key set — list_todos output must not gain keys in this stage",
+      "C2 additive rule: optional fields may be added; existing keys and creation order are untouched"
+    ]
+  },
+  "inputs": [
+    "inlined frozen contracts C1/C2 (below) — do not read stage-contract.json",
+    "stage-1/stage-contract.json + stage-1/stage-checkpoint.json (frozen baseline context, read-only)",
+    "input.md (task verbatim)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "GET /todos response: {todos: [{id: string, title: string, done: boolean, tag?: string}]} — exactly these keys per todo, in creation order; 400 {error} on malformed filter params",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:66ed5c82f1a314aeed74987303d16814529cfcb664f9b257270bfebb7ca68acf"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "data",
+      "spec": "todo record shape in store: {id: 't<n>', title: string, done: boolean, tag?: string, webhook_url?: string}; creation order preserved. Stage-2 additive: webhook_url (optional string) added per C2's unfreeze rule (additive-only; stage 2 proposes it in writing in this contract). last_notified_at is intentionally NOT added — it ships only if/when C1 is revised (see Q1).",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:287124605ab985c59fc9b6adfdfbf099e599f1eddeff0458a6a5f206e85172d9"
+    }
+  ],
+  "owned_paths": [
+    "app/store.py",
+    "app/api.py",
+    "tests/test_registration.py (new)"
+  ],
+  "allowed_dependencies": [],
+  "non_goals": [
+    "app/webhooks.py — dispatch is T02's closure",
+    "any change to list_todos / the GET /todos response shape (C1 frozen)",
+    "last_notified_at or any other new response/record field beyond webhook_url (Q1, deferred)",
+    "mark_done behavior (T02's closure)",
+    "webhook retry/delivery history/management surface"
+  ],
+  "implementation_constraints": [
+    "stdlib only; no new third-party imports",
+    "webhook_url is optional: absent (not null) when unregistered",
+    "list_todos output keys unchanged (C1 canary: tests/test_api.py::test_create_and_list_shape stays green)",
+    "store creation order preserved; TodoStore remains the single source of truth (DA-1)"
+  ],
+  "deliverables": [
+    {
+      "what": "store records carry optional webhook_url; add/get/all unchanged in behavior for existing keys",
+      "where": "app/store.py"
+    },
+    {
+      "what": "create_todo accepts webhook_url from the request body and passes it to the store",
+      "where": "app/api.py"
+    },
+    {
+      "what": "unit tests: store round-trip with/without URL, creation path, C1 key-set canary",
+      "where": "tests/test_registration.py"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT1",
+      "case": "positive",
+      "description": "create todo with webhook_url='https://hooks.example/cb'; the store record contains the URL and all() round-trips it",
+      "evidence": "test tests/test_registration.py::test_store_roundtrip_with_url asserts the stored record contains the URL"
+    },
+    {
+      "id": "AT2",
+      "case": "negative",
+      "description": "create todo without webhook_url; the record has no webhook_url key (absent, not null) and existing keys are unchanged",
+      "evidence": "test tests/test_registration.py::test_store_roundtrip_without_url asserts the key is absent (not null)"
+    },
+    {
+      "id": "AT3",
+      "case": "negative",
+      "description": "after the change, GET /todos per-todo keys are exactly {id, title, done}(+tag) — the frozen suite test asserts the key set",
+      "evidence": "frozen test tests/test_api.py::test_create_and_list_shape (unmodified) asserts the exact key set"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "create_todo called with a non-string webhook_url",
+      "expected_behavior": "reject with 400 {error} — no record is created and no default is written"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1"
+    ],
+    "upstream_outputs": [],
+    "consumers": [
+      "T02",
+      "T03"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T01.json",
+    "downstream_consumers": [
+      "T02",
+      "T03"
+    ],
+    "notes": "checkpoint must record: webhook_url key is absent-not-null, list_todos output verified unchanged against C1, frozen suite green"
+  },
+  "risk": {
+    "context_footprint": "S",
+    "touched_layers": [
+      "api",
+      "persistence"
+    ],
+    "cross_contracts": 2,
+    "statefulness": "medium",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "25-40 min",
+    "p80": "45-60 min",
+    "compaction_risk": "low",
+    "warnings": [],
+    "oversized_justification": null
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "schema": "planning/audit@2",
+  "verdict": "FAIL",
+  "audit_round": 1,
+  "revision_round": 1,
+  "auditor": {
+    "path": "fresh_subagent",
+    "planner_conversation_isolated": true,
+    "notes": "Fresh subagent that never saw the planning conversation. Inputs used: the plan directory artifacts (input.md, repo-context-snapshot.json, stage-contract.json, candidate-tasks.json, integration-plan.json, dag.json, risk-estimates.json, tasks/T01-T03.json, run-manifest.json), the baseline v1.0 plan-auditor SKILL.md, the baseline glossary.md, the audit schema planning/audit@2, and read-only spot checks of snapshot-listed repo files under evals/probes/repos/p1-notification-retry/. No v1.1 .agents/ artifacts, no other probe runs, no planning chat logs were read."
+  },
+  "deterministic": {
+    "tool": "evals/probes/baseline-v1.0/scripts/plan-check.py lint (v1.0 baseline; schemas resolved from evals/probes/baseline-v1.0/schemas/planning)",
+    "exit_code": 1,
+    "finding_count": 23,
+    "counts": { "BLOCKER": 1, "MAJOR": 0, "MINOR": 22 }
+  },
+  "grounding": {
+    "snapshot_ref": "evals/probes/runs/p1-v1.0-r1/plan/repo-context-snapshot.json",
+    "repo_revision": "790b314d1d8780b679c7f585d95c5eb3d2b6640d",
+    "files_verified": [
+      "app/notify.py",
+      "app/provider.py",
+      "app/db.py",
+      "app/api.py",
+      "tests/test_notify.py",
+      "tests/test_gateway_observed.py",
+      "README.md",
+      "TASK.md"
+    ],
+    "notes": "All six snapshot files[] entries verified, plus README.md and TASK.md (the snapshot's two unknown_areas entries; opened because the audit instructions explicitly allow them and they ground the raw task and the stdlib claim). Key verifications: (1) tests/test_gateway_observed.py FakeGatewayClient returns 429 with body {'error': 'rate limited'}, headers {'x-gateway': 'edge-3'} (no Retry-After), and the immediate next identical call returns 202 - exactly the A-429-RETRYABLE facts and T01 AT1's four observed values. (2) app/provider.py docstring documents the 429 unknowns T01 cites; ProviderClient.calls exists and FakeGatewayClient appends to it, so E1 call-counting is feasible with the established pattern. (3) app/notify.py record builder matches C2 keys exactly with attempts always 1 today; header comment 'No retry today: first non-2xx -> failed' matches the style constraint; store.put confirms T02's one-put-per-call constraint. (4) tests/test_notify.py assertions (sent/attempts==1 on first-try success; failed/error 'boom' for always-500 client; exactly 1 record) remain compatible with the retry design, so A5 (existing suite green and unmodified) is achievable - the always-500 test asserts only status and error, not attempts or call count. (5) app/api.py handlers call send_notification with the unchanged signature, so 'public handlers stay untouched' holds. (6) README.md confirms Python 3.11, stdlib only, plain unittest (grounds A-NO-NEW-DEPS and the 'repo has no pytest' claim) and treats ProviderClient.send as frozen; TASK.md matches input.md verbatim. No repo movement: content and structure match the snapshot, no AUDIT_SNAPSHOT_MISMATCH condition."
+  },
+  "checks_performed": [
+    "deterministic_lint: ran the v1.0 plan-check.py lint from working dir D:\\AI_Coworking\\skill-build\\planning with schemas from evals/probes/baseline-v1.0/schemas/planning; exit 1; 1 BLOCKER + 0 MAJOR + 22 MINOR; all 23 carried over as findings F01-F23 with the same severity.",
+    "scope_creep: compared in_scope/out_of_scope against input.md - every in-scope item (retry loop, 429 handling, the verification task, unit tests, attempts 1..3) traces to the task text; the attempts field already exists in the record (always 1 in app/notify.py today, verified by spot check) so making it reflect real call counts is a consequence of the retry, not B-class creep; product items 2 (bulk-send) and 3 (retry storm) are out-of-scoped with reasons, item 1 (429 unknown) is in scope as T01.",
+    "insufficient_non_goals: non-goals in all three packages name the tempting work concretely (app/provider.py frozen, app/db.py, app/api.py, bulk-send, storm mitigation, real time.sleep in tests, new third-party deps); stage out_of_scope carries reasons; no vague 'no refactoring' without a named temptation.",
+    "late_contract_freeze: C1/C2/C3 are all frozen:true in stage-contract.json; the parallel consumer T01 (of C1 and C3, owner T02) runs against the frozen inlined specs, and the FALSIFIED path is routed through C1's unfreeze_rule to request_contract_revision at the T03 gate; dag.json unlock_contracts documents the parallelism rationale; the cost of a FALSIFIED verdict (redone 429 branch) is explicitly acknowledged in T02 failure_cases[2] as the accepted cost of the parallel design.",
+    "hidden_dependency: carried over the lint case T01 context file app/notify.py -> app/db.py undeclared (F01, verified against snapshot imports); additionally found T02 declaring 'T01 verification decision' as an input while the DAG has no T01->T02 edge and T02 allowed_dependencies is empty (F24); T02 and T03 otherwise read only declared files (T03's allowed_dependencies cover the T01 doc and T02 outputs; its direct file reads are in required_context).",
+    "fake_serialization: both DAG edges (T01->T03, T02->T03) are type=verification with substantive reasons (E1-E3 gates verify both leaves); fake_serialization_removed is non-empty and its rationale for rejecting the naive T01->T02 'verify then implement' edge (frozen C1/C3, gate-enforced verdict) survives the 4-type test.",
+    "ownership_collision: the only parallel group {T01, T02} has disjoint owned paths (docs/429-behavior-verification.md vs app/notify.py + tests/test_retry.py); T03 runs alone in its group; T03's owns_fixes_for [T01, T02] is an ordered integration-fix right, not an unordered overlap; dag.json collisions_handled agrees.",
+    "oversized_leaf: T01 = S, 3 context files, one doc output; T02 = M, 2 layers, 3 contracts, 5 files, P80 75-90 min inside the 90-min stage budget; T03 = M, one test file plus the full-suite gate (e2e_closure with final_acceptance merged, documented in merged_kinds). No leaf crosses >= 5 layers or enumerates phase-like sub-deliverables.",
+    "broad_context_loading: T02's 5 context files are all necessary (owned file, frozen boundary it wraps, store it writes through, the two suites A5 requires green); T03's 7 files are all needed by gates E1-E3 and the verdict; T01's third file (app/notify.py) is judged in F01 as not required for the 429 verdict closure.",
+    "hidden_integration_work: seams S1 and S2 are both covered_by T03 (gate G1, acceptance A5); E1-E3 include failure scenarios (429 exhaustion -> failed, intermediate record write -> E2 fails, regression of existing tests -> E3 fails); checked omitted_kinds against the snapshot: contract_consistency is justified (E1-E3 exercise all three contracts end to end; C3 untouched - no task owns app/provider.py) and the seam_integration omission is legitimate under the new-wiring rule (spot-checked: only production change is inside existing T02-owned app/notify.py; new files are the doc in a new docs/ dir and test files), but the evidence wording misstates the snapshot (F25).",
+    "nondeterministic_acceptance: carried over all 22 lint marker findings (F02-F23); semantically confirmed each criterion is third-party judgeable via its sibling evidence field (named tests/commands) or a doc read with concrete values; no phrase-free vagueness (no 'fast enough' style wording) found; F04 and F07 are the most worth restating.",
+    "lack_of_local_recoverability: T01 failure leaves T02 proceedable per the DAG and the T03 gate catches a missing or FALSIFIED verdict; T02 failure invalidates only T02 and T03; T03 failure invalidates only T03; every package has checkpoint_required true; no parallel task owns a path another task needs, and no integration task is gated behind more than the subset that produces its inputs (T01 doc + T02 outputs).",
+    "replan_only_by_append: allowed_replan = [split, reorder, defer, replace_route, request_contract_revision] includes shrink/reshape paths (defer, replace_route, split) - not reduced to scope growth.",
+    "communication_overhead: all three packages inline the consumed contracts with full spec text and source_hash (executor never needs stage-contract.json); T03's pointer to integration-plan.json for gate text is duplicative because its AT1-AT3 restate the E1-E3 scenarios; no unnecessary reviewer hops or duplicated checkpoint content.",
+    "grounding / repo movement: read-only spot checks of the eight snapshot-listed files (see grounding block) found no content or structure drift versus the snapshot; every repo-facing plan claim checked was confirmed (see grounding notes); no AUDIT_SNAPSHOT_MISMATCH condition."
+  ],
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "BLOCKER",
+      "check": "hidden_dependency",
+      "task_id": "T01",
+      "evidence": "plan-check lint HIDDEN_DEPENDENCY (carried over, same severity): 'task T01 context file app/notify.py imports app/db.py (per repo snapshot) but the task neither declares nor owns it - known shared core file'. Grounded: candidate-tasks.json T01 required_context.files = [app/provider.py, tests/test_gateway_observed.py, app/notify.py] with owned_paths = [docs/429-behavior-verification.md]; repo-context-snapshot.json app/notify.py imports = [app/db.py, app/provider.py]; T01.json allowed_dependencies = [].",
+      "suggested_fix": "Auditor spot check: the 429 verdict is fully grounded in app/provider.py's docstring + tests/test_gateway_observed.py (status/body/headers/next-call-202 all live in the capture test), so app/notify.py is not needed for T01's closure. Remove app/notify.py from T01 required_context.files (and 'service' from touched_layers). If the decision document should also cite the current send-path handling of 429, add app/db.py to T01 required_context.files as read-only instead. As written, T01's context closure is under-declared against the snapshot one-hop import graph."
+    },
+    {
+      "id": "F02",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: Transient provider failure recovers within the retry window' (stage-contract.json acceptance[A1].description; sibling A1.evidence = 'tests/test_retry.py::test_transient_recovers + ::test_mixed_stops_on_4xx').",
+      "suggested_fix": "Fold the sibling evidence into the description text so the marker is visible in the criterion itself, e.g. '...within the retry window (evidence: tests/test_retry.py::test_transient_recovers, ::test_mixed_stops_on_4xx)'."
+    },
+    {
+      "id": "F03",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: Permanently failing provider ends in \"failed\" exactly as today, after the retry window' (stage-contract.json acceptance[A2].description; sibling A2.evidence = 'tests/test_retry.py::test_permanent_failure_5xx + ::test_4xx_no_retry').",
+      "suggested_fix": "Fold the sibling evidence into the description text, e.g. '...after the retry window (evidence: tests/test_retry.py::test_permanent_failure_5xx, ::test_4xx_no_retry)'."
+    },
+    {
+      "id": "F04",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: no exception escapes send_notification' (stage-contract.json acceptance[A2].failure_behavior). Spot check: current app/notify.py has no try/except around client.send, so 'no exception escapes' is not today's behavior for a provider-raised exception - the criterion's scope is ambiguous.",
+      "suggested_fix": "Scope the criterion explicitly: 'no exception escapes send_notification for status-based provider responses (500/400 fakes); provider-raised exceptions are out of scope' (or commit to catching and recording them as failed - pick one), and assert the chosen behavior in tests/test_retry.py::test_permanent_failure_5xx."
+    },
+    {
+      "id": "F05",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: 429 is retried with the standard backoff (no Retry-After honored)' (stage-contract.json acceptance[A3].description; sibling A3.evidence = 'tests/test_retry.py::test_429_retries + ::test_429_exhausts').",
+      "suggested_fix": "Fold the sibling evidence into the description text, e.g. '...(evidence: tests/test_retry.py::test_429_retries, ::test_429_exhausts)'."
+    },
+    {
+      "id": "F06",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: Backoff schedule is exactly 1s, 2s (cap 30s) and is injectable (tests use a fake delay callable)' (stage-contract.json acceptance[A4].description; sibling A4.evidence = 'tests/test_retry.py::test_backoff_schedule_injected').",
+      "suggested_fix": "Fold the sibling evidence into the description text, e.g. '...(evidence: tests/test_retry.py::test_backoff_schedule_injected)'."
+    },
+    {
+      "id": "F07",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: schedule change is a contract violation (C1)' (stage-contract.json acceptance[A4].failure_behavior) - a meta-statement a third party cannot judge PASS/FAIL from the text alone.",
+      "suggested_fix": "Restate as an observable criterion: 'the injected delay fake records exactly [1.0, 2.0]; any other sequence fails tests/test_retry.py::test_backoff_schedule_injected - that test failure is the C1 violation detector'."
+    },
+    {
+      "id": "F08",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: Existing behavior on success is unchanged and the whole suite is green' (stage-contract.json acceptance[A5].description; sibling A5.evidence = 'python -m unittest discover tests -v -> all pass').",
+      "suggested_fix": "Fold the sibling evidence into the description text, e.g. '...whole suite is green (evidence: python -m unittest discover tests -v -> all pass)'."
+    },
+    {
+      "id": "F09",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: n/a' (stage-contract.json acceptance[A5].negative_case).",
+      "suggested_fix": "Replace the bare 'n/a' with an explicit deliberate-not-applicable marker, e.g. 'not applicable: the success path is the only A5 case', so the text reads as a judgment, not a gap."
+    },
+    {
+      "id": "F10",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": null,
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: n/a' (stage-contract.json acceptance[A5].failure_behavior).",
+      "suggested_fix": "Replace the bare 'n/a' with an explicit deliberate-not-applicable marker, e.g. 'not applicable: A5 is a regression gate with no separate failure branch (E3 covers regression)'."
+    },
+    {
+      "id": "F11",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T01",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: document carries an explicit CONFIRMED or FALSIFIED verdict on A-429-RETRYABLE plus an evidence list of at least 2 items' (tasks/T01.json acceptance_tests[AT2].description).",
+      "suggested_fix": "The criterion is already judgeable by reading the doc; add the marker phrase the deterministic layer expects, e.g. append '(observable: verdict line + >=2-item evidence list readable in docs/429-behavior-verification.md)'."
+    },
+    {
+      "id": "F12",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T01",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: verdict line + evidence list present in the doc (read of the doc)' (tasks/T01.json acceptance_tests[AT2].evidence).",
+      "suggested_fix": "Name the concrete file in the marker: '(read of docs/429-behavior-verification.md)' so the evidence points at a checkable path instead of 'the doc'."
+    },
+    {
+      "id": "F13",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_transient_recovers -> pass' (tasks/T02.json acceptance_tests[AT1].evidence).",
+      "suggested_fix": "The command is already observable; add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_transient_recovers -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F14",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_mixed_stops_on_4xx -> pass' (tasks/T02.json acceptance_tests[AT2].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_mixed_stops_on_4xx -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F15",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_permanent_failure_5xx -> pass' (tasks/T02.json acceptance_tests[AT3].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_permanent_failure_5xx -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F16",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_4xx_no_retry -> pass' (tasks/T02.json acceptance_tests[AT4].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_4xx_no_retry -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F17",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_429_retries -> pass' (tasks/T02.json acceptance_tests[AT5].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_429_retries -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F18",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_429_exhausts -> pass' (tasks/T02.json acceptance_tests[AT6].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_429_exhausts -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F19",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T02",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_retry.test_backoff_schedule_injected -> pass' (tasks/T02.json acceptance_tests[AT7].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_retry.test_backoff_schedule_injected -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F20",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T03",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_e2e_retry.test_call_count_and_status -> pass' (tasks/T03.json acceptance_tests[AT1].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_e2e_retry.test_call_count_and_status -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F21",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T03",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest tests.test_e2e_retry.test_one_record_per_call -> pass' (tasks/T03.json acceptance_tests[AT2].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest tests.test_e2e_retry.test_one_record_per_call -> pass (assert exit code 0)'."
+    },
+    {
+      "id": "F22",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T03",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: E3: full suite green - existing test_notify.py + test_gateway_observed.py unchanged and passing plus new test_retry.py + test_e2e_retry.py' (tasks/T03.json acceptance_tests[AT3].description; sibling AT3.evidence = 'python -m unittest discover tests -v -> all pass').",
+      "suggested_fix": "Append the discover command from the sibling evidence field into the description: '...plus new test_retry.py + test_e2e_retry.py (evidence: python -m unittest discover tests -v -> all pass)'."
+    },
+    {
+      "id": "F23",
+      "severity": "MINOR",
+      "check": "nondeterministic_acceptance",
+      "task_id": "T03",
+      "evidence": "plan-check lint VAGUE_ACCEPTANCE (carried over): 'acceptance text has no observable-evidence marker: python -m unittest discover tests -v -> all pass (output recorded in checkpoint)' (tasks/T03.json acceptance_tests[AT3].evidence).",
+      "suggested_fix": "Add the marker wording the lint expects, e.g. 'evidence: python -m unittest discover tests -v -> all pass (assert exit code 0; output recorded in checkpoint)'."
+    },
+    {
+      "id": "F24",
+      "severity": "MAJOR",
+      "check": "hidden_dependency",
+      "task_id": "T02",
+      "evidence": "tasks/T02.json inputs[0] = 'T01 verification decision (must be CONFIRMED; if FALSIFIED, stop and replan via request_contract_revision)' and T02.json allowed_dependencies = [], but dag.json has no T01->T02 edge (parallel_groups = [[T01,T02],[T03]], edges only T01->T03 and T02->T03). The same stale 'T02 consumes T01' view also appears in candidate-tasks.json (T01 downstream_consumers = [T02]) and tasks/T01.json integration_dependency.consumers = [T02, T03], while T02.json failure_cases[2] itself says the FALSIFIED verdict is 'discovered at the T03 integration gate, after this task's code exists'.",
+      "suggested_fix": "T02's declared input contradicts the DAG it must execute under: a fresh executor reading T02's inputs literally will stall waiting for T01's document (or stop early) while the DAG says proceed in parallel. Rewrite T02 inputs to 'C1 (inlined, frozen) including the retryable-429 branch; T01 verifies A-429-RETRYABLE in parallel - its verdict is enforced at the T03 gate via request_contract_revision, not at T02 start', and remove 'T02' from candidate-tasks T01 downstream_consumers and T01.json integration_dependency.consumers (T03 is the consumer of the doc)."
+    },
+    {
+      "id": "F25",
+      "severity": "MINOR",
+      "check": "hidden_integration_work",
+      "task_id": null,
+      "evidence": "integration-plan.json omitted_kinds[seam_integration].evidence = ['S1', 'S2', 'repo-context-snapshot.json (no docs/ dir exists; tests/ files all owned by T02)'] - the snapshot lists tests/test_notify.py and tests/test_gateway_observed.py as pre-existing repo files owned by no task (T02 owns only tests/test_retry.py), so 'tests/ files all owned by T02' is false as stated.",
+      "suggested_fix": "The omission itself is valid (spot-checked: the only production change is inside existing T02-owned app/notify.py; new files are docs/429-behavior-verification.md in a new directory and test files - no new production wiring, new-wiring rule not triggered). Reword the evidence: 'no leaf creates a new file beside another leaf's code: docs/ is a new directory; the pre-existing tests/ files belong to no leaf; the only production edit is in the existing app/notify.py owned by T02'."
+    }
+  ]
+}

@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["schema", "verdict", "auditor", "findings", "deterministic", "checks_performed", "grounding"],
   "properties": {
-    "schema": { "enum": ["planning/audit@2", "planning/audit@3"] },
+    "schema": { "const": "planning/audit@3" },
     "verdict": { "enum": ["PASS", "FAIL"] },
     "auditor": {
       "type": "object",

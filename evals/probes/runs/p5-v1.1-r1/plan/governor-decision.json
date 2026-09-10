@@ -1,0 +1,30 @@
+{
+  "schema": "planning/governor-decision@1",
+  "action": "EXECUTE",
+  "blocking_findings": [],
+  "spikes": [],
+  "deferred": [
+    {
+      "finding_id": "F05",
+      "routing": "OPTIONAL",
+      "reason": "A4 positive_case does not name specific label keys or German strings. Checkable at execution time because T02's i18n module defines the labels and AT06 pins the test (test_i18n_labels). Accepted for alpha delivery profile — no patch applied."
+    },
+    {
+      "finding_id": "F06",
+      "routing": "OPTIONAL",
+      "reason": "17 VAGUE_ACCEPTANCE lint findings are style-only: description fields lack inline pytest markers, but evidence fields contain concrete pytest commands. Accepted as style noise for alpha."
+    }
+  ],
+  "planning_budget_status": {
+    "plan_revisions": 1,
+    "full_audits": 2,
+    "subagents": 1,
+    "wall_time": null,
+    "tokens": null,
+    "note": "2-audit limit exactly met (round-2 isolated full audit + round-3 bounded re-audit). No further full audits permitted."
+  },
+  "forbidden_actions": [
+    "launch_another_full_audit"
+  ],
+  "reason": "Round-3 bounded re-audit (same isolated auditor, revision_round 3) confirms: F01-F04 all RESOLVED and verified (stage-contract re-emitted as @3 with filled horizons, run-manifest rewritten to schema, DA-PDF-PER-REPORT text fixed, C2 inlined in T01; all 14 inlined contract hashes re-verified byte-identical). F05/F06 remain accepted/deferred OPTIONAL. Zero EXECUTION_BLOCKER, zero SPIKE_REQUIRED. Plan is structurally sound: 6 tasks in 3 parallel groups, 3 frozen contracts enabling full leaf parallelism, 2 seams covered by integration tasks with 5 E2E gates (4 failure scenarios), all acceptance criteria deterministic. Budget at limit (2/2 audits, 1/3 revisions, 1/5 subagents). Proceeding to execution."
+}

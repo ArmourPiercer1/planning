@@ -1,0 +1,81 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    {
+      "id": "S1",
+      "description": "api <-> job store: POST handler creates a job, polling reads status, download reads pdf_ref; divergence risk = job_id format, status vocabulary, error shapes between handler and JobStore",
+      "contract_ids": ["C1", "C2"],
+      "covered_by": ["T06", "T07"]
+    },
+    {
+      "id": "S2",
+      "description": "worker <-> renderer: worker calls render_report_pdf(customer, lang) and stores bytes; divergence risk = signature drift, exception propagation (must become mark_failed, not a crash), lang passthrough",
+      "contract_ids": ["C2", "C3", "C4"],
+      "covered_by": ["T06", "T07"]
+    },
+    {
+      "id": "S3",
+      "description": "renderer <-> pdflib_shim: renderer drives open/add_page/add_text/save; divergence risk = label strings hardcoded instead of from C4 tables, page count mismatch, non-%PDF bytes",
+      "contract_ids": ["C3", "C5"],
+      "covered_by": ["T06", "T07"]
+    }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T05",
+      "kind": "contract_consistency",
+      "seams": ["S1", "S2", "S3"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A1",
+      "merged_kinds": []
+    },
+    {
+      "task_id": "T06",
+      "kind": "seam_integration",
+      "seams": ["S1", "S2", "S3"],
+      "owns_fixes_for": ["T01", "T02", "T03", "T04"],
+      "acceptance_ref": "A1"
+    },
+    {
+      "task_id": "T07",
+      "kind": "e2e_closure",
+      "seams": ["S1", "S2", "S3"],
+      "owns_fixes_for": [],
+      "acceptance_ref": "A1",
+      "merged_kinds": ["final_acceptance"]
+    }
+  ],
+  "omitted_kinds": [],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "enqueue -> poll -> download happy path: POST /reports/r1/export-pdf returns 202 {job_id}; GET /jobs/{job_id} transitions queued -> done; GET /jobs/{job_id}/download returns bytes starting b'%PDF'",
+      "covers": ["S1", "S2"],
+      "evidence": "tests/test_pdf_export.py::test_enqueue_poll_download"
+    },
+    {
+      "id": "E2",
+      "scenario": "failure propagation: renderer raises (inject a report whose rendering throws) -> job marked failed with error text; polling shows status 'failed'; enqueue itself stays 202",
+      "covers": ["S2"],
+      "evidence": "tests/test_pdf_export.py::test_renderer_failure_marks_failed"
+    },
+    {
+      "id": "E3",
+      "scenario": "not-found / premature-download: POST for unknown report -> 404 and no job created; GET /jobs/unknown -> 404; GET /jobs/{id}/download while status != done -> 409",
+      "covers": ["S1"],
+      "evidence": "tests/test_pdf_export.py::test_unknown_and_premiere_errors (test_unknown_report_404, test_unknown_job_404, test_download_before_done_409)"
+    },
+    {
+      "id": "E4",
+      "scenario": "real-bytes page count: customer c1 (2 reports) exported through the real shim -> the PDF contains 2 page objects; lang='de' -> German C4 labels (Kunde/Periode/Titel/Kennzahl/Wert) present in the bytes; no lang -> English set",
+      "covers": ["S2", "S3"],
+      "evidence": "tests/test_pdf_export.py::test_one_page_per_report and ::test_de_labels_in_pdf_bytes"
+    },
+    {
+      "id": "E5",
+      "scenario": "regression: full suite (existing CSV export tests + all new tests) passes; handle_export_csv response shape unchanged",
+      "covers": ["S1", "S2", "S3"],
+      "evidence": "python -m unittest discover tests -q"
+    }
+  ]
+}

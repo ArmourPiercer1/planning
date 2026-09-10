@@ -127,8 +127,13 @@ is the failure this stage exists to catch. Vocabulary:
  invariant cannot be `EXECUTION_BLOCKER` regardless of delivery profile.
 5. **Verdict.** `PASS` iff zero BLOCKER findings (MAJOR/MINOR are listed and
    carried into the handoff as warnings). Otherwise `FAIL`.
-6. Write `audit.json` (schema `planning/audit@2`, including the
+6. Write `audit.json` (schema `planning/audit@3`, including the
    `grounding` block); gate with `plan-check.py validate`.
+   Findings in `audit@3` carry `routing` (`EXECUTION_BLOCKER` /
+   `SPIKE_REQUIRED` / `POST_STAGE` / `OPTIONAL`) and, where applicable,
+   `acceptance_ref`. The auditor assigns severity and **proposes** routing;
+   the `planning-governor` makes the final routing decision — the auditor's
+   routing is a proposal, and the verdict is data, not a pipeline gate.
 
 ## DO NOT AUDIT FOR
 
@@ -165,12 +170,14 @@ invariant. Findings without such grounding are opinions — classify them
 
 ## Output
 
-`<plan-dir>/audit.json` (schema `planning/audit@2`). Single writer.
+`<plan-dir>/audit.json` (schema `planning/audit@3`). Single writer.
 
 ## Failure & Escalation
 
-- ≥ 1 BLOCKER → `verdict: FAIL` → orchestrator runs the targeted-revision loop
-  (see `long-task-planning`); after 3 rounds, escalate to the user.
+- ≥ 1 BLOCKER → `verdict: FAIL` is recorded. The verdict is **data, not a
+  pipeline gate**: routing to revision / spike / blocker is the
+  `planning-governor`'s decision, not the orchestrator's. The orchestrator's
+  only job after the audit is to run the governor.
 - Deterministic and semantic layers disagree (lint clean, semantic BLOCKER) →
   trust the semantic layer, record both in the finding.
 - Auditor cannot verify a claim without the snapshot or a snapshot-listed

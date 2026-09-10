@@ -1,0 +1,32 @@
+{
+  "schema": "planning/dag@2",
+  "edges": [
+    { "from": "T01", "to": "T03", "type": "data", "reason": "the closure task verifies T01's spike artifact (reader list + route recommendation, acceptance A4)" },
+    { "from": "T02", "to": "T03", "type": "verification", "reason": "the closure task runs the parity matrix and the full suite against T02's YamlConfigStore" }
+  ],
+  "parallel_groups": [
+    ["T01", "T02"],
+    ["T03"]
+  ],
+  "critical_path": ["T01", "T03"],
+  "integration_gates": [
+    { "gate_id": "G1", "task_id": "T03", "seams": ["S1"], "acceptance_ref": "A1" }
+  ],
+  "unlock_contracts": [
+    { "contract_id": "C2", "unlocks": ["T01"] }
+  ],
+  "contract_bindings": [
+    { "contract_id": "C1", "owner_task": "T02", "consumer_tasks": ["T03"], "rationale": "app/yaml_store.py (T02) is the new implementation of the C1 store interface; T02 is the only task writing store code in this stage (config_store.py is the read-only reference)" },
+    { "contract_id": "C2", "owner_task": "T02", "consumer_tasks": ["T01", "T03"], "rationale": "C2 data shape is implemented by the store T02 writes; T01's reader inventory records per-reader dependencies on C2 keys, T03 verifies the shape at closure" }
+  ],
+  "seam_bindings": [
+    { "seam_id": "S1", "participant_tasks": ["T02", "T03"], "rationale": "S1's logical participants bind as: 'config_store' -> T02 (YamlConfigStore vs the JsonConfigStore reference) and 'test_suite' -> T03 (closure + parity suite)" }
+  ],
+  "notes": {
+    "fake_serialization_removed": [
+      { "from": "T01", "to": "T02", "why_not_real": "the spike produces no artifact the store implementation consumes — its route recommendation is input to the NEXT stage, not to T02; T02's closure (C1/C2 + config_store.py reference + test matrix) is fully independent of the reader list, so task-text order (probe listed first) is not an edge" }
+    ],
+    "collisions_handled": ["none — owned paths are disjoint: T01 owns only a plan-dir artifact, T02 owns two new files, T03 owns a new closure test file"],
+    "free_parallelism_trades": []
+  }
+}

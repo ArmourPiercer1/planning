@@ -1,0 +1,95 @@
+{
+  "schema": "planning/risk-estimates@1",
+  "tasks": [
+    {
+      "task_id": "T01",
+      "context_footprint": "S",
+      "touched_layers": ["runtime", "service"],
+      "cross_contracts": 1,
+      "statefulness": "high",
+      "integration_distance": "medium",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "60-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T02",
+      "context_footprint": "S",
+      "touched_layers": ["service"],
+      "cross_contracts": 1,
+      "statefulness": "low",
+      "integration_distance": "medium",
+      "uncertainty": "medium",
+      "p50": "30-45 min",
+      "p80": "60-75 min",
+      "compaction_risk": "low",
+      "warnings": [
+        {
+          "code": "UNCERTAINTY_DOMINANT",
+          "detail": "pdflib_shim API surface is not yet known — the 40-line wrapper is provided by the platform team",
+          "rationale": "The shim's exact method names and behavior are unknown until vendored; if the API differs from assumptions, the export service needs adjustment. Uncertainty is medium (not high) because the README describes it as a simple wrapper and the task scope is bounded"
+        }
+      ],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T03",
+      "context_footprint": "S",
+      "touched_layers": ["api"],
+      "cross_contracts": 2,
+      "statefulness": "low",
+      "integration_distance": "medium",
+      "uncertainty": "low",
+      "p50": "30-45 min",
+      "p80": "60-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T04",
+      "context_footprint": "M",
+      "touched_layers": ["runtime", "service", "api"],
+      "cross_contracts": 3,
+      "statefulness": "low",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "15-30 min",
+      "p80": "30-45 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T05",
+      "context_footprint": "M",
+      "touched_layers": ["api", "runtime", "service"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "low",
+      "p50": "15-30 min",
+      "p80": "30-60 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    },
+    {
+      "task_id": "T06",
+      "context_footprint": "M",
+      "touched_layers": ["e2e"],
+      "cross_contracts": 3,
+      "statefulness": "medium",
+      "integration_distance": "low",
+      "uncertainty": "medium",
+      "p50": "30-45 min",
+      "p80": "45-75 min",
+      "compaction_risk": "low",
+      "warnings": [],
+      "oversized_justification": null
+    }
+  ]
+}

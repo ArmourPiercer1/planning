@@ -1,0 +1,177 @@
+{
+  "schema": "planning/task-package@2",
+  "task_id": "T05",
+  "objective": "Run a read-only contract-consistency pass over the four leaf implementations (T01-T04) against the frozen C1-C5 specs — status codes and body shapes vs C1, record fields and JobStore method set vs C2, renderer signature vs C3, label key sets and exact strings vs C4, shim doc API vs C5 — and write a verdict-per-contract report; fix nothing.",
+  "required_context": {
+    "files": [
+      "app/api.py",
+      "app/jobs.py",
+      "app/services/worker.py",
+      "app/services/pdf_export.py",
+      "app/services/pdflib_shim.py",
+      "app/services/labels.py"
+    ],
+    "contracts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5"
+    ],
+    "concepts": [
+      "read-only diffing: match each spec clause to code evidence",
+      "a mismatch is a finding, not a local fix (owning leaf re-runs)"
+    ]
+  },
+  "inputs": [
+    "outputs of T01, T02, T03, T04 (the leaf modules)",
+    "frozen contracts C1-C5 (inlined below)"
+  ],
+  "frozen_contracts": [
+    {
+      "contract_id": "C1",
+      "kind": "api",
+      "spec": "POST /reports/{id}/export-pdf body {lang?: 'en'|'de'} -> 202 {job_id}; 404 {error} for unknown report; 400 {error} for lang not in {en,de}. GET /jobs/{job_id} -> 200 {job_id, status: 'queued'|'running'|'done'|'failed', created_at: int, error: string|null}; 404 {error} for unknown job. GET /jobs/{job_id}/download -> 200 with the raw PDF bytes as the response body (the bytes start with b'%PDF'; content-type application/pdf) when status is done; 409 {error: 'job not done'} while status is queued or running; 404 {error} for unknown job.",
+      "source_ref": "stage-contract.json#shared_contracts[C1]",
+      "source_hash": "sha256:3e92c685f9f21e6cd00c0b7efe6e7f131153b10ec933974e80029090523869e9"
+    },
+    {
+      "contract_id": "C2",
+      "kind": "state",
+      "spec": "job record shape: {job_id: 'j<n>', report_id: string, customer_id: string, lang: 'en'|'de', status: 'queued'|'running'|'done'|'failed', created_at: int epoch, error: string|null, pdf_ref: string|null}. JobStore API: create(customer_id, report_id, lang) -> job_id; get(job_id) -> record|None; mark_running(job_id); mark_done(job_id, pdf_ref); mark_failed(job_id, error); next_queued() -> job_id|None.",
+      "source_ref": "stage-contract.json#shared_contracts[C2]",
+      "source_hash": "sha256:7be93ba195cca2c1715deba19d73ea11d18bd7a596a98541877236c3e67a0793"
+    },
+    {
+      "contract_id": "C3",
+      "kind": "service",
+      "spec": "render_report_pdf(customer_id: str, lang: str) -> bytes — renders one PDF page per report of the customer, fetching report data exclusively via app/queries.py, labels from the C4 label tables for the given lang; returns a non-empty byte string starting with b'%PDF'.",
+      "source_ref": "stage-contract.json#shared_contracts[C3]",
+      "source_hash": "sha256:f61551c901bb7c83ce338b454792d331dbc85033ecbc9454e9878b2e6d210451"
+    },
+    {
+      "contract_id": "C4",
+      "kind": "data",
+      "spec": "label tables for pdf generation: LABELS = {'en': {customer, period, title, metric, value}, 'de': {Kunde, Periode, Titel, Kennzahl, Wert}} — exact key set {customer, period, title, metric, value}; renderer must not hardcode label strings outside these tables.",
+      "source_ref": "stage-contract.json#shared_contracts[C4]",
+      "source_hash": "sha256:b22a9a904497d96fff65cfc822fbd8c835f8562b564b56902b1aaf74b407699c"
+    },
+    {
+      "contract_id": "C5",
+      "kind": "api",
+      "spec": "vendored pdflib_shim module at app/services/pdflib_shim.py exposing: open() -> doc, doc.add_page(), doc.add_text(x, y, text, size=10), doc.save() -> bytes — a ~40-line pure-stdlib wrapper producing a minimal valid PDF (header %PDF-1.4, pages, xref, trailer).",
+      "source_ref": "stage-contract.json#shared_contracts[C5]",
+      "source_hash": "sha256:932db265f01ae878e5402c4e3c6078370b8b2f4c2c0000dbb62a63d65656c58a"
+    }
+  ],
+  "owned_paths": [
+    "reports/consistency-check.md"
+  ],
+  "allowed_dependencies": [
+    {
+      "task_id": "T01",
+      "what": "shim + labels modules to diff against C4/C5"
+    },
+    {
+      "task_id": "T02",
+      "what": "jobs + worker modules to diff against C2/C3"
+    },
+    {
+      "task_id": "T03",
+      "what": "renderer module to diff against C3/C4/C5"
+    },
+    {
+      "task_id": "T04",
+      "what": "api handlers to diff against C1/C2"
+    }
+  ],
+  "non_goals": [
+    "no code changes of any kind (this task is read-only)",
+    "no re-running of the leaves' unit tests as the verdict (code evidence + import-level probes only)",
+    "no fixes for found mismatches — they are recorded and routed to the owning leaf"
+  ],
+  "implementation_constraints": [
+    "verdict per contract: MATCH or MISMATCH with the exact spec clause and the code location as evidence",
+    "mechanical probes allowed: importing app.services.labels and asserting the C4 key set; importing app.services.pdflib_shim and calling the C5 doc API on a doc object",
+    "the report is markdown at reports/consistency-check.md with one section per contract C1-C5"
+  ],
+  "deliverables": [
+    {
+      "what": "consistency report with verdict per contract",
+      "where": "reports/consistency-check.md"
+    }
+  ],
+  "acceptance_tests": [
+    {
+      "id": "AT01",
+      "case": "positive",
+      "description": "report contains a verdict (MATCH/MISMATCH + evidence) for each of C1, C2, C3, C4, C5; no contract section missing",
+      "evidence": "grep -c '^## C[1-5]' reports/consistency-check.md == 5 (the report file has one section per contract)"
+    },
+    {
+      "id": "AT02",
+      "case": "positive",
+      "description": "the import-level probe records the LABELS key set for both langs in the report; the set equals the C4 key set",
+      "evidence": "report section C4 records the executed probe and its output"
+    },
+    {
+      "id": "AT03",
+      "case": "failure",
+      "description": "if any MISMATCH is found, the report records the owning leaf (T01-T04) and the exact divergent clause so the revision loop can route it",
+      "evidence": "the report file carries an 'owner:' field on every MISMATCH line"
+    }
+  ],
+  "failure_cases": [
+    {
+      "scenario": "a leaf module does not import (syntax/import error)",
+      "expected_behavior": "the report records a MISMATCH with owner = that leaf; the pass continues for the other contracts"
+    }
+  ],
+  "integration_dependency": {
+    "seams": [
+      "S1",
+      "S2",
+      "S3"
+    ],
+    "upstream_outputs": [
+      "T01 modules",
+      "T02 modules",
+      "T03 module",
+      "T04 handlers"
+    ],
+    "consumers": [
+      "T07"
+    ]
+  },
+  "handoff": {
+    "checkpoint_required": true,
+    "checkpoint_ref": "checkpoints/T05.json",
+    "downstream_consumers": [
+      "T07"
+    ],
+    "notes": "all contracts MATCH is the green path; any MISMATCH stops the e2e gate (T07) until the owning leaf re-runs."
+  },
+  "risk": {
+    "context_footprint": "L",
+    "touched_layers": [
+      "service",
+      "api",
+      "runtime"
+    ],
+    "cross_contracts": 5,
+    "statefulness": "low",
+    "integration_distance": "low",
+    "uncertainty": "low",
+    "p50": "30-60 min",
+    "p80": "45-75 min",
+    "compaction_risk": "low",
+    "warnings": [
+      {
+        "code": "CONTRACT_DENSITY",
+        "detail": "consumes all five contracts C1-C5",
+        "rationale": "inevitable for a cross-leaf consistency pass — each contract is a re-read point by construction; splitting the pass would multiply overhead without shrinking any single closure"
+      }
+    ],
+    "oversized_justification": null
+  }
+}

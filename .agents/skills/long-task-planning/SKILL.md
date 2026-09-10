@@ -48,24 +48,31 @@ user names). Create it before stage 1.
 | 4 | `integration-planner` | `integration-plan.json`, amends `dag.json` | `plan-check.py validate` (both) |
 | 5 | `task-packager` | `tasks/<id>.json` | `plan-check.py validate` (each) |
 | 6 | `plan-risk-estimator` | `risk-estimates.json`, fills `risk` blocks in packages | `plan-check.py validate` |
-| 7 | `plan-auditor` | `audit.json` | verdict PASS |
+| 7 | `plan-auditor` | `audit.json` | `audit.json` schema-valid |
 | 8 | `planning-governor` | `governor-decision.json` | action = EXECUTE |
 
-1. Run stages 0–7 **in order**; each stage reads only the artifacts of earlier
+1. Run stages 0–8 **in order**; each stage reads only the artifacts of earlier
    stages plus the repo (never this conversation's reasoning).
+   Stage 8 (the governor) re-runs whenever a new audit exists — see step 3.
 2. After every gate, append to `run-manifest.json` (`pipeline` + `gates`):
    stage name, artifact, gate command, exit code, any fallbacks. A non-zero gate
    exit **stops the pipeline** — do not proceed "with a note".
-3. Stage 7 FAIL → **targeted revision loop** (max 3 rounds). Re-run only the
-   stage(s) owning the failing checks, then re-audit:
+3. Stage 8 (governor) runs **after every audit, regardless of verdict**.
+   The audit verdict (PASS/FAIL) is input to the governor, not a pipeline
+   gate — the pipeline does not auto-revise. The governor is the single
+   decision point between planning and execution, and only the governor
+   decides what happens next:
 
-   The revision loop must NOT spawn new reviewers to re-audit; it re-runs only
-   the owning stages (per the audit finding → owning stage map below). After
-   revision, the **same** auditor re-runs — not a new one. A second full audit
-   counts against `planning_budget.max_full_audits` (default 2). When the budget
-   is exhausted, the governor routes to `HUMAN_BLOCKER`.
+   | Governor action | What happens |
+   |---|---|
+   | `EXECUTE` | Hand off to execution (step 4). |
+   | `SPIKE` | Run the bounded probe(s) the governor specified; collect evidence; re-audit the affected findings with the **same** auditor (bounded re-audit, `revision_round` incremented); back to governor. |
+   | `TARGETED_PATCH` | Apply the specific, local fix the governor named (no stage redesign); re-run only the owning stage(s) per the playbook below; re-audit with the **same** auditor; back to governor. |
+   | `HUMAN_BLOCKER` | Stop. Present findings + governor reason to the user. No further planning action. |
 
-   | Audit check | Owning stage(s) to re-run |
+   **TARGETED_PATCH playbook** (the revision map the governor applies):
+
+   | Finding check | Owning stage(s) to re-run |
    |---|---|
    | scope_creep, insufficient_non_goals, late_contract_freeze, nondeterministic_acceptance (contract level), open questions | `stage-contract` |
    | hidden_dependency, fake_serialization, ownership_collision, CRITICAL_PATH_INVALID, PARALLEL_GROUP_INCONSISTENT | `dependency-dag` (+ `context-decomposer` if boundaries are wrong) |
@@ -81,17 +88,25 @@ user names). Create it before stage 1.
     | schema_invalid | the stage that wrote that artifact |
     | over_planning, missing_spike_route | `planning-governor` (route to spike, defer) |
 
-   After 3 FAIL rounds: **stop and escalate to the user** with the full finding
-   list. The governor's `forbidden_actions` will include `launch_another_full_audit`
-   when the budget is exhausted — do not ignore it. Never ship a FAIL plan.
-4. After stage 8 (governor): if `action: EXECUTE` → proceed to handoff.
-   If `action: SPIKE` → run spikes, then re-run stages 7-8.
-   If `action: TARGETED_PATCH` → fix specific findings, re-audit.
-   If `action: HUMAN_BLOCKER` → stop, present to user.
-5. On PASS: write the execution handoff (below) into
+   **Freeze rules:**
+   - The auditor **finds / describes / grounds**. It never decides the next
+     action.
+   - The governor **decides what happens next**. No other skill or step
+     triggers a revision.
+   - `TARGETED_PATCH` is only for findings that are **specific, local, and
+     have a known fix** that does not require re-designing the Stage.
+     Anything broader is `HUMAN_BLOCKER` (user decision), not a patch.
+   - Bounded re-audit uses the **same auditor path** (same isolation,
+     `revision_round` incremented). Spawning a fresh planning reviewer for a
+     targeted patch is forbidden — that is the runaway this design kills.
+   - Every revision counts against `planning_budget.max_plan_revisions`;
+     every full audit counts against `planning_budget.max_full_audits`.
+     When a limit is hit, the governor routes `HUMAN_BLOCKER` and records
+     the exhausted limit in `forbidden_actions`.
+4. On governor `EXECUTE`: write the execution handoff (below) into
    `<plan-dir>/HANDOFF.md` and stop. Execution is a different run.
 
-## Execution handoff (on PASS)
+## Execution handoff (on governor EXECUTE)
 
 The governor's `governor-decision.json` accompanies the handoff: the executor
 reads `spikes` to know which bounded probes to run first, and `deferred` to
@@ -123,17 +138,18 @@ paths (blockers → `CONTRACT_CHANGE_REQUEST` / `CORE_SEAM_BLOCKER` via
 ## Output
 
 `run-manifest.json` (written incrementally; schema
-`planning/run-manifest@1`) + `HANDOFF.md` on PASS. Every other artifact is
-owned by its stage skill.
+`planning/run-manifest@1`) + `HANDOFF.md` on governor `EXECUTE`. Every other
+artifact is owned by its stage skill.
 
 ## Failure & Escalation
 
 - Gate non-zero → stop pipeline, report which stage/artifact and the gate output.
-- 3 audit rounds FAIL → governor routes to HUMAN_BLOCKER (planning budget
-  exhausted). Present findings + ask the user (revise input, reduce scope,
-  or accept a different Stage boundary).
+- Planning budget exhausted (revisions at `max_plan_revisions`, or full audits
+  at `max_full_audits`) → the governor routes `HUMAN_BLOCKER`. Present
+  findings + ask the user (revise input, reduce scope, or accept a different
+  Stage boundary).
 - Governor action: SPIKE → run bounded probe, re-audit only the affected
-  findings. Governor action: TARGETED_PATCH → fix specific findings, re-audit.
+  findings. Governor action: TARGETED_PATCH → apply the specific fix, re-audit.
 - Planning budget exceeded mid-pipeline → governor issues HUMAN_BLOCKER.
   Do not attempt to continue planning; the cost of more meta-work exceeds
   the value. Present to the user.
@@ -152,8 +168,10 @@ audit PASS with 2 MINOR findings. Full worked instance:
 
 **Anti-pattern.** Planner runs stages in "whatever order feels right", lets the
 auditor run in the same conversation that produced the plan, and on audit FAIL
-appends a new task instead of re-running the owning stage. This is exactly the
-degenerate behavior the fixed pipeline + independence rule forbid.
+appends a new task on its own — revision is only legal through the governor's
+`TARGETED_PATCH` (specific, local, budget-bounded, same auditor re-checking).
+This is exactly the degenerate behavior the fixed pipeline + independence
+rules + governor freeze forbid.
 
 Another anti-pattern: the planner runs four full audits, each time spawning a
 new reviewer, and the plan grows from 6 to 18 tasks while never starting

@@ -1,0 +1,43 @@
+{
+  "schema": "planning/integration-plan@2",
+  "seams": [
+    { "id": "S1", "description": "store parity boundary: YamlConfigStore must be a drop-in replacement for JsonConfigStore at the C1 interface; silent-divergence risks are key names, ConfigError message shapes, REQUIRED_KEYS semantics, and set/save persistence timing", "contract_ids": ["C1", "C2"], "covered_by": ["T03"] }
+  ],
+  "integration_tasks": [
+    {
+      "task_id": "T03",
+      "kind": "e2e_closure",
+      "merged_kinds": ["contract_consistency", "final_acceptance"],
+      "seams": ["S1"],
+      "owns_fixes_for": ["T02"],
+      "acceptance_ref": "A1"
+    }
+  ],
+  "omitted_kinds": [
+    {
+      "kind": "seam_integration",
+      "reason": "DA-1 keeps loader.py/cli.py on JSON: this stage deliberately adds no production wiring — YamlConfigStore is additive and unwired, so there is no seam wiring to integrate; the route stage performs the loader/cli swap as its own stage with its own wiring seam",
+      "evidence": ["DA-1 (frozen architecture decision in stage-contract.json)", "S1 (parity boundary verified at interface level by T03's closure)"]
+    }
+  ],
+  "e2e_gates": [
+    {
+      "id": "E1",
+      "scenario": "parity matrix (S1): run the full A1 5-item parity matrix — get/set roundtrip, save persistence, as_dict shallow copy, missing-file ConfigError, REQUIRED_KEYS on both classes — against BOTH JsonConfigStore and YamlConfigStore; failure scenario: both stores on a nonexistent path raise ConfigError with the 'config file missing:' prefix, and a C2-shape roundtrip is identity",
+      "covers": ["S1"],
+      "evidence": "tests/test_yaml_store.py (parity matrix) + tests/test_stage_closure.py::test_parity_gate"
+    },
+    {
+      "id": "E2",
+      "scenario": "regression closure (S1): python -m unittest discover tests exits 0 with all pre-existing tests passing — loader/cli behavior unchanged (DA-1); failure scenario: any pre-existing test failure is a DA-1 violation and fails the gate",
+      "covers": ["S1"],
+      "evidence": "python -m unittest discover tests -v"
+    },
+    {
+      "id": "E3",
+      "scenario": "spike artifact acceptance (final_acceptance, A4): spike-reader-inventory.md exists, names deploy/check.sh with evidence, lists every reader found, and contains a 'Recommendation: Route A' or 'Recommendation: Route B' line followed by reasoning; failure scenario: an artifact missing the check.sh entry or the Recommendation line fails the gate",
+      "covers": ["S1"],
+      "evidence": "tests/test_stage_closure.py::test_spike_artifact (checks file presence + required markers)"
+    }
+  ]
+}

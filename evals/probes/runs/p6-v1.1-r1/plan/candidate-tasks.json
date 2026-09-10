@@ -1,0 +1,70 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Extend the todo record with the optional webhook_url field (C2 additive) and make POST /todos accept webhook_url at creation so the store round-trips it; no other record key, endpoint, or the C1 GET /todos response key set changes",
+      "required_context": {
+        "files": ["app/store.py", "app/api.py", "tests/test_api.py", "tests/test_registration.py (new)"],
+        "contracts": ["C1", "C2"],
+        "concepts": [
+          "in-memory store as single source of truth (DA-1: TodoAPI is the only writer)",
+          "frozen C1 response key set — list_todos output must not gain keys in this stage",
+          "C2 additive rule: optional fields may be added; existing keys and creation order are untouched"
+        ]
+      },
+      "owned_paths": ["app/store.py", "app/api.py", "tests/test_registration.py (new)"],
+      "forbidden_scope": [
+        "app/webhooks.py (dispatch is T02's closure)",
+        "any change to list_todos / GET /todos response shape (C1 frozen)",
+        "last_notified_at or any other new response/record field beyond webhook_url (Q1 deferred)",
+        "mark_done behavior (T02's closure)"
+      ],
+      "touched_layers": ["api", "persistence"],
+      "inputs": [
+        "stage-contract.json (C1/C2 specs inlined in package)",
+        "stage-1/stage-contract.json + stage-1/stage-checkpoint.json (frozen baseline: C1 key set, C2 additive rule)",
+        "input.md (task verbatim)"
+      ],
+      "outputs": [
+        "store records carry optional webhook_url (absent, not null, when unregistered)",
+        "create_todo accepts webhook_url from the request body",
+        "tests/test_registration.py: store round-trip + creation with/without URL, key-set assertions"
+      ],
+      "downstream_consumers": ["T02", "T03"],
+      "split_rationale": "registration closure = store mutation surface + creation path (2 layers: persistence+api); the dispatch closure (webhooks.py service layer) sits behind the S2 seam, so cutting here keeps each leaf at <= 2 layers and disjoint production files"
+    },
+    {
+      "id": "T02",
+      "objective": "Implement the C3 done-notification dispatch in mark_done: after a successful transition, send exactly one webhook via the existing WebhookDispatcher with the C3 payload ({event:'todo.done', todo_id, title, at}); zero dispatches when webhook_url is absent; a no-escape exception boundary (DA-2) enforces that a raising dispatcher never breaks the done transition (200 + done state intact)",
+      "required_context": {
+        "files": ["app/api.py", "app/webhooks.py", "app/store.py", "tests/test_api.py", "tests/test_notifications.py (new)"],
+        "contracts": ["C2", "C3"],
+        "concepts": [
+          "fire-and-forget dispatch: WebhookDispatcher.send records/returns a status and never raises by design (A-2)",
+          "DA-2 boundary: dispatch strictly after the store mutation, exception caught+logged, never propagated",
+          "idempotent done transition: repeated done still returns 200",
+          "frozen done-transition HTTP behavior (200 {id, done:true}, 404 unknown id) — unchanged"
+        ]
+      },
+      "owned_paths": ["app/api.py", "tests/test_notifications.py (new)"],
+      "forbidden_scope": [
+        "app/store.py beyond reading the webhook_url field T01 added (registration is T01's closure)",
+        "app/webhooks.py (reuse only — the dispatcher is frozen infra; no new HTTP client/worker/queue)",
+        "GET /todos response shape (C1 frozen; last_notified_at is Q1, deferred)",
+        "create_todo / registration behavior (T01's closure)"
+      ],
+      "touched_layers": ["api", "service"],
+      "inputs": [
+        "stage-contract.json (C2/C3 specs inlined in package)",
+        "T01 checkpoint (webhook_url present on records; store behavior verified)"
+      ],
+      "outputs": [
+        "mark_done dispatches per C3 (exactly one / exactly zero) with the no-escape boundary",
+        "tests/test_notifications.py: one-dispatch, no-URL, raising-dispatcher, C1-key-set-unchanged (A1/A2/A3/A4 evidence)"
+      ],
+      "downstream_consumers": ["T03"],
+      "split_rationale": "dispatch closure = api handler + existing service-layer dispatcher (2 layers: api+service) with its own acceptance cluster (C3 + failure tolerance); shares app/api.py with T01, so it is ordered after T01 rather than merged (merging would cross the S2 seam and put service-layer context into the registration leaf)"
+    }
+  ]
+}

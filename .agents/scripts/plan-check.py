@@ -34,7 +34,7 @@ from pathlib import Path
 
 SCHEMA_TO_FILE = {
     "planning/stage-contract@2": "stage-contract.schema.json",
-    "planning/stage-contract@3": "stage-contract.schema.json",
+    "planning/stage-contract@3": "stage-contract-v3.schema.json",
     "planning/candidate-tasks@1": "candidate-tasks.schema.json",
     "planning/dag@2": "dag.schema.json",
     "planning/integration-plan@2": "integration-plan.schema.json",
@@ -43,11 +43,13 @@ SCHEMA_TO_FILE = {
     "planning/audit@2": "audit.schema.json",
     "planning/audit@3": "audit-v3.schema.json",
     "planning/checkpoint@1": "checkpoint.schema.json",
-    "planning/checkpoint@2": "checkpoint.schema.json",
+    "planning/checkpoint@2": "checkpoint-v2.schema.json",
+    "planning/stage-checkpoint@1": "stage-checkpoint.schema.json",
     "planning/replan-request@1": "replan-request.schema.json",
     "planning/run-manifest@1": "run-manifest.schema.json",
     "planning/repo-context-snapshot@1": "repo-context-snapshot.schema.json",
     "planning/governor-decision@1": "governor-decision.schema.json",
+    "planning/probe-run-result@1": "probe-run-result.schema.json",
 }
 
 DEFAULT_SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas" / "planning"
@@ -313,6 +315,7 @@ class Plan:
         self.integration = None
         self.risk = None
         self.audit = None
+        self.governor = None
         self.packages: dict[str, dict] = {}
 
     def add(self, code: str, severity: str, artifact: str, detail: str, task_id: str | None = None):
@@ -344,6 +347,17 @@ class Plan:
             else:
                 with open(path, "r", encoding="utf-8") as fh:
                     setattr(self, attr, json.load(fh))
+        # v1.1 optional artifacts: governor decision (present after stage 8)
+        gov_path = self.plan_dir / "governor-decision.json"
+        if gov_path.exists():
+            res = validate_file(gov_path, self.schemas_dir)
+            if not res["ok"]:
+                for e in res["errors"]:
+                    self.add("SCHEMA_INVALID", "BLOCKER", "governor-decision.json", e)
+                self.governor = None
+            else:
+                with open(gov_path, "r", encoding="utf-8") as fh:
+                    self.governor = json.load(fh)
         tasks_dir = self.plan_dir / "tasks"
         if tasks_dir.is_dir():
             for path in sorted(tasks_dir.glob("*.json")):
@@ -876,6 +890,66 @@ class Plan:
                              f"audit grounded against snapshot {g.get('repo_revision')!r} but "
                              f"the plan's snapshot is {self.snapshot.get('repo_revision')!r} — "
                              f"the repo moved under the plan; re-snapshot and re-audit")
+
+        # --- v1.1 deterministic closure checks (C1-C) ------------------------------
+        # These fire only on v1.1 artifacts: they are structural, low-false-positive
+        # rules. Semantic behavior stays with the auditor/governor (see plan doc C1-C).
+        if self.contract is not None and self.contract.get("schema") == "planning/stage-contract@3":
+            horizons = self.contract.get("horizons") or {}
+            detailed = {t for t in (horizons.get("detailed_stage") or {}).get("tasks", [])}
+            commitment = set((horizons.get("commitment") or {}).get("tasks", []))
+            if not detailed.issuperset(commitment):
+                extra = sorted(commitment - detailed)
+                self.add("HORIZON_SCOPE_VIOLATION", "BLOCKER", "stage-contract.json",
+                         f"commitment tasks {extra} are not inside detailed_stage.tasks "
+                         f"{sorted(detailed)} — commitment must be a subset of the detailed stage")
+            forecast = horizons.get("forecast") or {}
+            for st in forecast.get("stages", []):
+                text = json.dumps(st)
+                leaf_ids = sorted(set(re.findall(r"\bT\d{2,}\b", text)))
+                if leaf_ids:
+                    self.add("HORIZON_SCOPE_VIOLATION", "BLOCKER", "stage-contract.json",
+                             f"forecast stage references leaf task ids {leaf_ids} — forecast "
+                             "stages carry objective + depends_on_evidence only, no task DAG")
+            stop_after = (self.contract.get("stage_boundary") or {}).get("stop_after", [])
+            for tid in stop_after:
+                if detailed and tid not in detailed:
+                    self.add("HORIZON_SCOPE_VIOLATION", "BLOCKER", "stage-contract.json",
+                             f"stage_boundary.stop_after references {tid} which is not a "
+                             f"detailed_stage task {sorted(detailed)}")
+        if self.audit is not None and self.audit.get("schema") == "planning/audit@3":
+            for f in self.audit.get("findings", []):
+                if f.get("routing") == "EXECUTION_BLOCKER" and not (f.get("acceptance_ref") or "").strip():
+                    self.add("EXECUTION_BLOCKER_MISSING_REF", "BLOCKER", "audit.json",
+                             f"finding {f.get('id')} is routed EXECUTION_BLOCKER but names no "
+                             "acceptance_ref — a blocker that cannot cite a stage acceptance "
+                             "criterion or project invariant is not an execution blocker")
+        if self.governor is not None and self.audit is not None:
+            routed = {f.get("routing") for f in self.audit.get("findings", [])}
+            action = self.governor.get("action")
+            if "EXECUTION_BLOCKER" in routed and action != "HUMAN_BLOCKER":
+                self.add("GOVERNOR_CONFLICT", "BLOCKER", "governor-decision.json",
+                         f"audit contains an EXECUTION_BLOCKER finding but governor action is "
+                         f"{action!r} — an execution blocker must stop for a human decision")
+            if "SPIKE_REQUIRED" in routed and action not in ("SPIKE", "HUMAN_BLOCKER"):
+                self.add("GOVERNOR_CONFLICT", "MAJOR", "governor-decision.json",
+                         f"audit contains SPIKE_REQUIRED findings but governor action is "
+                         f"{action!r} — empirical unknowns route to bounded probes, not "
+                         "straight to execution")
+        if self.governor is not None:
+            budget = (self.contract or {}).get("planning_budget") or {}
+            status = self.governor.get("planning_budget_status") or {}
+            limits = [
+                ("full_audits", "max_full_audits", status.get("full_audits")),
+                ("plan_revisions", "max_plan_revisions", status.get("plan_revisions")),
+                ("subagents", "max_planning_subagents", status.get("subagents")),
+            ]
+            for skey, bkey, used in limits:
+                if used is not None and budget.get(bkey) is not None and used > budget[bkey]:
+                    self.add("GOVERNOR_BUDGET_EXCEEDED", "BLOCKER", "governor-decision.json",
+                             f"planning budget exhausted: {skey}={used} > "
+                             f"planning_budget.{bkey}={budget[bkey]} — governor must route "
+                             "to HUMAN_BLOCKER, not continue planning")
 
         # --- risk coverage ------------------------------------------------------
         if self.risk is not None:

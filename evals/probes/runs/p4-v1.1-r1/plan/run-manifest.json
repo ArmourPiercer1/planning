@@ -1,0 +1,88 @@
+{
+  "schema": "planning/run-manifest@1",
+  "plan_id": "p4-v1.1-r1",
+  "stage_id": "p4-audit-log",
+  "created_at": "2026-09-10T12:20:00+00:00",
+  "skill_versions": ["long-task-planning@v1.1", "repo-context-snapshot@v1.0"],
+  "pipeline": [
+    {
+      "stage": "repo-context-snapshot",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "repo-context-snapshot.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "stage-contract",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "stage-contract.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "context-decomposer",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "candidate-tasks.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "dependency-dag",
+      "status": "done",
+      "gate": "plan-check.py validate",
+      "artifact": "dag.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "integration-planner",
+      "status": "done",
+      "gate": "plan-check.py validate (both)",
+      "artifact": "integration-plan.json + dag.json (gates)",
+      "exit_code": 0
+    },
+    {
+      "stage": "task-packager",
+      "status": "done",
+      "gate": "plan-check.py validate (3 packages) + inline-frozen-contracts.py",
+      "artifact": "tasks/T01.json, tasks/T02.json, tasks/T03.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "plan-risk-estimator",
+      "status": "done",
+      "gate": "plan-check.py validate (risk-estimates + 3 packages)",
+      "artifact": "risk-estimates.json + risk blocks in tasks/*.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "plan-auditor",
+      "status": "done",
+      "gate": "plan-check.py validate (audit@3) + plan-check.py lint (plan-wide, re-run)",
+      "artifact": "audit.json",
+      "exit_code": 0
+    },
+    {
+      "stage": "planning-governor",
+      "status": "done",
+      "gate": "plan-check.py validate (governor-decision.json)",
+      "artifact": "governor-decision.json",
+      "exit_code": 0
+    }
+  ],
+  "gates": [
+    { "name": "stage0-snapshot-validate", "exit_code": 0, "ts": "2026-09-10T12:20:00+00:00" },
+    { "name": "stage1-contract-validate", "exit_code": 0, "ts": "2026-09-10T12:26:00+00:00" },
+    { "name": "stage2-candidates-validate", "exit_code": 0, "ts": "2026-09-10T12:32:00+00:00" },
+    { "name": "stage3-dag-validate", "exit_code": 0, "ts": "2026-09-10T12:40:00+00:00" },
+    { "name": "stage4-integration-validate", "exit_code": 0, "ts": "2026-09-10T12:44:00+00:00" },
+    { "name": "stage5-packages-validate", "exit_code": 0, "ts": "2026-09-10T12:52:00+00:00" },
+    { "name": "stage6-risk-validate", "exit_code": 0, "ts": "2026-09-10T12:58:00+00:00" },
+    { "name": "final-plan-lint", "exit_code": 0, "ts": "2026-09-10T13:04:00+00:00" },
+    { "name": "stage7-audit-validate", "exit_code": 0, "ts": "2026-09-10T13:40:00+00:00" },
+    { "name": "stage7-plan-lint-rerun", "exit_code": 0, "ts": "2026-09-10T13:40:00+00:00" },
+    { "name": "stage8-governor-validate", "exit_code": 0, "ts": "2026-09-10T13:48:00+00:00" }
+  ],
+  "audit_verdict": "FAIL",
+  "audit_rounds": 1,
+  "notes": "probe run P4 (true-blocker retention). Fixture repo is inside the planning git repo, so repo_revision is the parent HEAD. unknown_areas = README.md/TASK.md (root docs outside code scope, explained). Final plan-wide lint: 0 BLOCKER / 0 MAJOR / 0 MINOR. Stage 7 (independent audit) completed by isolated fresh subagent: verdict FAIL, 3 findings (F01 BLOCKER/EXECUTION_BLOCKER scope_creep ref A1; F02 MAJOR/EXECUTION_BLOCKER nondeterministic_acceptance ref A1 task T01; F03 MINOR/OPTIONAL). Planner isolation verified (planner_conversation_isolated: true). Stage 8 (planning-governor) completed by the probe orchestrator per planning-governor skill: action HUMAN_BLOCKER (decision rule 1 — EXECUTION_BLOCKER findings F01/F02 exist; F01 is a user product-semantics decision, no spike can answer it). F02 rides the same escalation + single subsequent patch/re-audit cycle (same auditor, revision_round 2); F03 deferred into that patch round. Budget at stage 8: full_audits 1/2 (the remaining 1 reserved for the post-patch re-audit), plan_revisions 0/3 (1 to be consumed by the patch round), planning_subagents 1/5 (the independent auditor is tracked in audit_rounds, not as a planning subagent) — within limits, no budget-forced escalation. No HANDOFF.md written (a blocked run hands off nothing); no plan artifact modified in the stage-8 pass."
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "planning/candidate-tasks@1",
+  "tasks": [
+    {
+      "id": "T01",
+      "objective": "Implement retry with exponential backoff in app/notify.py (3 attempts, 1s/2s/4s delays, retry on all non-2xx including 429) and add unit tests in tests/test_notify.py covering: success-after-retry, all-attempts-fail (single persisted record), 429-retryable, and first-attempt-success (attempts=1).",
+      "required_context": {
+        "files": [
+          "app/notify.py",
+          "app/provider.py",
+          "app/db.py",
+          "tests/test_notify.py",
+          "tests/test_gateway_observed.py"
+        ],
+        "contracts": ["C1", "C2", "C3"],
+        "concepts": [
+          "exponential backoff (delay = min(base * factor^N, cap))",
+          "retry semantics: retry on non-2xx, persist once after final outcome",
+          "429 as transient error (staging capture: first 429, second 202)",
+          "ProviderResponse shape (status, body, headers)"
+        ]
+      },
+      "owned_paths": [
+        "app/notify.py",
+        "tests/test_notify.py"
+      ],
+      "forbidden_scope": [
+        "app/provider.py (read-only context; the client interface is frozen)",
+        "app/db.py (read-only context; the store interface is frozen)",
+        "app/api.py (the handler just calls send_notification; no change needed)",
+        "tests/test_gateway_observed.py (read-only reference for 429 behavior; do not modify)"
+      ],
+      "touched_layers": ["service", "e2e"],
+      "inputs": [
+        "stage-contract.json (C1 retry policy, C2 return shape, C3 client interface)",
+        "repo-context-snapshot.json (file inventory, import graph)"
+      ],
+      "outputs": [
+        "app/notify.py (modified: retry loop in send_notification)",
+        "tests/test_notify.py (extended: 3 new test methods)"
+      ],
+      "downstream_consumers": [],
+      "split_rationale": "Single context closure: the retry implementation (app/notify.py) and its tests (tests/test_notify.py) share the same 5 files, same 3 contracts (C1/C2/C3), and the same retry-state-model concepts. Splitting would force two agents to re-read provider.py and db.py for no context savings. The 2 layers (service + e2e) are below the 3-layer split threshold."
+    }
+  ]
+}
