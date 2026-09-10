@@ -1,0 +1,205 @@
+{
+  "schema": "planning/stage-contract@2",
+  "stage_id": "planning-v1.1-governance-horizon",
+  "objective": "Upgrade Planning Skills v1.0 to v1.1: add planning governance (budget, governor, finding taxonomy, delivery profile) and horizon awareness (commitment/detailed/forecast, stage boundary, next-planning trigger, checkpoint drift) without replacing the existing 8-stage pipeline",
+  "in_scope": [
+    "Extend stage-contract schema to @3 with delivery_profile.level and planning_budget fields",
+    "New planning-governor skill that routes audit findings to EXECUTE/SPIKE/TARGETED_PATCH/HUMAN_BLOCKER",
+    "Extend audit schema to @3 with routing field and new finding categories (EXECUTION_BLOCKER, SPIKE_REQUIRED, POST_STAGE, OPTIONAL)",
+    "Add horizon output (commitment/detailed/forecast) to stage-contract@3 and plan-check validation",
+    "Extend checkpoint schema to @2 with drift, verified/falsified assumptions, next_stage_inputs",
+    "Update plan-auditor skill with finding routing, delivery-profile-aware severity, and DO NOT AUDIT FOR list",
+    "Update plan-risk-estimator with schedule-feasibility revision (no auto-replan on P80 over-target)",
+    "Integrate governor into planning workflow (replace unbounded audit loop)",
+    "New eval regression fixtures: cases M (meta-runaway), N (too-far-planning), O (premature-split), P (info-gain-boundary), Q (cross-stage-drift)",
+    "New eval telemetry fields: planning_wall_time, planning_tokens, planning_subagent_count, full_audit_count, plan_revision_count, time_to_first_executable_evidence",
+    "All existing evals and plan-check tests continue to pass"
+  ],
+  "out_of_scope": [
+    { "item": "dsh-agent-team product code or runtime durable state machine", "reason": "reserved for post-v1.1 runtime compatibility phase" },
+    { "item": "learned model router or Value-of-Computation", "reason": "out of MVP scope; v1.1 uses deterministic budget caps" },
+    { "item": "automatic planner daemon", "reason": "next-phase runtime feature; v1.1 only produces schema hooks and static validation" },
+    { "item": "complex plugin UI for governor", "reason": "MVP uses CLI/json artifacts only" },
+    { "item": "modifying execution-time subagent orchestration (dsh-agent-team)", "reason": "this Stage only modifies planning skills, schemas, scripts, evals, docs" }
+  ],
+  "frozen_assumptions": [
+    { "id": "A-1", "statement": "Existing 8-stage pipeline (repo-context-snapshot through plan-auditor) is correct and will be extended, not replaced", "rationale": "v1.0 pipeline is already field-tested;推翻 it is not the goal" },
+    { "id": "A-2", "statement": "plan-check.py deterministic gate remains the single source of truth for schema validation and lint", "rationale": "plan-check.py is the existing gate; adding new checks here is lower risk than a new tool" },
+    { "id": "A-3", "statement": "Schema versions are additive: @3 fields are optional on @2 consumers, not breaking", "rationale": "backward compatibility with existing plans that use @2" },
+    { "id": "A-4", "statement": "Python-only for v1.1; no multi-language parser work", "rationale": "repo-snapshot V1 is Python-only; expanding language support is a separate project" },
+    { "id": "A-5", "statement": "Planning budget defaults are heuristics, not hard-coded universals; delivery profile can override them", "rationale": "prototype vs. production have fundamentally different assurance needs" }
+  ],
+  "frozen_architecture": [
+    { "id": "DA-1", "decision": "Governor is a new skill (planning-governor) that replaces replan-controller when both coexist; replan-controller becomes an alias or is subsumed", "rationale": "replan-controller is currently interface-reserved only; governor adds budget enforcement and finding routing. Consolidating avoids parallel skills.", "seams_affected": ["S1", "S3"] },
+    { "id": "DA-2", "decision": "stage-contract@3 extends @2 with optional delivery_profile, planning_budget, horizons, stage_boundary, next_planning_trigger fields", "rationale": "additive extension keeps @2 plans valid; new fields are only emitted by v1.1 pipeline", "seams_affected": ["S2", "S4"] },
+    { "id": "DA-3", "decision": "audit@3 adds routing enum per finding (EXECUTION_BLOCKER, SPIKE_REQUIRED, POST_STAGE, OPTIONAL) and keeps severity (BLOCKER/MAJOR/MINOR) for backward compatibility", "rationale": "severity still exists for tools that read audit@2; routing is the new governance signal", "seams_affected": ["S1", "S3"] },
+    { "id": "DA-4", "decision": "Checkpoint@2 adds drift object and verified/falsified assumptions; plan-check validates drift does not exceed corridor", "rationale": "checkpoint is the bridge between stages; drift check prevents silent scope creep", "seams_affected": ["S5"] },
+    { "id": "DA-5", "decision": "Horizon output is part of stage-contract@3 (not a separate artifact); plan-check validates commitment <= detailed <= forecast scoping rules", "rationale": "single-artifact horizon reduces complexity; scoping rules are deterministic checks", "seams_affected": ["S4"] }
+  ],
+  "shared_contracts": [
+    {
+      "id": "C1",
+      "kind": "schema",
+      "spec": "stage-contract@3 adds these optional fields: delivery_profile { level: enum[prototype, alpha, beta, rc, production] }; planning_budget { max_full_audits: int, max_plan_revisions: int, max_planning_subagents: int, soft_wall_fraction: float, max_planning_tokens: int (optional), hard_stop: enum[stop_at_soft_wall, stop_at_budget_limit, stop_at_wall_and_budget] }; horizons { commitment: {tasks}, detailed_stage: {objective, tasks}, forecast: {stages: [{objective, depends_on_evidence}]} }; stage_boundary { stop_after, because, expected_new_evidence, decisions_deferred_until_then }; next_planning_trigger { normal, early, not_triggers }",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C2",
+      "kind": "schema",
+      "spec": "planning-governor output is a JSON object with: governor_decision { action: enum[EXECUTE, SPIKE, TARGETED_PATCH, HUMAN_BLOCKER], blocking_findings: [finding_ref[]], spikes: [spike_spec[]], deferred: [finding_ref[]], planning_budget_status: { plan_revisions: int, full_audits: int, subagents: int, wall_time: string, tokens: int (optional) }, forbidden_actions: [string[]], reason: string }",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C3",
+      "kind": "schema",
+      "spec": "audit@3 extends audit@2 findings with: each finding gets routing: enum[EXECUTION_BLOCKER, SPIKE_REQUIRED, POST_STAGE, OPTIONAL]. EXECUTION_BLOCKER only for: core acceptance failure, security/data-integrity, missing-unbypassable-seam, product-semantic-ambiguity, durable-state-corruption, architecture-cannot-carry-goal. SPIKE_REQUIRED for: public-seam-feasibility, runtime-behavior, integration-behavior, performance-assumption. POST_STAGE for: correct but non-blocking. OPTIONAL for: optimization/cleanup. Severity (BLOCKER/MAJOR/MINOR) remains for backward compat.",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C4",
+      "kind": "schema",
+      "spec": "checkpoint@2 adds: verified_assumptions: [string[]], falsified_assumptions: [string[]], unresolved: [string[]], scope_deviations: [{from, to, reason}[]], budget_used: {plan_revisions, full_audits, subagents, wall_time, tokens}, next_stage_inputs: {objective, assumptions, evidence, unresolved}. Plus drift: { requirements_removed: [string[]], scope_added: [string[]], frozen_decisions_changed: [string[]], delivery_profile_changed: bool, acceptance_changed: bool, budget_envelope_changed: bool }",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C5",
+      "kind": "service",
+      "spec": "plan-check.py extended with: (1) stage-contract@3 validation including delivery_profile enum, planning_budget types, horizon scoping rules (commitment tasks subset of detailed, forecast has no leaf tasks), stage_boundary presence, next_planning_trigger format; (2) audit@3 finding routing validation (routing present, EXECUTION_BLOCKER has valid justification); (3) checkpoint@2 drift validation (corridor check: requirements_removed and scope_added flagged); (4) new lint codes: GOVERNOR_DECISION_INVALID, HORIZON_SCOPE_VIOLATION, CHECKPOINT_DRIFT_EXCEEDED, DELIVERY_PROFILE_MISSING. All checks are deterministic, schema-based, or structural.",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C6",
+      "kind": "service",
+      "spec": "plan-auditor SKILL.md updated with: (1) DO NOT AUDIT FOR list (future architecture completeness, deferred feature design, optional robustness outside delivery profile, speculative edge cases, future Stage DAG correctness); (2) delivery-profile-aware severity table (prototype skips many checks that production requires); (3) finding must cite specific Stage acceptance or Project hard invariant to be EXECUTION_BLOCKER; (4) schedule over-target does not auto-trigger replan, outputs forecast with range",
+      "logical_owner": "planner",
+      "frozen": true
+    },
+    {
+      "id": "C7",
+      "kind": "data",
+      "spec": "New eval fixtures cases M–Q: (M) meta-planning runaway — verifies <= 1 full audit before execution; (N) too-far planning — verifies detailed plan stops at evidence boundary; (O) premature stage split — verifies no arbitrary split; (P) information-gain boundary — verifies stage ends after spike; (Q) cross-stage drift — detects scope creep into non-goal. All produce plan-check findings scored by new telemetry: planning_wall_time, planning_subagent_count, time_to_first_evidence.",
+      "logical_owner": "planner",
+      "frozen": true
+    }
+  ],
+  "integration_seams": [
+    {
+      "id": "S1",
+      "description": "Governor reads audit@3 findings and routes them; the finding schema (C3) and governor output (C2) must be consistent",
+      "participants": ["audit_taxonomy", "governor"],
+      "contract_ids": ["C2", "C3"]
+    },
+    {
+      "id": "S2",
+      "description": "Governor reads stage-contract@3 delivery_profile and planning_budget; schema (C1) and governor logic (C2) must agree on field names and types",
+      "participants": ["stage_schema", "governor"],
+      "contract_ids": ["C1", "C2"]
+    },
+    {
+      "id": "S3",
+      "description": "Plan-check validates audit@3 routing field and governor_decision output format; schema checks (C5) must match actual schemas (C2, C3)",
+      "participants": ["plan_check", "governor", "audit_taxonomy"],
+      "contract_ids": ["C2", "C3", "C5"]
+    },
+    {
+      "id": "S4",
+      "description": "Plan-check horizon scoping rules validate that commitment tasks are a subset of detailed tasks, and forecast has no leaf-level task packages; schema (C1) and checker (C5) must agree",
+      "participants": ["stage_schema", "plan_check"],
+      "contract_ids": ["C1", "C5"]
+    },
+    {
+      "id": "S5",
+      "description": "Checkpoint@2 drift fields and corridor checker; plan-check validates drift does not exceed project contract; schema (C4) and checker (C5) must agree on drift structure",
+      "participants": ["checkpoint_schema", "plan_check"],
+      "contract_ids": ["C4", "C5"]
+    },
+    {
+      "id": "S6",
+      "description": "Plan-auditor SKILL.md must use delivery-profile-aware severity table and DO NOT AUDIT FOR list matching the delivery profile levels from C1",
+      "participants": ["plan_auditor", "stage_schema"],
+      "contract_ids": ["C1", "C6"]
+    },
+    {
+      "id": "S7",
+      "description": "New eval fixtures (cases M–Q) exercise the governor routing, horizon scoping, and checkpoint drift; fixture data (C7) must produce plan-check findings at seams S1, S3, S4, S5",
+      "participants": ["eval_fixtures", "plan_check"],
+      "contract_ids": ["C5", "C7"]
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "description": "plan-check validate succeeds on a well-formed stage-contract@3 with delivery_profile.alpha and planning_budget, and plan-check lint produces zero new BLOCKERs on the good-plan fixture upgraded to @3",
+      "positive_case": "plan-check.py validate .plans/v1.1/stage-contract.json returns exit 0; plan-check.py lint good-plan-upgraded returns 0 findings",
+      "negative_case": "stage-contract@3 with invalid delivery_profile level (e.g. 'gold') is rejected by plan-check validate",
+      "failure_behavior": "invalid delivery_profile produces SCHEMA_INVALID finding; invalid horizon scoping produces HORIZON_SCOPE_VIOLATION BLOCKER",
+      "evidence": "uv run --no-project python .agents/scripts/plan-check.py validate .plans/v1.1/stage-contract.json exits 0"
+    },
+    {
+      "id": "A2",
+      "description": "Planning governor correctly routes EXECUTION_BLOCKER findings to HUMAN_BLOCKER action, SPIKE_REQUIRED to SPIKE action, and non-blocking findings to EXECUTE with deferred list",
+      "positive_case": "governor receives 1 EXECUTION_BLOCKER + 2 SPIKE_REQUIRED + 3 POST_STAGE findings and outputs action=HUMAN_BLOCKER with 1 blocking and 2 spikes",
+      "negative_case": "governor routes POST_STAGE finding as blocking — this is a false-positive regression",
+      "failure_behavior": "HUMAN_BLOCKER action when EXECUTION_BLOCKER present; EXECUTE with deferred when only POST_STAGE/OPTIONAL",
+      "evidence": "plan-check validates governor_decision.json against governor output schema; eval case M verifies routing"
+    },
+    {
+      "id": "A3",
+      "description": "Audit@3 findings have routing field; EXECUTION_BLOCKER findings cite specific Stage acceptance criterion or Project hard invariant",
+      "positive_case": "audit.json contains findings with routing=EXECUTION_BLOCKER that reference A1 acceptance criterion",
+      "negative_case": "audit.json contains EXECUTION_BLOCKER without acceptance reference — plan-check flags GOVERNOR_DECISION_INVALID",
+      "failure_behavior": "findings without valid routing are rejected by plan-check validate",
+      "evidence": "plan-check lint of audit@3 finds GOVERNOR_DECISION_INVALID for unjustified EXECUTION_BLOCKER"
+    },
+    {
+      "id": "A4",
+      "description": "Horizon scoping rules enforced: commitment tasks are subset of detailed tasks; forecast stages have no leaf-level task packages; plan-check validates this deterministically",
+      "positive_case": "stage-contract@3 with 3 commitment tasks all present in detailed_stage, and 2 forecast stages without task packages — plan-check clean",
+      "negative_case": "forecast stage with leaf task package — plan-check produces HORIZON_SCOPE_VIOLATION BLOCKER",
+      "failure_behavior": "HORIZON_SCOPE_VIOLATION BLOCKER when forecast contains leaf tasks or commitment references non-detailed task",
+      "evidence": "plan-check lint produces HORIZON_SCOPE_VIOLATION on bad horizon; eval case N verifies"
+    },
+    {
+      "id": "A5",
+      "description": "Checkpoint@2 drift checker detects when a Stage removes a requirement, adds scope beyond in_scope, or changes a frozen decision without recording it",
+      "positive_case": "checkpoint@2 with drift.requirements_removed populated — plan-check flags CHECKPOINT_DRIFT_EXCEEDED BLOCKER",
+      "negative_case": "checkpoint@2 with scope_added referencing an out_of_scope item — plan-check flags CHECKPOINT_DRIFT_EXCEEDED",
+      "failure_behavior": "CHECKPOINT_DRIFT_EXCEEDED BLOCKER when drift exceeds project contract corridor",
+      "evidence": "plan-check lint of checkpoint@2 with drift produces CHECKPOINT_DRIFT_EXCEEDED; eval case Q verifies"
+    },
+    {
+      "id": "A6",
+      "description": "All existing plan-check tests pass and all existing eval fixtures continue to produce the expected finding codes — zero regressions",
+      "positive_case": "test_plan_check.py and test_minimal_fixes.py pass; existing eval cases (01–15) produce same codes",
+      "negative_case": "an existing case that previously had 0 findings now produces unexpected BLOCKER",
+      "failure_behavior": "regression test failure — stop and fix before continuing",
+      "evidence": "uv run --no-project python tests/planning-skills/test_plan_check.py reports PASS; eval runner reports no regression"
+    }
+  ],
+  "constraints": [
+    { "kind": "resource", "rule": "Implementation limited to 7 packages (A–G); no more than 12 subagents total across the Stage" },
+    { "kind": "resource", "rule": "Planning budget: max 2 full audits, max 3 plan revisions, max 10 planning subagents" },
+    { "kind": "dependency", "rule": "No new runtime dependencies for plan-check.py; stdlib-only constraint maintained" },
+    { "kind": "process", "rule": "Schema changes are additive: @3 fields optional on @2 consumers; @2 plans remain valid" },
+    { "kind": "style", "rule": "Use logical owners in shared_contracts (never task IDs); task binding happens in DAG stage" },
+    { "kind": "process", "rule": "Each package ships with self-tests; no separate review round unless a real architecture blocker" },
+    { "kind": "dependency", "rule": "Do not modify dsh-agent-team product code; this Stage only modifies .agents/, tests/, evals/, docs/" }
+  ],
+  "resource_budget": {
+    "leaf_p50": "30–60 min",
+    "leaf_p80_max": "120 min",
+    "max_compactions_per_leaf": 4,
+    "stage_estimate": "2–3 dev-days"
+  },
+  "allowed_replan": ["split", "merge", "reorder", "defer", "reduce_scope", "request_contract_revision"],
+  "open_questions": [
+    { "id": "Q1", "question": "Should replan-controller be subsumed by planning-governor or kept as a separate skill with a clear boundary?", "blocking": false, "owner": "planner", "resolution": "DA-1 decides: subsume. replan-controller becomes a skill alias that delegates to planning-governor. No separate implementation." },
+    { "id": "Q2", "question": "Should delivery profile default assurance table be in stage-contract SKILL.md or a separate reference doc?", "blocking": false, "owner": "planner", "resolution": "In stage-contract SKILL.md as a table. Separate reference doc can be created later if it grows." },
+    { "id": "Q3", "question": "Should the governor_decision be a separate artifact or embedded in audit.json?", "blocking": false, "owner": "planner", "resolution": "Separate artifact: governor_decision.json. Keeps the audit output focused on findings; governor output is a decision on top of findings." }
+  ]
+}
